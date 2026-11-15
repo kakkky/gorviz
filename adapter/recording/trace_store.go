@@ -54,6 +54,19 @@ func (s *TraceStore) At(t time.Time) (domain.TraceChunk, bool) {
 	return domain.TraceChunk{}, false
 }
 
+func (s *TraceStore) Between(from, to time.Time) []domain.TraceChunk {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []domain.TraceChunk
+	for _, c := range s.chunks {
+		if c.EndedAt().Before(from) || c.StartedAt.After(to) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 func (s *TraceStore) FindLogMark(seq uint64) (domain.TraceChunk, domain.TraceLogMark, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

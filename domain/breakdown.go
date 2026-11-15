@@ -191,3 +191,55 @@ func overlap(merged []causeSegment, start, end time.Duration) time.Duration {
 	}
 	return total
 }
+
+// TotalByCause は窓の中の全 G の時間を主因ごとに合計する (GC の区間は分けない)。CPU 待ちの量を見るのに使う
+func (t SchedulerTimeline) TotalByCause() map[PrimaryCause]time.Duration {
+	type cursor struct {
+		cause PrimaryCause
+		start time.Duration
+		ok    bool
+	}
+	totals := map[PrimaryCause]time.Duration{}
+	gs := map[GoroutineID]cursor{}
+	for _, ev := range t.Events {
+		if ev.Kind != SchedEventGoroutine {
+			continue
+		}
+		if c := gs[ev.Goroutine]; c.ok {
+			totals[c.cause] += ev.At - c.start
+		}
+		cause, ok := causeOfPlace(ev.Place)
+		gs[ev.Goroutine] = cursor{cause, ev.At, ok}
+	}
+	for _, c := range gs {
+		if c.ok {
+			totals[c.cause] += t.Window - c.start
+		}
+	}
+	return totals
+}
+
+// LongestMarkAssist は一番長く GC を手伝わされた G と、その区間の始まり
+func (t SchedulerTimeline) LongestMarkAssist() (GoroutineID, time.Duration, bool) {
+	per := map[GoroutineID]time.Duration{}
+	first := map[GoroutineID]time.Duration{}
+	for _, r := range t.GC {
+		if r.Kind != GCMarkAssist {
+			continue
+		}
+		if _, ok := first[r.Goroutine]; !ok {
+			first[r.Goroutine] = r.Start
+		}
+		per[r.Goroutine] += r.End - r.Start
+	}
+	var (
+		best    GoroutineID
+		longest time.Duration
+	)
+	for g, d := range per {
+		if d > longest || (d == longest && g < best) {
+			best, longest = g, d
+		}
+	}
+	return best, first[best], longest > 0
+}

@@ -35,5 +35,7 @@ type TraceRecording interface {
 	Append(chunk TraceChunk)
 	Latest() (TraceChunk, bool)
 	At(t time.Time) (TraceChunk, bool)
+	// Between は [from, to] に重なる区切りを古い順に返す
+	Between(from, to time.Time) []TraceChunk
 	FindLogMark(seq uint64) (TraceChunk, TraceLogMark, bool)
 }

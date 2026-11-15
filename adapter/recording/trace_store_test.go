@@ -65,3 +65,19 @@ func TestTraceStore(t *testing.T) {
 		assert.False(t, ok)
 	})
 }
+
+func TestTraceStore_Between(t *testing.T) {
+	t.Parallel()
+	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	chunk := func(start time.Duration) domain.TraceChunk {
+		return domain.TraceChunk{StartedAt: base.Add(start), Timeline: domain.SchedulerTimeline{Window: 2 * time.Second}}
+	}
+	s := recording.NewTraceStore(&config.Config{Retention: time.Hour, MaxRecordedEvents: 1000})
+	for _, start := range []time.Duration{0, 2 * time.Second, 4 * time.Second} {
+		s.Append(chunk(start))
+	}
+
+	got := s.Between(base.Add(1500*time.Millisecond), base.Add(2500*time.Millisecond))
+
+	assert.Equal(t, []domain.TraceChunk{chunk(0), chunk(2 * time.Second)}, got, "chunks overlapping the interval are returned oldest first")
+}
