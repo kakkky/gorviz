@@ -34,6 +34,8 @@ var wrapperPrefixes = []string{
 	"github.com/kakkky/scope.",
 	"golang.org/x/sync/errgroup.",
 	"sync.(*WaitGroup).Go",
+	// pprof.Do は label を付けて関数を呼ぶだけなので、label を付けた G の入口として飛ばす
+	"runtime/pprof.Do",
 }
 
 func IsWrapperFunction(fn string) bool {

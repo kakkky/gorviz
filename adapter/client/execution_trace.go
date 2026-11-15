@@ -196,7 +196,8 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 			from, to := st.Goroutine()
 			frames := stackFrames(st.Stack)
 			// 生成時のスタックは新しい G の入口から始まる。窓の前からいた G の状態記録のスタックは、その G 自身の今のスタック
-			if len(frames) > 0 && (from == trace.GoNotExist || from == trace.GoUndetermined) {
+			// go 文の関数がラッパー (pprof.Do など) なら、生成時のスタックにはラッパーしか載らないので、後でスタックが載ったときに入口を決め直す
+			if entry, ok := tl.Entries[domain.GoroutineID(g)]; len(frames) > 0 && (from == trace.GoNotExist || from == trace.GoUndetermined || (ok && domain.IsWrapperFunction(entry))) {
 				fns := make([]string, len(frames))
 				for i, f := range frames {
 					fns[i] = f.Func
