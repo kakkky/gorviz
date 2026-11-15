@@ -1,4 +1,5 @@
 // leaky は gorviz の動作確認用の観測対象。CPU を使う worker と、受け手のいない channel で止まり続ける goroutine を作り続ける。
+// リクエストを模した処理は所要時間つきのログを出し、ときどきロック待ちで遅くなる (SLOW_REQUEST と BLOCKED の確認用)。
 // ログは gorviz の slog ハンドラ経由で出すので、Explore でクリックするとログを書いた goroutine まで特定できる。
 package main
 
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/kakkky/gorviz/slogtrace"
@@ -21,6 +23,8 @@ func main() {
 	}
 	go leakForever()
 	go shortLived()
+	go holdLock()
+	go requests()
 
 	logger.Info("pprof server started", "addr", "http://localhost:6060/debug/pprof/")
 	if err := http.ListenAndServe("localhost:6060", nil); err != nil {
@@ -70,4 +74,31 @@ func shortLived() {
 		}()
 		<-done
 	}
+}
+
+// mu はときどき長く握られ、その間に来たリクエストはロック待ちで遅くなる
+var mu sync.Mutex
+
+func holdLock() {
+	for {
+		time.Sleep(5 * time.Second)
+		mu.Lock()
+		time.Sleep(1500 * time.Millisecond)
+		mu.Unlock()
+	}
+}
+
+func requests() {
+	for i := 0; ; i++ {
+		go handleRequest(i)
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func handleRequest(id int) {
+	start := time.Now()
+	mu.Lock()
+	time.Sleep(time.Duration(10+rand.IntN(30)) * time.Millisecond)
+	mu.Unlock()
+	logger.Info("request done", "path", "/users", "request_id", id, "duration", time.Since(start))
 }
