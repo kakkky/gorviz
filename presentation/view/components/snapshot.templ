@@ -15,6 +15,7 @@ type SnapshotViewModel struct {
 	Lanes          []ProcLaneViewModel
 	History        SparklineViewModel
 	TopOrigins     []OriginCountViewModel
+	Scopes         []ScopeViewModel
 	LeakCheck      string
 	HeapLive       string
 	HeapGoal       string
@@ -48,6 +49,13 @@ type SparklineViewModel struct {
 	Min     int
 	Max     int
 	Samples int
+}
+
+type ScopeViewModel struct {
+	Name       string
+	Goroutines int
+	Waiting    int
+	Leaked     int
 }
 
 type OriginCountViewModel struct {
@@ -99,6 +107,24 @@ templ OverviewSnapshot(vm SnapshotViewModel) {
 			</table>
 		</section>
 	</div>
+	<section class="panel">
+		<h2>Scopes <span class="muted">goroutines labeled with pprof label "scope" (e.g. by kakkky/scope)</span></h2>
+		if len(vm.Scopes) == 0 {
+			<p class="muted">no goroutine has the "scope" label</p>
+		} else {
+			<table>
+				<tr><th>scope</th><th>goroutines</th><th>waiting</th><th>leaked</th></tr>
+				for _, s := range vm.Scopes {
+					<tr>
+						<td>{ s.Name }</td>
+						<td>{ strconv.Itoa(s.Goroutines) }</td>
+						<td>{ strconv.Itoa(s.Waiting) }</td>
+						<td class={ templ.KV("error", s.Leaked > 0) }>{ strconv.Itoa(s.Leaked) }</td>
+					</tr>
+				}
+			</table>
+		}
+	</section>
 }
 
 // SchedulerSnapshot は GMP 再生の下に出す、観測窓の P ごとの様子

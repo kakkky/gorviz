@@ -40,6 +40,21 @@ created by main.leakForever in goroutine 1
 			}},
 		},
 		{
+			name: "success: goroutine started by a wrapper library has the user's function as entry and origin, and labels are read",
+			dump: `goroutine 21 [select] {scope: checkout, handler: /users}:
+main.fetchUser.func1({0x0, 0x0})
+	/src/main.go:50 +0x2c
+github.com/kakkky/scope.(*Scope).Go.func1()
+	/mod/scope/scope.go:80 +0x40
+created by github.com/kakkky/scope.(*Scope).Go in goroutine 1
+	/mod/scope/scope.go:75 +0x1a
+`,
+			want: []domain.Goroutine{{
+				ID: 21, State: "select", Labels: map[string]string{"scope": "checkout", "handler": "/users"},
+				EntryFunction: "main.fetchUser.func1", CurrentFunction: "main.fetchUser.func1", CreatedBy: "github.com/kakkky/scope.(*Scope).Go", CreatedAt: "/mod/scope/scope.go:75",
+			}},
+		},
+		{
 			name: "success: leaked goroutine marked by goroutineleak profile",
 			dump: `goroutine 7 [chan receive (leaked)]:
 main.leakedReceive()
@@ -97,7 +112,7 @@ created by main.main in goroutine 1
 	/src/main.go:20 +0x1a
 `,
 			want: []domain.Goroutine{{
-				ID: 12, State: "select",
+				ID: 12, State: "select", Labels: map[string]string{"handler": "/users", "tenant": "a b"},
 				EntryFunction: "main.serve", CurrentFunction: "main.serve", CreatedBy: "main.main", CreatedAt: "/src/main.go:20",
 			}},
 		},

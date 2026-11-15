@@ -4,11 +4,13 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -90,7 +92,8 @@ func holdLock() {
 
 func requests() {
 	for i := 0; ; i++ {
-		go handleRequest(i)
+		// スコープの可視化の確認用に、リクエストの G に pprof label "scope" を付ける
+		go pprof.Do(context.Background(), pprof.Labels("scope", "request"), func(context.Context) { handleRequest(i) })
 		time.Sleep(100 * time.Millisecond)
 	}
 }

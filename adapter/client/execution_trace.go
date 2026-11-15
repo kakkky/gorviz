@@ -196,7 +196,11 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 			frames := stackFrames(st.Stack)
 			// 生成時のスタックは新しい G の入口から始まる。窓の前からいた G の状態記録のスタックは、その G 自身の今のスタック
 			if len(frames) > 0 && (from == trace.GoNotExist || from == trace.GoUndetermined) {
-				tl.Entries[domain.GoroutineID(g)] = frames[len(frames)-1].Func
+				fns := make([]string, len(frames))
+				for i, f := range frames {
+					fns[i] = f.Func
+				}
+				tl.Entries[domain.GoroutineID(g)] = domain.EntryFunction(fns)
 			}
 			var function, location string
 			if from != trace.GoNotExist && len(frames) > 0 {

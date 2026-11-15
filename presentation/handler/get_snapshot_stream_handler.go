@@ -153,6 +153,9 @@ func toSnapshotViewModel(out usecase.RuntimeSnapshot, buckets int) components.Sn
 		vm.Lanes = append(vm.Lanes, laneVM)
 	}
 
+	for _, s := range out.Scopes {
+		vm.Scopes = append(vm.Scopes, components.ScopeViewModel{Name: s.Name, Goroutines: s.Goroutines, Waiting: s.Waiting, Leaked: s.Leaked})
+	}
 	for _, o := range out.TopOrigins {
 		vm.TopOrigins = append(vm.TopOrigins, components.OriginCountViewModel{Count: o.Count, Origin: string(o.Origin)})
 	}

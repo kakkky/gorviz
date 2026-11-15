@@ -13,7 +13,7 @@ import (
 
 // "goroutine 18 [chan receive, 5 minutes]:" / "goroutine 1 gp=0x... m=0 mp=0x... [running]:" /
 // "goroutine 7 [select] {handler: /users}:" (Go 1.27 から既定で pprof labels が付く) のいずれにも合わせる
-var goroutineHeaderRe = regexp.MustCompile(`^goroutine (\d+)\b[^\[]*\[([^\]]+)\](?: \{.*\})?:$`)
+var goroutineHeaderRe = regexp.MustCompile(`^goroutine (\d+)\b[^\[]*\[([^\]]+)\](?: \{(.*)\})?:$`)
 
 var waitMinutesRe = regexp.MustCompile(`^(\d+) minutes?$`)
 
@@ -30,7 +30,7 @@ func parseGoroutineDump(r io.Reader) ([]domain.Goroutine, error) {
 	flush := func() {
 		if cur != nil {
 			if len(frames) > 0 {
-				cur.EntryFunction = frames[len(frames)-1]
+				cur.EntryFunction = domain.EntryFunction(frames)
 				cur.CurrentFunction = domain.CurrentFunction(frames)
 			}
 			gs = append(gs, *cur)
@@ -52,6 +52,7 @@ func parseGoroutineDump(r io.Reader) ([]domain.Goroutine, error) {
 			}
 			cur = &domain.Goroutine{ID: domain.GoroutineID(id)}
 			applyGoroutineStatus(cur, m[2])
+			cur.Labels = parseLabels(m[3])
 			continue
 		}
 		if cur == nil {
@@ -93,6 +94,28 @@ func applyGoroutineStatus(g *domain.Goroutine, status string) {
 			g.Wait = time.Duration(n) * time.Minute
 		}
 	}
+}
+
+// parseLabels は "{handler: /users, scope: checkout}" の中身を読む。値に ", " を含む (引用符で囲まれた) ラベルは正しく分けられない
+func parseLabels(s string) map[string]string {
+	if s == "" {
+		return nil
+	}
+	labels := map[string]string{}
+	for kv := range strings.SplitSeq(s, ", ") {
+		k, v, ok := strings.Cut(kv, ": ")
+		if !ok {
+			continue
+		}
+		if uk, err := strconv.Unquote(k); err == nil {
+			k = uk
+		}
+		if uv, err := strconv.Unquote(v); err == nil {
+			v = uv
+		}
+		labels[k] = v
+	}
+	return labels
 }
 
 func trimFrameArgs(line string) string {

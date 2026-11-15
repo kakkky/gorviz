@@ -25,6 +25,8 @@ type Goroutine struct {
 	CreatedBy       string
 	CreatedAt       string
 	Leaked          bool
+	// Labels は pprof labels (dump の見出しの {key: value})。kakkky/scope などがスコープの名前を載せる
+	Labels map[string]string
 }
 
 func (g Goroutine) StateCategory() GoroutineStateCategory {
@@ -41,8 +43,9 @@ func (g Goroutine) StateCategory() GoroutineStateCategory {
 }
 
 // Origin は生成元 (go 文の位置) を返す。リークは「同じ go 文から作られた G が溜まり続ける」形で現れるので、集計の単位にする。
+// goroutine を代わりに起動するライブラリの go 文は、どの利用者の G でも同じ位置になるので、利用者が渡した関数 (入口の関数) を使う
 func (g Goroutine) Origin() GoroutineOrigin {
-	if g.CreatedBy == "" {
+	if g.CreatedBy == "" || IsWrapperFunction(g.CreatedBy) {
 		return GoroutineOrigin(g.EntryFunction)
 	}
 	return GoroutineOrigin(g.CreatedBy + " @ " + g.CreatedAt)

@@ -85,6 +85,7 @@ type RuntimeSnapshot struct {
 	GoroutineCount   int
 	StateCounts      domain.GoroutineStateCounts
 	TopOrigins       []RuntimeSnapshotOriginCount
+	Scopes           []domain.ScopeSummary
 	Leaks            []domain.Leak
 	LeakCheckStatus  LeakCheckStatus
 	LeakedGoroutines []domain.GoroutineID
@@ -176,6 +177,7 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRunti
 		GoroutineCount:    len(goroutines),
 		StateCounts:       domain.CountGoroutineStates(goroutines),
 		TopOrigins:        topOrigins(goroutines, topOriginsLimit),
+		Scopes:            domain.SummarizeScopes(goroutines),
 		Leaks:             domain.DetectLeaks(history.samples, goroutines, us.leakPolicy),
 		LeakCheckStatus:   leakCheckStatus,
 		GoroutineHistory:  slices.Clone(history.totals),

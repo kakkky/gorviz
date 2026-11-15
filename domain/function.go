@@ -28,3 +28,33 @@ func ShortFunctionName(fn string) string {
 	}
 	return fn
 }
+
+// wrapperPrefixes は goroutine を代わりに起動するライブラリの関数。これらは入口の関数にも生成元にも使わず、利用者が渡した関数を使う
+var wrapperPrefixes = []string{
+	"github.com/kakkky/scope.",
+	"golang.org/x/sync/errgroup.",
+	"sync.(*WaitGroup).Go",
+}
+
+func IsWrapperFunction(fn string) bool {
+	for _, p := range wrapperPrefixes {
+		if strings.HasPrefix(fn, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// EntryFunction はスタック (上が先) から、go 文で起動された関数を返す。
+// 一番下の関数が goroutine を代わりに起動するライブラリのものなら、それを飛ばして利用者が渡した関数を返す
+func EntryFunction(stack []string) string {
+	for i := len(stack) - 1; i >= 0; i-- {
+		if !IsWrapperFunction(stack[i]) {
+			return stack[i]
+		}
+	}
+	if len(stack) > 0 {
+		return stack[len(stack)-1]
+	}
+	return ""
+}
