@@ -25,7 +25,7 @@ spec:
             - {name: PPROF_ADDR, value: "localhost:6060"}
         - name: gorviz-agent
           image: ghcr.io/kakkky/gorviz:latest
-          # K_SERVICE は Cloud Run が入れるサービス名
-          command: ["sh", "-c", "gorviz-agent -name $K_SERVICE -target http://localhost:6060 -agent-addr 10.0.0.10:7071 -trace-buffer-mib 64"]
+          # 名前は Cloud Run が入れるサービス名 (K_SERVICE) に、metadata server から取った instance ID を足したものになる
+          command: ["gorviz-agent", "-target", "http://localhost:6060", "-agent-addr", "10.0.0.10:7071", "-trace-buffer-mib", "64"]
           resources:
             limits: {cpu: "1", memory: 256Mi}

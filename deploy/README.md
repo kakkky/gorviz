@@ -13,6 +13,9 @@ agent は server へ外向きにつなぐので、アプリの Pod / タスク�
 観測するかどうかは対象側で明示的に許可する: daemon 型では、agent に渡す `-target` を、許可した Pod (annotation `gorviz.kakkky.dev/observe: "true"`) の pprof に限る。
 annotation から対象を自動で見つける仕組みは未実装で、今は `-target` を手で並べる。
 
+server は agent の名前ごとに束ねるので、レプリカの agent は別々の名前にする。`-name` を省くと hostname になり、Kubernetes (Pod 名) と Fargate (`ip-10-0-1-23.<region>.compute.internal` の形) ではレプリカごとに別になる。
+Cloud Run はどのインスタンスも hostname が `localhost` なので、agent がサービス名 (`K_SERVICE`) に metadata server の instance ID を足した名前を自分で作る。
+
 Cloud Run での注意:
 
 - CPU を常に割り当てる (`run.googleapis.com/cpu-throttling: "false"`、インスタンス単位の課金)。既定ではリクエストを処理していない間 CPU がほぼ割り当てられず、agent が trace を取れず server へも送れない
