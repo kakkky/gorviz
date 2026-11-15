@@ -131,7 +131,7 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "><p class=\"muted\">waiting for the first trace window...</p></div><p class=\"muted replay-note\">LRQ / GRQ are inferred from the execution trace: a goroutine readied by a P is placed on that P's LRQ, and one descheduled by preemption, yield or a syscall without P is placed on the GRQ. runnext is not distinguished. <span class=\"error\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "><p class=\"muted\">waiting for the first trace window...</p></div><p class=\"muted replay-note\">The local / global run queues are inferred from the execution trace: a goroutine readied by a P is placed on that P's local run queue, and one descheduled by preemption, yield or a syscall without P is placed on the global run queue. runnext is not distinguished. <span class=\"error\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

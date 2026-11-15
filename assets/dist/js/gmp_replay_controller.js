@@ -2,8 +2,8 @@ import { Controller } from "@hotwired/stimulus"
 
 // サーバ (handler の gmpReplayJSON) と揃えたコード値
 const PLACE_RUNNING = 0
-const PLACE_LRQ = 1
-const PLACE_GRQ = 2
+const PLACE_LOCAL_RUN_QUEUE = 1
+const PLACE_GLOBAL_RUN_QUEUE = 2
 const PLACE_WAITING = 3
 const PLACE_SYSCALL = 4
 const PLACE_DEAD = 5
@@ -13,7 +13,7 @@ const PROC_RUNNING = 1
 const R = 14
 const STEP = 31
 const LEFT_W = 330
-const COL_W = 104
+const COL_W = 132
 const LEGEND_W = 170
 const LRQ_MAX = 6
 const ROW_MAX = 7
@@ -29,10 +29,9 @@ const COLORS = {
 const PROC_COLORS = {
   idle: { fill: "#f6d0c8", stroke: "#2b7a78" },
   running: { fill: "#f2a08a", stroke: "#2e7d32" },
-  syscall: { fill: "#d63a1f", stroke: "#7d1a0b" },
 }
 
-// 観測窓 1 つ分の trace を時間軸で再生し、GMP の概念図 (GRQ / LRQ / P / M / 待機 / 終了) として描く。
+// 観測窓 1 つ分の trace を時間軸で再生し、GMP の概念図 (global / local run queue / P / M / 待機 / free G list) として描く。
 // 新しい窓が SSE で届いても再生中は割り込まず、今の窓を最後まで再生してから切り替える。
 export default class extends Controller {
   static targets = ["window", "stage", "seek", "clock", "play", "speed", "live", "pending", "log", "note"]
@@ -176,11 +175,11 @@ export default class extends Controller {
   describePlace(place, proc, thread, reason) {
     switch (place) {
       case PLACE_RUNNING: return `running on P${proc} / M${thread}`
-      case PLACE_LRQ: return `LRQ of P${proc}`
-      case PLACE_GRQ: return "GRQ"
+      case PLACE_LOCAL_RUN_QUEUE: return `local run queue of P${proc}`
+      case PLACE_GLOBAL_RUN_QUEUE: return "global run queue"
       case PLACE_WAITING: return `waiting (${this.current.reasons[reason]})`
       case PLACE_SYSCALL: return `syscall on M${thread}`
-      case PLACE_DEAD: return "exited (gFree)"
+      case PLACE_DEAD: return "exited (free G list)"
     }
   }
 
@@ -214,8 +213,8 @@ export default class extends Controller {
     for (const [g, s] of sorted) {
       switch (s.place) {
         case PLACE_RUNNING: { const p = byProc.get(s.proc); if (p) p.running = { g, kind: "running" }; break }
-        case PLACE_LRQ: byProc.get(s.proc)?.lrq.push(g); break
-        case PLACE_GRQ: grq.push(g); break
+        case PLACE_LOCAL_RUN_QUEUE: byProc.get(s.proc)?.lrq.push(g); break
+        case PLACE_GLOBAL_RUN_QUEUE: grq.push(g); break
         case PLACE_WAITING: {
           // 「何の処理をする G が、何を待って止まっているか」でまとめる
           const key = `${this.label(g)} — ${this.current.reasons[s.reason]}`
@@ -230,11 +229,10 @@ export default class extends Controller {
         case PLACE_DEAD: dead.push(g); break
       }
     }
-    // trace では syscall 中も P は running のまま記録されるので、P に乗った G が syscall 中なら P も syscall とみなす
+    // P に乗った G が syscall 中なら、P は running のまま、その G をシステムコール中として置く (P にシステムコール中の状態はない)
     for (const [proc, sg] of inSyscall) {
       const p = byProc.get(proc)
       if (p && p.status === "running" && !p.running) {
-        p.status = "syscall"
         p.running = { g: sg.g, kind: "syscall" }
       } else {
         handedOff.push(sg)
@@ -273,11 +271,11 @@ export default class extends Controller {
       this.row(out, gs, x + 10 + R, y, "waiting", ROW_MAX)
     })
 
-    box(out, x, 275, LEFT_W - 30, 90, `gFree (exited in window: ${s.dead.length})`)
+    box(out, x, 275, LEFT_W - 30, 90, `free G list (exited in window: ${s.dead.length})`)
     this.row(out, s.dead.slice(-ROW_MAX), x + 10 + R, 325, "dead", ROW_MAX)
 
     const idle = s.procs.filter((p) => p.status === "idle")
-    box(out, x, 380, LEFT_W - 30, 90, `pidle (${idle.length})`)
+    box(out, x, 380, LEFT_W - 30, 90, `idle P list (${idle.length})`)
     idle.slice(0, 8).forEach((p, i) => triangle(out, x + 30 + i * 34, 440, 28, "idle", `P${p.proc}`))
 
     box(out, x, 485, LEFT_W - 30, 100, `syscall, P handed off (${s.handedOff.length})`)
@@ -293,14 +291,14 @@ export default class extends Controller {
   drawCenter(out, s) {
     const x0 = LEFT_W
     const width = s.procs.length * COL_W
-    box(out, x0, 10, width, 90, `GRQ (${s.grq.length})`)
+    box(out, x0, 10, width, 90, `global run queue (${s.grq.length})`)
     this.row(out, s.grq, x0 + 20 + R, 62, "runnable", Math.max(1, Math.floor((width - 60) / STEP)))
 
     s.procs.forEach((p, i) => {
       const cx = x0 + i * COL_W + COL_W / 2
       const lrqTop = 120
       const lrqH = LRQ_MAX * STEP + 34
-      box(out, cx - COL_W / 2 + 8, lrqTop, COL_W - 16, lrqH, `LRQ (${p.lrq.length})`)
+      box(out, cx - COL_W / 2 + 8, lrqTop, COL_W - 16, lrqH, `local run queue (${p.lrq.length})`)
       const shown = p.lrq.slice(0, LRQ_MAX)
       shown.forEach((g, j) => this.circle(out, cx, lrqTop + lrqH - R - 6 - j * STEP, g, "runnable"))
       if (p.lrq.length > LRQ_MAX) out.push(`<text x="${cx + R + 4}" y="${lrqTop + 30}" font-size="11" fill="#555">+${p.lrq.length - LRQ_MAX}</text>`)
@@ -327,7 +325,7 @@ export default class extends Controller {
   }
 
   drawLegend(out, x) {
-    const items = [["running", "Grunning"], ["runnable", "Grunnable"], ["waiting", "Gwaiting"], ["syscall", "Gsyscall"], ["dead", "Gdead"]]
+    const items = [["running", "_Grunning"], ["runnable", "_Grunnable"], ["waiting", "_Gwaiting"], ["syscall", "_Gsyscall"], ["dead", "_Gdead"]]
     items.forEach(([kind, label], i) => {
       const y = 30 + i * 38
       const c = COLORS[kind]
@@ -336,7 +334,7 @@ export default class extends Controller {
     })
     out.push(`<circle cx="${x + R}" cy="${30 + 5 * 38}" r="${R}" fill="${COLORS.waiting.fill}" stroke="#ff3b30" stroke-width="3" stroke-dasharray="4 2"/>`)
     out.push(`<text x="${x + 2 * R + 8}" y="${34 + 5 * 38}" font-size="13">leaked</text>`)
-    ;[["idle", "Pidle"], ["running", "Prunning"], ["syscall", "Psyscall"]].forEach(([status, label], i) => {
+    ;[["idle", "_Pidle"], ["running", "_Prunning"]].forEach(([status, label], i) => {
       const y = 290 + i * 46
       triangle(out, x + R, y, 30, status, "P")
       out.push(`<text x="${x + 2 * R + 8}" y="${y + 4}" font-size="13">${label}</text>`)

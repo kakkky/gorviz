@@ -27,14 +27,14 @@ templ SchedTrace(vm SchedTraceViewModel) {
 	<section class="panel">
 		<h2>runtime-reported (schedtrace) <span class="muted">uptime { vm.Uptime }</span></h2>
 		<div class="stats">
-			@stat("GRQ length", strconv.Itoa(vm.GlobalRunQueue))
-			@stat("P idle / total", strconv.Itoa(vm.IdleProcs)+" / "+strconv.Itoa(vm.GOMAXPROCS))
+			@stat("global run queue length", strconv.Itoa(vm.GlobalRunQueue))
+			@stat("idle P / total", strconv.Itoa(vm.IdleProcs)+" / "+strconv.Itoa(vm.GOMAXPROCS))
 			@stat("M total / idle / spinning", strconv.Itoa(vm.Threads)+" / "+strconv.Itoa(vm.IdleThreads)+" / "+strconv.Itoa(vm.SpinningThreads))
-			@stat("gFree on Ps", strconv.Itoa(vm.GFreeTotal))
+			@stat("free G list (on Ps)", strconv.Itoa(vm.GFreeTotal))
 		</div>
 		<p class="muted">G: { vm.GoroutineStates }</p>
 		<table>
-			<tr><th>P</th><th>status</th><th>M</th><th>LRQ length</th><th>gFree</th></tr>
+			<tr><th>P</th><th>status</th><th>M</th><th>local run queue length</th><th>free G</th></tr>
 			for _, p := range vm.Procs {
 				<tr><td>{ p.Proc }</td><td>{ p.Status }</td><td>{ p.Thread }</td><td>{ strconv.Itoa(p.RunQueue) }</td><td>{ strconv.Itoa(p.GFree) }</td></tr>
 			}

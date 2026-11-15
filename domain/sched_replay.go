@@ -11,14 +11,14 @@ type GoroutinePlaceKind string
 
 const (
 	PlaceRunning     GoroutinePlaceKind = "running"
-	PlaceLocalQueue  GoroutinePlaceKind = "lrq"
-	PlaceGlobalQueue GoroutinePlaceKind = "grq"
+	PlaceLocalQueue  GoroutinePlaceKind = "local_run_queue"
+	PlaceGlobalQueue GoroutinePlaceKind = "global_run_queue"
 	PlaceWaiting     GoroutinePlaceKind = "waiting"
 	PlaceSyscall     GoroutinePlaceKind = "syscall"
 	PlaceDead        GoroutinePlaceKind = "dead"
 )
 
-// GoroutinePlace の Proc / Thread は Kind が running / lrq / syscall のときだけ意味を持つ。
+// GoroutinePlace の Proc / Thread は Kind が running / local_run_queue / syscall のときだけ意味を持つ。
 // HasProc が false の syscall は、P を手放した (handoff された) M の上で syscall 中であることを表す。
 type GoroutinePlace struct {
 	Kind    GoroutinePlaceKind
@@ -30,12 +30,13 @@ type GoroutinePlace struct {
 
 const UnknownWaitReason = "unknown"
 
+// ProcStatus は P の状態。runtime の P にはシステムコール中を表す状態はなく (Go 1.27 の _Psyscall_unused)、
+// システムコール中かどうかは G の状態で表す
 type ProcStatus string
 
 const (
 	ProcIdle    ProcStatus = "idle"
 	ProcRunning ProcStatus = "running"
-	ProcSyscall ProcStatus = "syscall"
 )
 
 type SchedEventKind string
@@ -61,14 +62,16 @@ type SchedEvent struct {
 	Thread     ThreadID
 }
 
+// ProcSnapshot の RunningInSyscall は、P を持ったまま M の上でシステムコール中の G が Running にいること
 type ProcSnapshot struct {
-	Proc       ProcID
-	Status     ProcStatus
-	Thread     ThreadID
-	HasThread  bool
-	Running    GoroutineID
-	HasRunning bool
-	LocalQueue []GoroutineID
+	Proc             ProcID
+	Status           ProcStatus
+	Thread           ThreadID
+	HasThread        bool
+	Running          GoroutineID
+	HasRunning       bool
+	RunningInSyscall bool
+	LocalQueue       []GoroutineID
 }
 
 type SyscallGoroutine struct {
@@ -104,7 +107,7 @@ type procCursor struct {
 }
 
 // StateAt は At が t 以下のイベントを順に適用した状態を返す。
-// キューの並びは入った順。実際の runtime には runnext (LRQ の先頭に割り込む枠) があるが、trace からは区別できないので扱わない。
+// キューの並びは入った順。実際の runtime には runnext (local run queue より先に実行される 1 枠) があるが、trace からは区別できないので扱わない。
 func (t SchedulerTimeline) StateAt(at time.Duration) SchedState {
 	gs := map[GoroutineID]placedGoroutine{}
 	procs := map[ProcID]procCursor{}
@@ -172,12 +175,11 @@ func (t SchedulerTimeline) StateAt(at time.Duration) SchedState {
 		if g, ok := running[p]; ok {
 			snap.Running, snap.HasRunning = g, true
 		}
-		// trace では syscall 中も P は running のまま記録されるので、P に乗った G が syscall 中なら P も syscall とみなす。
-		// P が別の M に奪われた (idle になった / 別の G を走らせている) なら、その G は P を手放した M の上にいる
+		// P に乗った G が syscall 中なら、P は running のまま、その G をシステムコール中として Running に置く。
+		// P が別の M に奪われた (idle になった / 別の G を走らせている) なら、その G は P を手放した M の上にいる (handoff)
 		if sg, ok := inSys[p]; ok {
 			if c.status == ProcRunning && !snap.HasRunning {
-				snap.Status = ProcSyscall
-				snap.Running, snap.HasRunning = sg.Goroutine, true
+				snap.Running, snap.HasRunning, snap.RunningInSyscall = sg.Goroutine, true, true
 			} else {
 				state.HandedOff = append(state.HandedOff, sg)
 			}

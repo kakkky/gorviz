@@ -134,7 +134,7 @@ func (t *Top) render(sb *strings.Builder, out usecase.RuntimeSnapshot) {
 	}
 }
 
-// renderGMP は観測窓の終わりの GMP を、GUI の概念図と同じ構造 (GRQ / P ごとの M・G・LRQ / 待機 / 終了) で文字にする
+// renderGMP は観測窓の終わりの GMP を、GUI の概念図と同じ構造 (global run queue / P ごとの M・G・local run queue / 待機 / 終了) で文字にする
 func renderGMP(sb *strings.Builder, out usecase.RuntimeSnapshot) {
 	st := out.Timeline.StateAt(out.Timeline.Window)
 	entries := out.Timeline.Entries
@@ -143,15 +143,13 @@ func renderGMP(sb *strings.Builder, out usecase.RuntimeSnapshot) {
 		leaked[g] = true
 	}
 
-	fmt.Fprintf(sb, "%sGMP at end of trace window%s %s(LRQ / GRQ are inferred from the trace)%s\n", bold, reset, dim, reset)
-	fmt.Fprintf(sb, "  GRQ  %s\n", goroutineList(st.GlobalQueue, 12))
+	fmt.Fprintf(sb, "%sGMP at end of trace window%s %s(local / global run queues are inferred from the trace)%s\n", bold, reset, dim, reset)
+	fmt.Fprintf(sb, "  global run queue  %s\n", goroutineList(st.GlobalQueue, 12))
 	for _, p := range st.Procs {
 		status := fmt.Sprintf("%-8s", p.Status)
 		switch p.Status {
 		case domain.ProcRunning:
 			status = green + status + reset
-		case domain.ProcSyscall:
-			status = red + status + reset
 		default:
 			status = dim + status + reset
 		}
@@ -160,9 +158,12 @@ func renderGMP(sb *strings.Builder, out usecase.RuntimeSnapshot) {
 			onCPU = fmt.Sprintf("M%d", p.Thread)
 		}
 		// 色の制御文字が幅に数えられないよう、桁をそろえてから色を付ける
-		fmt.Fprintf(sb, "  P%-3d %s %-5s LRQ %-28s", p.Proc, status, onCPU, goroutineList(p.LocalQueue, 4))
+		fmt.Fprintf(sb, "  P%-3d %s %-5s local run queue %-28s", p.Proc, status, onCPU, goroutineList(p.LocalQueue, 4))
 		if p.HasRunning {
 			fmt.Fprintf(sb, " ▶ G%-6d %s", p.Running, entryLabel(entries, p.Running))
+			if p.RunningInSyscall {
+				fmt.Fprintf(sb, " %s(in syscall)%s", red, reset)
+			}
 		}
 		sb.WriteString("\n")
 	}
@@ -189,18 +190,18 @@ func renderGMP(sb *strings.Builder, out usecase.RuntimeSnapshot) {
 	if len(groups) > maxWaitingGroups {
 		fmt.Fprintf(sb, "    %s+%d more groups%s\n", dim, len(groups)-maxWaitingGroups, reset)
 	}
-	fmt.Fprintf(sb, "  gFree    exited in window: %d\n\n", len(st.Dead))
+	fmt.Fprintf(sb, "  free G list  exited in window: %d\n\n", len(st.Dead))
 }
 
 func renderSchedTrace(sb *strings.Builder, r domain.SchedTraceReport) {
 	fmt.Fprintf(sb, "\n%sruntime-reported (schedtrace)%s %suptime %s%s\n", bold, reset, dim, r.Uptime, reset)
-	fmt.Fprintf(sb, "  GRQ length %d   P idle %d/%d   M %d (idle %d, spinning %d)\n", r.GlobalRunQueue, r.IdleProcs, r.GOMAXPROCS, r.Threads, r.IdleThreads, r.SpinningThreads)
+	fmt.Fprintf(sb, "  global run queue length %d   idle P %d/%d   M %d (idle %d, spinning %d)\n", r.GlobalRunQueue, r.IdleProcs, r.GOMAXPROCS, r.Threads, r.IdleThreads, r.SpinningThreads)
 	for _, p := range r.Procs {
 		m := "-"
 		if p.HasThread {
 			m = fmt.Sprintf("M%d", p.Thread)
 		}
-		fmt.Fprintf(sb, "  P%-3d %-8s %-5s LRQ length %-4d gFree %d\n", p.Proc, p.Status, m, p.RunQueue, p.GFree)
+		fmt.Fprintf(sb, "  P%-3d %-8s %-5s local run queue length %-4d free G %d\n", p.Proc, p.Status, m, p.RunQueue, p.GFree)
 	}
 }
 

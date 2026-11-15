@@ -55,7 +55,7 @@ func TestSchedulerTimeline_StateAt(t *testing.T) {
 		want domain.SchedState
 	}{
 		{
-			name: "success: readied goroutines queue on the P's LRQ in order",
+			name: "success: readied goroutines queue on the P's local run queue in order",
 			at:   2 * ms,
 			want: domain.SchedState{
 				Procs: []domain.ProcSnapshot{
@@ -67,7 +67,7 @@ func TestSchedulerTimeline_StateAt(t *testing.T) {
 			},
 		},
 		{
-			name: "success: blocked goroutine is grouped by its entry function and wait reason, and preempted one goes to GRQ",
+			name: "success: blocked goroutine is grouped by its entry function and wait reason, and preempted one goes to the global run queue",
 			at:   4 * ms,
 			want: domain.SchedState{
 				Procs: []domain.ProcSnapshot{
@@ -79,11 +79,11 @@ func TestSchedulerTimeline_StateAt(t *testing.T) {
 			},
 		},
 		{
-			name: "success: P whose goroutine is in syscall is shown as syscall",
+			name: "success: goroutine in syscall stays on its running P",
 			at:   5 * ms,
 			want: domain.SchedState{
 				Procs: []domain.ProcSnapshot{
-					{Proc: 0, Status: domain.ProcSyscall, Thread: 0, HasThread: true, Running: 3, HasRunning: true, LocalQueue: []domain.GoroutineID{}},
+					{Proc: 0, Status: domain.ProcRunning, Thread: 0, HasThread: true, Running: 3, HasRunning: true, RunningInSyscall: true, LocalQueue: []domain.GoroutineID{}},
 					{Proc: 1, Status: domain.ProcIdle, LocalQueue: []domain.GoroutineID{}},
 				},
 				GlobalQueue: []domain.GoroutineID{2},

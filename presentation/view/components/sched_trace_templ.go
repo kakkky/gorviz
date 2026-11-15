@@ -69,11 +69,11 @@ func SchedTrace(vm SchedTraceViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = stat("GRQ length", strconv.Itoa(vm.GlobalRunQueue)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = stat("global run queue length", strconv.Itoa(vm.GlobalRunQueue)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = stat("P idle / total", strconv.Itoa(vm.IdleProcs)+" / "+strconv.Itoa(vm.GOMAXPROCS)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = stat("idle P / total", strconv.Itoa(vm.IdleProcs)+" / "+strconv.Itoa(vm.GOMAXPROCS)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -81,7 +81,7 @@ func SchedTrace(vm SchedTraceViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = stat("gFree on Ps", strconv.Itoa(vm.GFreeTotal)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = stat("free G list (on Ps)", strconv.Itoa(vm.GFreeTotal)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -98,7 +98,7 @@ func SchedTrace(vm SchedTraceViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p><table><tr><th>P</th><th>status</th><th>M</th><th>LRQ length</th><th>gFree</th></tr>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p><table><tr><th>P</th><th>status</th><th>M</th><th>local run queue length</th><th>free G</th></tr>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

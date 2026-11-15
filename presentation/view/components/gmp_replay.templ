@@ -39,7 +39,7 @@ templ GMPReplay(vm GMPReplayViewModel) {
 			<p class="muted">waiting for the first trace window...</p>
 		</div>
 		<p class="muted replay-note">
-			LRQ / GRQ are inferred from the execution trace: a goroutine readied by a P is placed on that P's LRQ, and one descheduled by preemption, yield or a syscall without P is placed on the GRQ. runnext is not distinguished.
+			The local / global run queues are inferred from the execution trace: a goroutine readied by a P is placed on that P's local run queue, and one descheduled by preemption, yield or a syscall without P is placed on the global run queue. runnext is not distinguished.
 			<span class="error" { stimulus.AttrTargets(assets.GMPReplayController.Name, "note")... }></span>
 		</p>
 		<pre class="replay-log" { stimulus.AttrTargets(assets.GMPReplayController.Name, "log")... }></pre>

@@ -53,14 +53,14 @@ logger := slog.New(slogtrace.Wrap(slog.NewJSONHandler(os.Stderr, nil)))
 - `/debug/pprof/goroutineleak?debug=2` — Go 1.26+ の GC ベースのリーク検査。到達不能な G に `(leaked)` が付く。対象で GC が走るので、dump `-leak-check-every` 回に 1 回だけ取る
 - 画面は `-refresh` (既定 2 秒) ごとに新しくなる。対象には触らず、録画済みのものを読むだけ
 
-GUI の「GMP replay」は、trace の観測窓を時間軸で再生し、GRQ / LRQ / P / M / 待機中の G (sudog など) / 終了した G (gFree) / pidle の概念図として描く。
-LRQ / GRQ の中身は runtime が外に出さないので、trace から推測している:
+GUI の「GMP replay」は、trace の観測窓を時間軸で再生し、global run queue / local run queue / P / M / 待機中の G (sudog など) / free G list / idle P list の概念図として描く。呼び方は Go の runtime の公式の名前に合わせている (LRQ / GRQ などの略称は使わない)。P にはシステムコール中の状態がないので、システムコールは G の状態 (`_Gsyscall`) で描く。
+run queue の中身は runtime が外に出さないので、trace から推測している:
 
-- 生成・unblock された G は、それを行った P の LRQ に積まれる (P を持たない文脈なら GRQ)
-- 横取り (preempt) や Gosched で降ろされた G、syscall から戻ったときに P を取れなかった G は GRQ に積まれる
-- runnext (LRQ の先頭に割り込む枠) は区別しない
+- 生成・unblock された G は、それを行った P の local run queue に積まれる (P を持たない文脈なら global run queue)
+- 横取り (preempt) や Gosched で降ろされた G、syscall から戻ったときに P を取れなかった G は global run queue に積まれる
+- runnext (local run queue より先に実行される 1 枠) は区別しない
 
-`gorviz run` は対象を `GODEBUG=schedtrace=1000,scheddetail=1` で起動し、runtime 自身が出す GRQ の長さ・P ごとの LRQ の長さ・gFree の数を表示する。推測と突き合わせるためのもので、対象を gorviz の子プロセスとして起動し直す必要があるためローカル専用。
+`gorviz run` は対象を `GODEBUG=schedtrace=1000,scheddetail=1` で起動し、runtime 自身が出す global run queue の長さ・P ごとの local run queue の長さ・free G の数を表示する。推測と突き合わせるためのもので、対象を gorviz の子プロセスとして起動し直す必要があるためローカル専用。
 
 リーク (`LEAK`) の確かさは 2 種類ある:
 

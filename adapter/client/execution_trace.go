@@ -211,9 +211,9 @@ func stackFunctions(s trace.Stack) []string {
 
 // placeOf は G の状態遷移を、概念図上の置き場所に読み替える。runtime の run queue の中身は trace に出ないので、
 // runnable になった G の行き先は runtime の振る舞いから推測する:
-//   - 生成・unblock された G は、それを行った P の LRQ に積まれる (P を持たない文脈なら GRQ)
-//   - 横取り (preempt) や Gosched で Running から降ろされた G は GRQ に積まれる
-//   - syscall から戻ったときに P を取り戻せなかった G は GRQ に積まれる
+//   - 生成・unblock された G は、それを行った P の local run queue に積まれる (P を持たない文脈なら global run queue)
+//   - 横取り (preempt) や Gosched で Running から降ろされた G は global run queue に積まれる
+//   - syscall から戻ったときに P を取り戻せなかった G は global run queue に積まれる
 func placeOf(ev trace.Event, st trace.StateTransition, from, to trace.GoState, threadOf func(trace.ThreadID) domain.ThreadID) (domain.GoroutinePlace, bool) {
 	proc, hasProc := domain.ProcID(ev.Proc()), ev.Proc() != trace.NoProc
 	switch to {
