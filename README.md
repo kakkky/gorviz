@@ -1,6 +1,6 @@
 # gorviz
 
-Go ランタイムを可視化するツール。G / M / P の対応と goroutine リークを、ターミナル (`gorviz top`) とブラウザ (`gorviz serve`) で見る。
+Go アプリの goroutine のリークと、遅い / 失敗したリクエストの原因を調べるツール。問題の兆候やログ 1 行から、その瞬間に goroutine が何に止まっていたかを診断し、根拠 (状態別の時間内訳と GMP の再生) を見せる。ターミナル (`gorviz top`) とブラウザ (`gorviz serve`) で見る。
 
 何のためのツールか (What / Why / How) は [docs/overview.md](docs/overview.md) を参照。
 
@@ -26,19 +26,24 @@ gorviz run -- ./myapp --flag
 gorviz run -ui top -- go run ./cmd/myapp
 ```
 
-試すだけなら `./bin/gorviz run -- go run ./example/leaky` で、リークし続けるデモアプリを gorviz の下で起動できる。
+試すだけなら `make build && go build -o bin/leaky ./example/leaky && ./bin/gorviz run -dump-interval 5s -- ./bin/leaky` で、リークし続け、ときどきロック待ちで遅いリクエストを出すデモアプリを gorviz の下で起動できる。
 
 ## 画面
 
-- **Live** (`/`): 最新の観測窓を GMP の概念図で再生し続ける。リーク判定・G の推移・P ごとのタイムラインもここ
-- **Explore** (`/explore`): 対象のログを時間軸のヒストグラムと一覧で見る。1 行クリックすると、その瞬間の前後 (±50ms / ±250ms / ±1s) を録画から切り出してスロー再生し、ログの瞬間で一度止まる
+- **Overview** (`/`): 全体の様子。未解決の Issue の数、goroutine 数の推移、直近 1 分のエラーと遅いリクエストの数、P を待つ G の数、ヒープと GC の目標値、GC の頻度
+- **Issues** (`/issues`): 検出した問題の一覧。種類 (`LEAK` / `ERROR_SPIKE` / `SLOW_REQUEST` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE`) と確かさ (`FACT` / `INFERENCE`) のラベルを付け、代表の G の Goroutine や絞り込んだ Logs に進める
+- **Logs** (`/logs`): 対象のログを時間軸のヒストグラムと一覧で見る。1 行クリックすると、その瞬間の前後 (±50ms / ±250ms / ±1s) を録画から切り出してスロー再生し、ログの瞬間で一度止まる。ログを書いた G が分かれば、その G の Goroutine に進める
+- **Scheduler** (`/scheduler`、見出しは Runtime Scheduler): 最新の観測窓を GMP の概念図で再生し続ける。G をクリックすると、その時点の Goroutine に移る
+- **Goroutine** (`/goroutines/{id}?at=&from=`): 1 つの G の診断。主因 (`RUNNING` / `CPU_WAIT` / `BLOCKED` / `IO_WAIT` / `CGO` / `SLEEP` / `GC`) と止まっていた場所 (file:line) を出し、根拠として状態別の時間内訳と GMP の再生を見せる。所要時間のあるログから来たときは、そのリクエストの区間 (書いた時刻 − 所要時間 〜 書いた時刻) を見る
+
+`CGO` は trace でシステムコールと見分けられないので、今は判定しない (`IO_WAIT` に入る)。
 
 ログの取り込み元:
 
 - `gorviz run -- ./app`: 子プロセスの stdout / stderr
 - `kubectl logs -f pod | gorviz serve -logs -`: 標準入力
 
-ログの時刻は slog (JSON / テキスト) と標準 log の形式から読む。対象の slog を `slogtrace` で包むと、ログ 1 行ごとに trace にも印が残り、**どの goroutine がそのログを書いたか**まで特定して再生中に青い輪で示す:
+ログの時刻は slog (JSON / テキスト) と標準 log の形式から読む。`-duration-keys` (既定 `duration,latency,elapsed`) のキーがあれば所要時間として読み、`-slow-request` (既定 1 秒) を超えたものを遅いリクエストとみなす。JSON の数値は slog の既定と同じくナノ秒、文字列は `1.2s` の形で読む。対象の slog を `slogtrace` で包むと、ログ 1 行ごとに trace にも印が残り、**どの goroutine がそのログを書いたか**まで特定して再生中に青い輪で示す:
 
 ```go
 logger := slog.New(slogtrace.Wrap(slog.NewJSONHandler(os.Stderr, nil)))
@@ -79,12 +84,12 @@ driver/
   loginput           対象のログを 1 行ずつ取り込む
   childprocess       gorviz run で対象を schedtrace つきで起動する
 presentation/
-  handler            GUI の HTTP ハンドラ (ダッシュボード / SSE)
+  handler            GUI の HTTP ハンドラ (Overview / Issues / Logs / Scheduler / Goroutine / SSE)
   terminal           CLI の描画ループ
   view               Templ (layout / pages / partials / components)
 assets/dist/js       GMP replay を描く Stimulus controller
-usecase              観測 1 回分のスナップショット組み立て・リーク検出の履歴管理
-domain               G / P / M のモデル、リーク判定、RuntimeClient interface
+usecase              観測 1 回分のスナップショット組み立て・リーク検出の履歴管理・Issue の検出・Goroutine の診断
+domain               G / P / M のモデル、状態別の時間内訳と主因、Issue の検出、リーク判定、RuntimeClient interface
 adapter/
   client             pprof を叩く RuntimeClient、goroutine dump と execution trace のパーサ
   kvs                観測履歴を置くインメモリ KVS

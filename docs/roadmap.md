@@ -4,11 +4,22 @@
 
 ## できていること (ドラフト)
 
-- 録画 (常時 trace)、goroutine dump、ログの取り込み
+- 録画 (常時 trace)、goroutine dump、ログの取り込み。dump は `-dump-interval` (既定 1 分) ごとで、画面の更新 (`-refresh`) とは別
 - slogtrace によるログと goroutine の結びつけ
-- GMP の概念図での再生 (Scheduler と、ログからの再生)
-- リーク判定 (今の表示は LEAKED / SUSPECT)
+- GMP の概念図での再生 (Scheduler と、ログからの再生)。呼び方は公式の名前に合わせ、P の syscall 状態はなくした
+- 画面: Overview・Issues・Logs・Scheduler・Goroutine。G をクリックすると Goroutine に移る
+- Goroutine の診断: 状態別の時間内訳と主因 (録画の区切りをまたいで合計)、主因の状態で止まっていた場所 (file:line)、GC (STW / mark assist) の取り込み
+- Issue の検出: `LEAK`・`ERROR_SPIKE`・`SLOW_REQUEST`・`CPU_WAIT_SPIKE`・`MEMORY_PRESSURE` (GC の頻度で判定)。確かさ `FACT` / `INFERENCE` を付ける
+- ログの所要時間の読み取りと、リクエストの区間での Goroutine の表示
 - ローカルでの起動 (`gorviz run` / `serve` / `top`。今は `cmd/gorviz` 1 つで、1 プロセスが agent と server を兼ねる)
+
+### 段階 1・2 の残り
+
+- `CGO` の判定 (trace でシステムコールと見分けられるか未確認)
+- 時刻からのログと G の結びつき (`INFERENCE`)。今は slogtrace の番号がないログは G を出さない
+- `MEMORY_PRESSURE` のヒープの張り付き (GOMEMLIMIT) による判定。今は GC の頻度だけ
+- TUI で GUI とおおむね同じ画面を見られるようにする (今は Scheduler と Overview の一部だけ)
+- Goroutine から「その G を含む Issue」「前後のログ (時刻で絞った Logs)」に戻る導線
 
 ## 未着手
 
