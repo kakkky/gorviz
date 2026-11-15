@@ -78,8 +78,8 @@ logger.SetFormatter(logrusadapter.WrapFormatter(&logrus.JSONFormatter{}))
 make build
 
 # ローカル: server と agent をまとめて起動
-bin/gorviz-launcher -target http://localhost:6060
-./myapp 2>&1 | bin/gorviz-launcher -save-dir ./saved -logs -   # 対象のログも取り込む
+bin/gorviz-launcher -target http://localhost:6060 -- go run ./myapp   # 対象も起動し、その出力をログとして取り込む
+bin/gorviz-launcher -target http://localhost:6060                     # すでに動いている対象を見る (ログは取り込まない)
 
 # 別々に起動 (本番の形)
 bin/gorviz-server -addr localhost:7070 -agent-addr localhost:7071 -save-dir ./saved
@@ -120,6 +120,7 @@ Claude Code などの MCP の設定に足す。
 
 取り込み元:
 
+- `gorviz-launcher -- ./app`: launcher が起動した対象の標準出力・標準エラー出力
 - `./app 2>&1 | gorviz-launcher -logs -` / `kubectl logs -f pod | gorviz-agent -logs -`: 標準入力
 - ライブラリ型: 上のロガーの差し込み口から
 
@@ -131,7 +132,7 @@ Claude Code などの MCP の設定に足す。
 
 ## 主なフラグ
 
-agent と server はそれぞれ自分の flag だけを受け付ける。launcher は `-addr` / `-agent-addr` / `-save-dir` を server に渡し、残りをすべて agent に渡す。
+agent と server はそれぞれ自分の flag だけを受け付ける。launcher は `-addr` / `-agent-addr` / `-save-dir` を server に渡し、残りをすべて agent に渡す。`--` より後ろは対象を起動するコマンド。
 
 - **取得 (gorviz-agent)**
   - `-chunk` (既定 2s): trace を区切る長さ

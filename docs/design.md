@@ -281,7 +281,8 @@ GUI の画面:
 
 - プロセスは 1 つでも、server と agent は別々のアプリのまま。間は gorviz-server と gorviz-agent と同じく TCP (`-agent-addr`) でつなぐ
 - launcher 自身は組み立てるだけで、通信の相手にはならない
-- 対象は起動しない。ログを取り込むなら `./app 2>&1 | gorviz-launcher -logs -` のように標準入力へ流す
+- `--` の後ろに対象を起動するコマンドを書くと、対象も子プロセスとして起動する (`gorviz-launcher -target http://localhost:6060 -- go run ./myapp`)。対象の標準出力・標準エラー出力をそのまま端末に出しながら、ログとして取り込む。対象が終わると launcher も終わる
+- コマンドを書かなければ対象は起動しない。すでに動いている対象のログは `./app 2>&1 | gorviz-launcher -logs -` のように標準入力へ流す
 
 ## 診断
 

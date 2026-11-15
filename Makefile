@@ -18,9 +18,9 @@ templ.gen:
 
 gen: templ.gen
 
-# ローカルで server と agent をまとめて起動する。対象 (localhost:6060) は example.leaky などで別に起動しておく
+# ローカルで server と agent と観測対象 (example/leaky, localhost:6060) をまとめて起動する。対象のログも取り込む
 launcher.up: build
-	./bin/gorviz-launcher -target http://localhost:6060 -save-dir bin/recordings -dump-interval 5s -leak-check-every 2
+	./bin/gorviz-launcher -target http://localhost:6060 -save-dir bin/recordings -dump-interval 5s -leak-check-every 2 -- go run ./example/leaky
 
 # 動作確認用の観測対象。localhost:6060 で pprof を公開する (agent を別に起動して観測する)
 example.leaky:
