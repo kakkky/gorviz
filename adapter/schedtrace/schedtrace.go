@@ -16,6 +16,8 @@ var (
 	schedLineRe = regexp.MustCompile(`^SCHED (\d+)ms: (.*)$`)
 	procLineRe  = regexp.MustCompile(`^  P(\d+): (.*)$`)
 	gLineRe     = regexp.MustCompile(`^  G\d+: status=(\d+)`)
+	// detailLineRe は scheddetail の P / M / G の行。対象のログと同じ stderr に出るので、ログの行に割り込まれても見分けられるようにする
+	detailLineRe = regexp.MustCompile(`^  [PMG]\d+: `)
 )
 
 // runtime2.go の _Pidle などの値
@@ -64,7 +66,7 @@ func (s *Store) Consume(r io.Reader, passthrough io.Writer) error {
 			inBlock = true
 			continue
 		}
-		if inBlock && strings.HasPrefix(line, "  ") {
+		if (inBlock && strings.HasPrefix(line, "  ")) || (cur != nil && detailLineRe.MatchString(line)) {
 			applyDetailLine(cur, line)
 			continue
 		}

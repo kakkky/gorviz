@@ -22,6 +22,7 @@ SCHED 1004ms: gomaxprocs=2 idleprocs=1 threads=8 spinningthreads=0 needspinning=
   M4: p=0 curg=7 mallocing=0 throwing=0 preemptoff= locks=0 dying=0 spinning=false blocked=false lockedg=nil
   G1: status=4(IO wait) m=nil lockedm=nil
   G7: status=2() m=4 lockedm=nil
+{"msg":"a log line written in the middle of the block"}
   G8: status=1() m=nil lockedm=nil
   G9: status=6() m=nil lockedm=nil
   G10: status=10(chan receive) m=nil lockedm=nil
@@ -50,5 +51,5 @@ request handled
 		},
 		GoroutineStates: map[string]int{"waiting": 2, "running": 1, "runnable": 1, "dead": 1, "leaked": 1},
 	}, got)
-	assert.Equal(t, "app started\nrequest handled\n", passthrough.String())
+	assert.Equal(t, "app started\n{\"msg\":\"a log line written in the middle of the block\"}\nrequest handled\n", passthrough.String(), "detail lines after an interleaved log line still belong to the block")
 }
