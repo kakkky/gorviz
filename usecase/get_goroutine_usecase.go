@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"maps"
+	"slices"
 	"time"
 
 	"github.com/kakkky/gorviz/domain"
@@ -70,7 +71,8 @@ func (us *GetGoroutineUsecase) Exec(_ context.Context, in GetGoroutineUsecaseInp
 		}
 	}
 
-	for _, c := range us.traceRecording.Between(in.From, in.To) {
+	chunks := us.traceRecording.Between(in.From, in.To)
+	for _, c := range chunks {
 		from, to := c.Offset(laterOf(in.From, c.StartedAt)), c.Offset(earlierOf(in.To, c.EndedAt()))
 		out.Breakdown.Add(c.Timeline.Breakdown(in.Goroutine, from, to))
 		if out.Entry == "" {
@@ -85,20 +87,37 @@ func (us *GetGoroutineUsecase) Exec(_ context.Context, in GetGoroutineUsecaseInp
 		out.Primary, out.HasPrimary, out.Certainty = domain.CauseOfGoroutine(out.Dump), true, domain.CertaintyInference
 	}
 
+	if out.HasPrimary && out.Certainty == domain.CertaintyFact {
+		// 止まっていた場所は、主因の状態に入ったときの場所。区間の中で最後に入ったものを使う
+		for _, c := range slices.Backward(chunks) {
+			if ev, ok := c.Timeline.PlaceOfCause(in.Goroutine, out.Primary, c.Offset(earlierOf(in.To, c.EndedAt()))); ok {
+				out.Function, out.Location, out.WaitReason = ev.Function, ev.Location, ev.Place.Reason
+				break
+			}
+		}
+	}
 	if c, ok := us.traceRecording.At(in.At); ok {
 		at := c.Offset(in.At)
-		out.Function, out.Location, out.WaitReason = lastKnownPlace(c.Timeline, in.Goroutine, at)
+		if out.Function == "" {
+			out.Function, out.Location, out.WaitReason = lastKnownPlace(c.Timeline, in.Goroutine, at)
+		}
 		from := max(at-in.ReplayHalf, 0)
 		out.Replay = c.Timeline.Slice(from, at+in.ReplayHalf)
 		out.Replay.Entries = maps.Clone(out.Replay.Entries)
 		out.Replay.EnrichFromDump(goroutines)
 		out.ReplayStartedAt, out.ReplayFocus, out.HasReplay = c.StartedAt.Add(from), at-from, true
 	}
-	if out.Function == "" && out.HasDump {
-		out.Function = out.Dump.CurrentFunction
-		if out.Dump.StateCategory() == domain.GoroutineWaiting {
+	// 窓より前から待機している G は trace に理由もスタックも載らないので、dump で補う
+	if out.HasDump && out.Dump.StateCategory() == domain.GoroutineWaiting {
+		if out.Function == "" {
+			out.Function = out.Dump.CurrentFunction
+		}
+		if out.WaitReason == "" || out.WaitReason == domain.UnknownWaitReason {
 			out.WaitReason = out.Dump.State
 		}
+	}
+	if out.Function == "" && out.HasDump {
+		out.Function = out.Dump.CurrentFunction
 	}
 	return out, nil
 }

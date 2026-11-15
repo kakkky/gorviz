@@ -169,6 +169,27 @@ func (t SchedulerTimeline) Breakdown(g GoroutineID, from, to time.Duration) Stat
 	return out
 }
 
+// PlaceOfCause は to までに g が cause の状態に入った最後のイベントのうち、スタック (関数と位置) が載ったものを返す。
+// 「主因の状態で、どこで止まっていたか」を出すのに使う。区間より前に入った状態が区間の中まで続いていることもあるので、始まりは区切らない
+func (t SchedulerTimeline) PlaceOfCause(g GoroutineID, cause PrimaryCause, to time.Duration) (SchedEvent, bool) {
+	var (
+		found SchedEvent
+		ok    bool
+	)
+	for _, ev := range t.Events {
+		if ev.At > to {
+			break
+		}
+		if ev.Kind != SchedEventGoroutine || ev.Goroutine != g || ev.Function == "" {
+			continue
+		}
+		if c, has := causeOfPlace(ev.Place); has && c == cause {
+			found, ok = ev, true
+		}
+	}
+	return found, ok
+}
+
 func mergeSegments(ss []causeSegment) []causeSegment {
 	slices.SortFunc(ss, func(a, b causeSegment) int { return int(a.start - b.start) })
 	var out []causeSegment

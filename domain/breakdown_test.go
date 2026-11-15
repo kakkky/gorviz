@@ -103,3 +103,17 @@ func TestCauseOfWaitReason(t *testing.T) {
 		assert.Equal(t, want, domain.CauseOfWaitReason(reason), reason)
 	}
 }
+
+func TestSchedulerTimeline_PlaceOfCause(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	tl := domain.SchedulerTimeline{Window: 100 * ms, Events: []domain.SchedEvent{
+		{At: 10 * ms, Kind: domain.SchedEventGoroutine, Goroutine: 1, Place: domain.GoroutinePlace{Kind: domain.PlaceWaiting, Reason: "sync"}, Function: "main.handle", Location: "/app/h.go:10"},
+		{At: 80 * ms, Kind: domain.SchedEventGoroutine, Goroutine: 1, Place: domain.GoroutinePlace{Kind: domain.PlaceWaiting, Reason: "sleep"}, Function: "time.Sleep", Location: "/go/time.go:1"},
+	}}
+
+	got, ok := tl.PlaceOfCause(1, domain.CauseBlocked, 90*ms)
+
+	assert.True(t, ok)
+	assert.Equal(t, "/app/h.go:10", got.Location, "the place where it entered the primary state, not where it was last")
+}
