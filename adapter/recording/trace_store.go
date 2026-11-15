@@ -8,30 +8,38 @@ import (
 	"github.com/kakkky/gorviz/domain"
 )
 
-// TraceStore は録画した区切りを古い順に持ち、保持期間かイベント数の上限を超えたら古いものから捨てる。
+// TraceStore は録画した区切りを古い順に持つリングバッファ。大きさの合計が上限を超えたら古いものから捨てる (最新の 1 つは残す)。
+// 上限は時間ではなくバイト数なので、対象が忙しいほど持てる時間は短くなる
 type TraceStore struct {
-	mu        sync.RWMutex
-	chunks    []domain.TraceChunk
-	events    int
-	retention time.Duration
-	maxEvents int
+	mu       sync.RWMutex
+	chunks   []domain.TraceChunk
+	bytes    int64
+	maxBytes int64
 }
 
 func NewTraceStore(cfg *config.Config) *TraceStore {
-	return &TraceStore{retention: cfg.Retention, maxEvents: cfg.MaxRecordedEvents}
+	return &TraceStore{maxBytes: cfg.TraceBufferBytes}
 }
 
 func (s *TraceStore) Append(chunk domain.TraceChunk) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.chunks = append(s.chunks, chunk)
-	s.events += len(chunk.Timeline.Events)
-	cutoff := chunk.EndedAt().Add(-s.retention)
-	for len(s.chunks) > 1 && (s.chunks[0].EndedAt().Before(cutoff) || s.events > s.maxEvents) {
-		s.events -= len(s.chunks[0].Timeline.Events)
+	s.bytes += chunk.SizeBytes()
+	for len(s.chunks) > 1 && s.bytes > s.maxBytes {
+		s.bytes -= s.chunks[0].SizeBytes()
 		s.chunks[0] = domain.TraceChunk{}
 		s.chunks = s.chunks[1:]
 	}
+}
+
+func (s *TraceStore) Span() (domain.RecordingSpan, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.chunks) == 0 {
+		return domain.RecordingSpan{}, false
+	}
+	return domain.RecordingSpan{From: s.chunks[0].StartedAt, To: s.chunks[len(s.chunks)-1].EndedAt(), Bytes: s.bytes, LimitBytes: s.maxBytes}, true
 }
 
 func (s *TraceStore) Latest() (domain.TraceChunk, bool) {

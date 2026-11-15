@@ -58,7 +58,12 @@ func (c *RuntimeClient) FetchTraceChunk(ctx context.Context, duration time.Durat
 	if err != nil {
 		return domain.TraceChunk{}, domain.ErrUnavailable.Wrap(err, "read execution trace")
 	}
-	return buildTraceChunk(bytes.NewReader(data), time.Now())
+	chunk, err := buildTraceChunk(bytes.NewReader(data), time.Now())
+	if err != nil {
+		return domain.TraceChunk{}, err
+	}
+	chunk.Raw = data
+	return chunk, nil
 }
 
 func (c *RuntimeClient) get(ctx context.Context, path string, query url.Values) (io.ReadCloser, error) {

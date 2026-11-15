@@ -21,7 +21,7 @@ func TestGetGoroutineUsecase_Exec(t *testing.T) {
 	t.Parallel()
 	ms := time.Millisecond
 	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
-	cfg := &config.Config{Retention: time.Hour, MaxRecordedEvents: 1000, MaxLogLines: 100}
+	cfg := &config.Config{TraceBufferBytes: 1 << 20, MaxLogLines: 100}
 	gEv := func(at time.Duration, place domain.GoroutinePlace, fn, loc string) domain.SchedEvent {
 		return domain.SchedEvent{At: at, Kind: domain.SchedEventGoroutine, Goroutine: 5, Place: place, Function: fn, Location: loc}
 	}

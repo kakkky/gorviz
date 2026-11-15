@@ -24,6 +24,8 @@ type SnapshotViewModel struct {
 	IssueCount     int
 	ErrorCount     int
 	SlowCount      int
+	// Recording は今持てている録画の区間と、リングバッファの使用量
+	Recording string
 }
 
 type GoroutineStateViewModel struct {
@@ -78,6 +80,7 @@ templ OverviewSnapshot(vm SnapshotViewModel) {
 			@stat("goroutines waiting for a P (avg)", vm.CPUWaiting)
 			@stat("heap live / GC goal", vm.HeapLive+" / "+vm.HeapGoal)
 			@stat("GC cycles / s", vm.GCPerSecond)
+			@stat("recorded trace (ring buffer)", vm.Recording)
 		</div>
 	</section>
 	<div class="grid-2">

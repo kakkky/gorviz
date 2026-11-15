@@ -53,7 +53,7 @@ logger := slog.New(slogtrace.Wrap(slog.NewJSONHandler(os.Stderr, nil)))
 
 裏で録画ループが動き、画面はそれが貯めたものを読む (trace は対象のプロセスで同時に 1 本しか取れないため):
 
-- `/debug/pprof/trace?seconds=<chunk>` — `-chunk` (既定 2 秒) ごとの execution trace を間を空けずに取り続け、`-retention` (既定 5 分) 分を保持する。trace は常時オンになる
+- `/debug/pprof/trace?seconds=<chunk>` — `-chunk` (既定 2 秒) ごとの execution trace を間を空けずに取り続け、`-trace-buffer-mib` (既定 256 MiB) のリングバッファに直近を持つ。上限は時間ではなくバイト数なので、対象が忙しいほど持てる時間は短くなる (Overview に今持てている区間を出す)
 - `/debug/pprof/goroutine?debug=2` — `-dump-interval` (既定 1 分) ごとに取る。全 G の状態・待機時間・生成元 (`created by`)。dump は対象の全 G を止める (STW) ので間を空ける
 - `/debug/pprof/goroutineleak?debug=2` — Go 1.26+ の GC ベースのリーク検査。到達不能な G に `(leaked)` が付く。対象で GC が走るので、dump `-leak-check-every` 回に 1 回だけ取る
 - 画面は `-refresh` (既定 2 秒) ごとに新しくなる。対象には触らず、録画済みのものを読むだけ

@@ -9,6 +9,16 @@ type TraceChunk struct {
 	StartedAt time.Time
 	Timeline  SchedulerTimeline
 	LogMarks  []TraceLogMark
+	// Raw は取ったままの trace。`go tool trace` で開けるように書き出したり、保存したりするのに使う
+	Raw []byte
+}
+
+// schedEventBytes は読み込んだ再生用イベント 1 つがメモリで占める大きさの目安
+const schedEventBytes = 96
+
+// SizeBytes はリングバッファの上限に数える大きさ。生の trace と、読み込んだイベントの両方を数える
+func (c TraceChunk) SizeBytes() int64 {
+	return int64(len(c.Raw)) + int64(len(c.Timeline.Events))*schedEventBytes
 }
 
 // TraceLogMark は対象が gorviz の slog ハンドラ経由でログを書いた瞬間の記録。どの G がいつ書いたかが正確に分かる
@@ -38,4 +48,13 @@ type TraceRecording interface {
 	// Between は [from, to] に重なる区切りを古い順に返す
 	Between(from, to time.Time) []TraceChunk
 	FindLogMark(seq uint64) (TraceChunk, TraceLogMark, bool)
+	// Span は今持てている区間と、その大きさ。持てる時間は trace の量 (対象の忙しさ) で変わる
+	Span() (RecordingSpan, bool)
+}
+
+type RecordingSpan struct {
+	From       time.Time
+	To         time.Time
+	Bytes      int64
+	LimitBytes int64
 }

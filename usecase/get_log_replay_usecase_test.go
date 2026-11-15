@@ -21,7 +21,7 @@ func TestGetLogReplayUsecase_Exec(t *testing.T) {
 	t.Parallel()
 	ms := time.Millisecond
 	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
-	cfg := &config.Config{Retention: time.Hour, MaxRecordedEvents: 1000, MaxLogLines: 100}
+	cfg := &config.Config{TraceBufferBytes: 1 << 20, MaxLogLines: 100}
 
 	newUsecase := func() (*usecase.UseCase, *recording.TraceStore, *recording.LogStore) {
 		traces, logs := recording.NewTraceStore(cfg), recording.NewLogStore(cfg)

@@ -111,6 +111,11 @@ func toSnapshotViewModel(out usecase.RuntimeSnapshot, buckets int) components.Sn
 		HeapGoal:       formatBytes(out.Runtime.HeapGoalBytes),
 		GCPerSecond:    fmt.Sprintf("%.1f", out.Runtime.GCPerSecond),
 		CPUWaiting:     fmt.Sprintf("%.2f", out.Runtime.CPUWaiting),
+		Recording:      "-",
+	}
+	if out.HasRecording {
+		r := out.Recording
+		vm.Recording = fmt.Sprintf("%s–%s (%s), %s / %s", r.From.Format(time.TimeOnly), r.To.Format(time.TimeOnly), r.To.Sub(r.From).Round(time.Second), formatBytes(uint64(r.Bytes)), formatBytes(uint64(r.LimitBytes)))
 	}
 
 	for _, s := range []struct {

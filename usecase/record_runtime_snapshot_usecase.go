@@ -81,11 +81,14 @@ type RuntimeSnapshot struct {
 	// TimelineStartedAt は Timeline の時刻 0 に当たる壁時計の時刻
 	TimelineStartedAt time.Time
 	// Runtime は直近の録画の区切り 1 つ分から見た、ヒープ・GC・CPU 待ちの量
-	Runtime          RuntimeLoad
-	GoroutineCount   int
-	StateCounts      domain.GoroutineStateCounts
-	TopOrigins       []RuntimeSnapshotOriginCount
-	Scopes           []domain.ScopeSummary
+	Runtime        RuntimeLoad
+	GoroutineCount int
+	StateCounts    domain.GoroutineStateCounts
+	TopOrigins     []RuntimeSnapshotOriginCount
+	Scopes         []domain.ScopeSummary
+	// Recording は今持てている録画の区間。画面に示す
+	Recording        domain.RecordingSpan
+	HasRecording     bool
 	Leaks            []domain.Leak
 	LeakCheckStatus  LeakCheckStatus
 	LeakedGoroutines []domain.GoroutineID
@@ -183,6 +186,7 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRunti
 		GoroutineHistory:  slices.Clone(history.totals),
 		LeakedGoroutines:  leakedIDs(goroutines),
 	}
+	snapshot.Recording, snapshot.HasRecording = us.traceRecording.Span()
 	us.inMemoryKVS.Set(latestSnapshotKey, snapshot)
 	return RecordRuntimeSnapshotUsecaseOutput{Snapshot: snapshot}, nil
 }

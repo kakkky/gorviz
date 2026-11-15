@@ -23,10 +23,10 @@ type Config struct {
 	HTTPTimeout     time.Duration
 	TimelineBuckets int
 	// ChunkDuration は録画の 1 区切りの長さ。Live の表示はこの間隔でしか新しくならない
-	ChunkDuration     time.Duration
-	Retention         time.Duration
-	MaxRecordedEvents int
-	MaxLogLines       int
+	ChunkDuration time.Duration
+	// TraceBufferBytes は録画のリングバッファの上限。時間ではなくバイト数で決め、超えたら古い区切りから捨てる
+	TraceBufferBytes int64
+	MaxLogLines      int
 	// DurationKeys はログの所要時間として読むキー。JSON の数値は slog の既定と同じくナノ秒、文字列は "1.2s" の形で読む
 	DurationKeys []string
 	// SlowRequest を超える所要時間のログを遅いリクエストとみなす
@@ -58,8 +58,7 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.DurationVar(&cfg.HTTPTimeout, "http-timeout", 10*time.Second, "timeout of each request to the target")
 	fs.IntVar(&cfg.TimelineBuckets, "buckets", 100, "number of columns of the P timeline")
 	fs.DurationVar(&cfg.ChunkDuration, "chunk", 2*time.Second, "length of each recorded execution trace chunk")
-	fs.DurationVar(&cfg.Retention, "retention", 5*time.Minute, "how long recorded traces are kept for replay")
-	fs.IntVar(&cfg.MaxRecordedEvents, "max-events", 2_000_000, "upper bound of recorded scheduler events kept in memory")
+	traceBufferMiB := fs.Int64("trace-buffer-mib", 256, "upper bound of the recorded trace ring buffer in MiB (raw trace and its parsed events)")
 	fs.IntVar(&cfg.MaxLogLines, "max-logs", 50_000, "upper bound of log lines kept in memory")
 	durationKeys := fs.String("duration-keys", "duration,latency,elapsed", "comma separated log keys read as the request duration")
 	fs.DurationVar(&cfg.SlowRequest, "slow-request", time.Second, "a request whose logged duration exceeds this is slow")
@@ -73,6 +72,7 @@ func NewConfig(name string, args []string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Command = fs.Args()
+	cfg.TraceBufferBytes = *traceBufferMiB << 20
 	for k := range strings.SplitSeq(*durationKeys, ",") {
 		if k = strings.TrimSpace(k); k != "" {
 			cfg.DurationKeys = append(cfg.DurationKeys, k)
