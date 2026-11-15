@@ -1,10 +1,11 @@
 // leaky は gorviz の動作確認用の観測対象。CPU を使う worker と、受け手のいない channel で止まり続ける goroutine を作り続ける。
 // リクエストを模した処理は所要時間つきのログを出し、ときどきロック待ちで遅くなる (SLOW_REQUEST と BLOCKED の確認用)。
-// ログは gorviz の slog ハンドラ経由で出すので、Explore でクリックするとログを書いた goroutine まで特定できる。
+// ログは gorviz の slog ハンドラ経由で出すので、Logs でクリックするとログを書いた goroutine まで特定できる。
 package main
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
@@ -28,8 +29,10 @@ func main() {
 	go holdLock()
 	go requests()
 
-	logger.Info("pprof server started", "addr", "http://localhost:6060/debug/pprof/")
-	if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+	addr := flag.String("addr", "localhost:6060", "listen address of the pprof server")
+	flag.Parse()
+	logger.Info("pprof server started", "addr", "http://"+*addr+"/debug/pprof/")
+	if err := http.ListenAndServe(*addr, nil); err != nil {
 		logger.Error("pprof server stopped", "err", err)
 		os.Exit(1)
 	}
