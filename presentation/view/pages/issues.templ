@@ -9,6 +9,17 @@ type IssuesViewModel struct {
 	TargetURL string
 	At        string
 	Issues    []IssueViewModel
+	// Recordings は Issue をきっかけに server が保存した、前後の録画
+	Recordings []RecordingViewModel
+}
+
+type RecordingViewModel struct {
+	Kind      string
+	Subject   string
+	At        string
+	Span      string
+	Size      string
+	Downloads []IssueLinkViewModel
 }
 
 // IssueViewModel はどの種類の Issue も同じ形で見せる
@@ -57,6 +68,30 @@ templ Issues(vm IssuesViewModel) {
 				</table>
 			}
 			<p class="muted">FACT: read directly from the runtime's judgement or the recorded trace / dump, or over a fixed threshold. INFERENCE: inferred by gorviz from trends or comparison with the usual rate.</p>
+		</section>
+		<section class="panel">
+			<h2>Saved recordings <span class="muted">the trace around each issue, kept after the agent's ring buffer drops it. Open a chunk with `go tool trace`</span></h2>
+			if len(vm.Recordings) == 0 {
+				<p class="muted">nothing saved yet</p>
+			} else {
+				<table class="issues">
+					<tr><th>kind</th><th>subject</th><th>issue at</th><th>recorded</th><th>size</th><th>download</th></tr>
+					for _, r := range vm.Recordings {
+						<tr>
+							<td><span class="badge kind">{ r.Kind }</span></td>
+							<td class="origin">{ r.Subject }</td>
+							<td>{ r.At }</td>
+							<td>{ r.Span }</td>
+							<td>{ r.Size }</td>
+							<td class="links">
+								for _, d := range r.Downloads {
+									<a href={ templ.SafeURL(d.URL) } download>{ d.Label }</a>
+								}
+							</td>
+						</tr>
+					}
+				</table>
+			}
 		</section>
 	}
 }

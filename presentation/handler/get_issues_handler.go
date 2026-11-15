@@ -14,11 +14,12 @@ import (
 
 type GetIssuesHandler struct {
 	listIssuesUsecase *usecase.ListIssuesUsecase
+	recordings        func() []domain.SavedRecording
 	targetURL         string
 }
 
-func NewGetIssuesHandler(listIssuesUsecase *usecase.ListIssuesUsecase, targetURL string) *GetIssuesHandler {
-	return &GetIssuesHandler{listIssuesUsecase: listIssuesUsecase, targetURL: targetURL}
+func NewGetIssuesHandler(listIssuesUsecase *usecase.ListIssuesUsecase, recordings func() []domain.SavedRecording, targetURL string) *GetIssuesHandler {
+	return &GetIssuesHandler{listIssuesUsecase: listIssuesUsecase, recordings: recordings, targetURL: targetURL}
 }
 
 func (h *GetIssuesHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -34,6 +35,13 @@ func (h *GetIssuesHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	vm := pages.IssuesViewModel{TargetURL: h.targetURL, At: now.Format(time.TimeOnly)}
 	for _, i := range out.Issues {
 		vm.Issues = append(vm.Issues, toIssueViewModel(i))
+	}
+	for _, rec := range h.recordings() {
+		rvm := pages.RecordingViewModel{Kind: string(rec.Kind), Subject: rec.Subject, At: rec.At.Format(time.TimeOnly), Span: fmt.Sprintf("%s–%s", rec.From.Format(time.TimeOnly), rec.To.Format(time.TimeOnly)), Size: formatBytes(uint64(rec.Bytes))}
+		for n := range rec.Chunks {
+			rvm.Downloads = append(rvm.Downloads, pages.IssueLinkViewModel{Label: fmt.Sprintf("chunk %d", n), URL: fmt.Sprintf("/api/recordings/%s/chunks/%d", url.PathEscape(rec.ID), n)})
+		}
+		vm.Recordings = append(vm.Recordings, rvm)
 	}
 	if err := pages.Issues(vm).Render(ctx, rw); err != nil {
 		slog.ErrorContext(ctx, "render issues", slog.Any("err", err))

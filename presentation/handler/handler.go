@@ -35,7 +35,7 @@ func (h *Handler) Routes() []Route {
 		},
 		{
 			Pattern: "GET /issues",
-			Handler: NewGetIssuesHandler(h.usecase.NewListIssuesUsecase(), h.cfg.TargetURL),
+			Handler: NewGetIssuesHandler(h.usecase.NewListIssuesUsecase(), h.usecase.ListRecordings, h.cfg.TargetURL),
 		},
 		{
 			Pattern: "GET /logs",
