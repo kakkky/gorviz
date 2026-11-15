@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/kakkky/gorviz/api"
 	"github.com/kakkky/gorviz/presentation/view/pages"
 )
 
@@ -12,11 +13,11 @@ import (
 const AgentCookie = "gorviz_agent"
 
 type GetAgentsHandler struct {
-	agents  func() []AgentJSON
+	agents  func() []api.AgentJSON
 	current func(r *http.Request) string
 }
 
-func NewGetAgentsHandler(agents func() []AgentJSON, current func(r *http.Request) string) *GetAgentsHandler {
+func NewGetAgentsHandler(agents func() []api.AgentJSON, current func(r *http.Request) string) *GetAgentsHandler {
 	return &GetAgentsHandler{agents: agents, current: current}
 }
 

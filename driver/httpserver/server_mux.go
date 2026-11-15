@@ -3,6 +3,7 @@ package httpserver
 import (
 	"net/http"
 
+	"github.com/kakkky/gorviz/api"
 	"github.com/kakkky/gorviz/assets"
 	"github.com/kakkky/gorviz/driver/session"
 	"github.com/kakkky/gorviz/presentation/handler"
@@ -24,10 +25,10 @@ func NewServerMux(registry *session.Registry) http.Handler {
 		}
 		return registry.Default()
 	}
-	agents := func() []handler.AgentJSON {
-		var out []handler.AgentJSON
+	agents := func() []api.AgentJSON {
+		var out []api.AgentJSON
 		for _, s := range registry.List() {
-			out = append(out, handler.AgentJSON{Name: s.Name, Target: s.Target, Connected: s.Client.Connected()})
+			out = append(out, api.AgentJSON{Name: s.Name, Target: s.Target, Connected: s.Client.Connected()})
 		}
 		return out
 	}
