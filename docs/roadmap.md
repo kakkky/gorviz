@@ -25,20 +25,9 @@
 
 上から順に進める。各段階の終わりに、その段階でできるようになることを確かめる。
 
-### 1. ローカルで Goroutine の診断が出る (ジョブ 2 の中核)
+### 1. ローカルで Goroutine の診断が出る / 2. Issues と Overview で問題に気づける
 
-- 状態別の時間内訳と、主因 (`RUNNING` / `CPU_WAIT` / `BLOCKED` / `IO_WAIT` / `CGO` / `SLEEP` / `GC`) の判定
-- GC (STW / mark assist) の取り込み
-- 止まっている場所の file:line の表示
-- 確かさ (`FACT` / `INFERENCE`) の表示。リークの LEAKED / SUSPECT も置き換える
-- 画面の部品と状態の名前を公式の呼び方に合わせる (LRQ / GRQ を local run queue / global run queue に、pidle を idle P list に、など)。P の syscall 状態 (Psyscall) は今の Go にはないので、システムコールは G の状態 (`_Gsyscall`) で描く
-
-### 2. Issues と Overview で問題に気づける
-
-- Overview・Issues 画面 (リークは Issues の中の `LEAK` として、他の種類と同じ形で見せる)
-- 種類ごとの検出: `LEAK`・`ERROR_SPIKE`・`CPU_WAIT_SPIKE`・`MEMORY_PRESSURE`
-- ログの所要時間の読み取りと、リクエストの区間での Goroutine の表示、`SLOW_REQUEST` の検出
-- TUI で GUI とおおむね同じ画面を見られるようにする
+PoC で大部分ができた。残りは上の「段階 1・2 の残り」。
 
 ### 3. アプリに負荷をかけずに常に録れる
 
