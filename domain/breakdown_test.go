@@ -36,6 +36,8 @@ func TestSchedulerTimelineBreakdown(t *testing.T) {
 		},
 	}
 
+	cgo := domain.GoroutinePlace{Kind: domain.PlaceSyscall, HasProc: true, Cgo: true}
+	tl.Events = append(tl.Events, gEv(0, 4, cgo))
 	tests := []struct {
 		name        string
 		g           domain.GoroutineID
@@ -67,6 +69,12 @@ func TestSchedulerTimelineBreakdown(t *testing.T) {
 			g:    2, from: 0, to: 100 * ms,
 			want:        map[domain.PrimaryCause]time.Duration{domain.CauseRunning: 75 * ms, domain.CauseGC: 25 * ms},
 			wantPrimary: domain.CauseRunning,
+		},
+		{
+			name: "success: a cgo call is counted as CGO, not IO_WAIT",
+			g:    4, from: 0, to: 100 * ms,
+			want:        map[domain.PrimaryCause]time.Duration{domain.CauseCGO: 95 * ms, domain.CauseGC: 5 * ms},
+			wantPrimary: domain.CauseCGO,
 		},
 		{
 			name: "success: a goroutine without events is unrecorded",

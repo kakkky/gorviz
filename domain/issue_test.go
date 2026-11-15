@@ -101,3 +101,38 @@ func TestSchedulerTimeline_TotalByCause(t *testing.T) {
 	assert.Equal(t, 4*ms+10*ms, got[domain.CauseCPUWait])
 	assert.Equal(t, 6*ms, got[domain.CauseRunning])
 }
+
+func TestDetectRuntimeIssues(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	policy := domain.IssuePolicy{CPUWaitRatio: 1, GCPerSecond: 5, HeapNearGoal: 0.9}
+	chunk := func(tl domain.SchedulerTimeline) domain.TraceChunk {
+		tl.Window = time.Second
+		return domain.TraceChunk{StartedAt: start, Timeline: tl}
+	}
+
+	tests := []struct {
+		name string
+		tl   domain.SchedulerTimeline
+		want []domain.Certainty
+	}{
+		{name: "success: frequent GC is a fact", tl: domain.SchedulerTimeline{GCCycles: 6}, want: []domain.Certainty{domain.CertaintyFact}},
+		{
+			name: "success: heap staying near the goal is an inference",
+			tl:   domain.SchedulerTimeline{Heap: []domain.HeapSample{{LiveBytes: 95, GoalBytes: 100}, {LiveBytes: 92, GoalBytes: 100}}},
+			want: []domain.Certainty{domain.CertaintyInference},
+		},
+		{name: "success: a quiet chunk has no issue", tl: domain.SchedulerTimeline{GCCycles: 1, Heap: []domain.HeapSample{{LiveBytes: 30, GoalBytes: 100}}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var got []domain.Certainty
+			for _, i := range domain.DetectRuntimeIssues(chunk(tt.tl), policy) {
+				assert.Equal(t, domain.IssueMemoryPressure, i.Kind)
+				got = append(got, i.Certainty)
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

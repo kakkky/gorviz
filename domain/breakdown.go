@@ -14,7 +14,7 @@ const (
 	CauseCPUWait PrimaryCause = "CPU_WAIT"
 	CauseBlocked PrimaryCause = "BLOCKED"
 	CauseIOWait  PrimaryCause = "IO_WAIT"
-	// CauseCGO は cgo で C のコードを実行していた時間。trace ではシステムコールと見分けられないので、今は判定しない (IO_WAIT に入る)
+	// CauseCGO は cgo で C のコードを実行していた時間。trace ではシステムコールとして記録されるので、スタックの runtime.cgocall で見分ける
 	CauseCGO   PrimaryCause = "CGO"
 	CauseSleep PrimaryCause = "SLEEP"
 	CauseGC    PrimaryCause = "GC"
@@ -46,6 +46,9 @@ func causeOfPlace(p GoroutinePlace) (PrimaryCause, bool) {
 	case PlaceWaiting:
 		return CauseOfWaitReason(p.Reason), true
 	case PlaceSyscall:
+		if p.Cgo {
+			return CauseCGO, true
+		}
 		return CauseIOWait, true
 	}
 	return "", false
@@ -263,4 +266,23 @@ func (t SchedulerTimeline) LongestMarkAssist() (GoroutineID, time.Duration, bool
 		}
 	}
 	return best, first[best], longest > 0
+}
+
+// HeapGoalRatio は窓の中のヒープの大きさの、GC の目標値に対する割合の平均
+func (t SchedulerTimeline) HeapGoalRatio() (float64, bool) {
+	var (
+		sum float64
+		n   int
+	)
+	for _, h := range t.Heap {
+		if h.GoalBytes == 0 {
+			continue
+		}
+		sum += float64(h.LiveBytes) / float64(h.GoalBytes)
+		n++
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
 }

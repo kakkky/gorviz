@@ -20,12 +20,14 @@ const (
 
 // GoroutinePlace の Proc / Thread は Kind が running / local_run_queue / syscall のときだけ意味を持つ。
 // HasProc が false の syscall は、P を手放した (handoff された) M の上で syscall 中であることを表す。
+// Cgo は syscall が cgo の呼び出し (C のコードの実行) であること。trace では syscall として記録されるので、スタックで見分ける
 type GoroutinePlace struct {
 	Kind    GoroutinePlaceKind
 	Proc    ProcID
 	HasProc bool
 	Thread  ThreadID
 	Reason  string
+	Cgo     bool
 }
 
 const UnknownWaitReason = "unknown"

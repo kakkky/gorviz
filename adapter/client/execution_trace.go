@@ -204,6 +204,7 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 				function, location = f.Func, fmt.Sprintf("%s:%d", f.File, f.Line)
 			}
 			if place, ok := placeOf(ev, st, from, to, threadOf); ok {
+				place.Cgo = place.Kind == domain.PlaceSyscall && isCgoCall(frames)
 				emit(domain.SchedEvent{Kind: domain.SchedEventGoroutine, Goroutine: domain.GoroutineID(g), Place: place, Function: function, Location: location, Created: from == trace.GoNotExist})
 			}
 			if from == trace.GoNotExist && to != trace.GoNotExist {
@@ -250,6 +251,11 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 		chunk.StartedAt = receivedAt.Add(-tl.Window)
 	}
 	return chunk, nil
+}
+
+// isCgoCall は syscall に入ったスタックが cgo の呼び出し (runtime.cgocall) か
+func isCgoCall(frames []trace.StackFrame) bool {
+	return slices.ContainsFunc(frames, func(f trace.StackFrame) bool { return f.Func == "runtime.cgocall" })
 }
 
 func stackFrames(s trace.Stack) []trace.StackFrame {

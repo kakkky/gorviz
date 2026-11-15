@@ -24,6 +24,7 @@ func (us *UseCase) NewListIssuesUsecase() *ListIssuesUsecase {
 			SlowRequest:         us.cfg.SlowRequest,
 			CPUWaitRatio:        us.cfg.CPUWaitRatio,
 			GCPerSecond:         us.cfg.GCPerSecond,
+			HeapNearGoal:        us.cfg.HeapNearGoal,
 		},
 	}
 }

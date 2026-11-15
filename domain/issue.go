@@ -47,6 +47,9 @@ type IssuePolicy struct {
 	CPUWaitRatio float64
 	// GCPerSecond は、1 秒あたりの GC の回数がこれ以上なら MEMORY_PRESSURE (FACT)
 	GCPerSecond float64
+	// HeapNearGoal は、ヒープが GC の目標値に対してこの割合以上に張り付いていたら MEMORY_PRESSURE (INFERENCE)。
+	// GC の直前に目標値へ近づくのは普通のことなので、区切りの中の平均で見て推測とする
+	HeapNearGoal float64
 }
 
 var (
@@ -211,6 +214,13 @@ func DetectRuntimeIssues(c TraceChunk, policy IssuePolicy) []Issue {
 			issue.From = issue.At.Add(-defaultIssueWindow)
 		}
 		out = append(out, issue)
+	} else if ratio, ok := c.Timeline.HeapGoalRatio(); ok && policy.HeapNearGoal > 0 && ratio >= policy.HeapNearGoal {
+		out = append(out, Issue{
+			Kind: IssueMemoryPressure, Certainty: CertaintyInference,
+			Subject: c.StartedAt.Format(time.TimeOnly),
+			Summary: "heap stays at " + strconv.Itoa(int(ratio*100)) + "% of the GC goal on average",
+			At:      c.StartedAt.Add(w / 2), From: c.StartedAt,
+		})
 	}
 	return out
 }

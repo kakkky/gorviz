@@ -35,6 +35,7 @@ type Config struct {
 	ErrorSpikePerMinute int
 	CPUWaitRatio        float64
 	GCPerSecond         float64
+	HeapNearGoal        float64
 	// LogsFrom が "-" なら標準入力をログとして取り込む (serve / top のみ)
 	LogsFrom string
 	// UI と Command は gorviz run のときだけ使う。Command は "--" の後ろ (起動する対象のコマンド)
@@ -65,6 +66,7 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.IntVar(&cfg.ErrorSpikePerMinute, "error-spike", 10, "errors of the same shape per minute reported as ERROR_SPIKE")
 	fs.Float64Var(&cfg.CPUWaitRatio, "cpu-wait", 1, "average number of goroutines waiting for a P reported as CPU_WAIT_SPIKE")
 	fs.Float64Var(&cfg.GCPerSecond, "gc-per-second", 5, "GC cycles per second reported as MEMORY_PRESSURE")
+	fs.Float64Var(&cfg.HeapNearGoal, "heap-near-goal", 0.95, "average heap / GC goal ratio reported as MEMORY_PRESSURE (INFERENCE)")
 	fs.StringVar(&cfg.LogsFrom, "logs", "", `read the target's logs from stdin when "-" (serve / top only; run reads the child's output)`)
 	fs.StringVar(&cfg.UI, "ui", "web", `UI to show while running the command: "web" or "top" (run only)`)
 	if err := fs.Parse(args); err != nil {
