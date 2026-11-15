@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/kakkky/gorviz/adapter/logparse"
+	"github.com/kakkky/gorviz/config"
 	"github.com/kakkky/gorviz/domain"
 )
 
@@ -25,6 +26,22 @@ func TestParser_Parse(t *testing.T) {
 			want: domain.LogLine{
 				At: time.Date(2026, 11, 15, 11, 29, 52, 123_000_000, jst), TimeFromLog: true,
 				Level: domain.LogLevelError, Message: "db timeout", TraceSeq: 42, HasTraceSeq: true,
+			},
+		},
+		{
+			name: "success: slog JSON duration in nanoseconds",
+			raw:  `{"time":"2026-11-15T11:29:52.123+09:00","level":"INFO","msg":"request done","duration":1500000000}`,
+			want: domain.LogLine{
+				At: time.Date(2026, 11, 15, 11, 29, 52, 123_000_000, jst), TimeFromLog: true,
+				Level: domain.LogLevelInfo, Message: "request done", Duration: 1500 * time.Millisecond, HasDuration: true,
+			},
+		},
+		{
+			name: "success: slog text duration as a string",
+			raw:  `time=2026-11-15T11:29:52.5+09:00 level=INFO msg="request done" duration=250ms`,
+			want: domain.LogLine{
+				At: time.Date(2026, 11, 15, 11, 29, 52, 500_000_000, jst), TimeFromLog: true,
+				Level: domain.LogLevelInfo, Message: "request done", Duration: 250 * time.Millisecond, HasDuration: true,
 			},
 		},
 		{
@@ -60,7 +77,7 @@ func TestParser_Parse(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := logparse.NewParser().Parse(tt.raw, "stderr", received)
+			got := logparse.NewParser(&config.Config{DurationKeys: []string{"duration"}}).Parse(tt.raw, "stderr", received)
 			tt.want.Raw, tt.want.Source = tt.raw, "stderr"
 			assert.True(t, tt.want.At.Equal(got.At), "at: want %v, got %v", tt.want.At, got.At)
 			got.At = tt.want.At

@@ -25,7 +25,7 @@ func TestGetLogReplayUsecase_Exec(t *testing.T) {
 
 	newUsecase := func() (*usecase.UseCase, *recording.TraceStore, *recording.LogStore) {
 		traces, logs := recording.NewTraceStore(cfg), recording.NewLogStore(cfg)
-		return usecase.NewUseCase(cfg, nil, kvs.NewInMemoryKVS(), schedtrace.NewStore(), traces, logs, logparse.NewParser()), traces, logs
+		return usecase.NewUseCase(cfg, nil, kvs.NewInMemoryKVS(), schedtrace.NewStore(), traces, logs, logparse.NewParser(cfg)), traces, logs
 	}
 	chunk := domain.TraceChunk{
 		StartedAt: base,

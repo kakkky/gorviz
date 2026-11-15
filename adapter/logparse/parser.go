@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kakkky/gorviz/config"
 	"github.com/kakkky/gorviz/domain"
 	"github.com/kakkky/gorviz/slogtrace"
 )
@@ -21,10 +22,16 @@ var (
 )
 
 // Parser は slog (JSON / テキスト) と標準の log の形式を読む。どれにも当てはまらない行は、受け取った時刻の素のメッセージとして扱う。
-type Parser struct{}
+type Parser struct {
+	durationKeys map[string]bool
+}
 
-func NewParser() *Parser {
-	return &Parser{}
+func NewParser(cfg *config.Config) *Parser {
+	keys := make(map[string]bool, len(cfg.DurationKeys))
+	for _, k := range cfg.DurationKeys {
+		keys[k] = true
+	}
+	return &Parser{durationKeys: keys}
 }
 
 func (p *Parser) Parse(raw, source string, receivedAt time.Time) domain.LogLine {
@@ -32,16 +39,16 @@ func (p *Parser) Parse(raw, source string, receivedAt time.Time) domain.LogLine 
 	trimmed := strings.TrimSpace(raw)
 	switch {
 	case strings.HasPrefix(trimmed, "{"):
-		parseJSON(&line, trimmed)
+		p.parseJSON(&line, trimmed)
 	case strings.HasPrefix(trimmed, "time="):
-		parseText(&line, trimmed)
+		p.parseText(&line, trimmed)
 	default:
-		parseStdLog(&line, trimmed)
+		p.parseStdLog(&line, trimmed)
 	}
 	return line
 }
 
-func parseJSON(line *domain.LogLine, s string) {
+func (p *Parser) parseJSON(line *domain.LogLine, s string) {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(s), &m); err != nil {
 		return
@@ -58,9 +65,21 @@ func parseJSON(line *domain.LogLine, s string) {
 	if v, ok := m[slogtrace.SeqAttrKey].(float64); ok {
 		line.TraceSeq, line.HasTraceSeq = uint64(v), true
 	}
+	for k, v := range m {
+		if !p.durationKeys[k] {
+			continue
+		}
+		switch v := v.(type) {
+		case float64:
+			// slog の JSONHandler は time.Duration をナノ秒の数値で書く
+			line.Duration, line.HasDuration = time.Duration(v), true
+		case string:
+			setDuration(line, v)
+		}
+	}
 }
 
-func parseText(line *domain.LogLine, s string) {
+func (p *Parser) parseText(line *domain.LogLine, s string) {
 	for _, m := range textKVRe.FindAllStringSubmatch(s, -1) {
 		key, value := m[1], m[2]
 		if unq, err := strconv.Unquote(value); err == nil {
@@ -77,11 +96,15 @@ func parseText(line *domain.LogLine, s string) {
 			if n, err := strconv.ParseUint(value, 10, 64); err == nil {
 				line.TraceSeq, line.HasTraceSeq = n, true
 			}
+		default:
+			if p.durationKeys[key] {
+				setDuration(line, value)
+			}
 		}
 	}
 }
 
-func parseStdLog(line *domain.LogLine, s string) {
+func (p *Parser) parseStdLog(line *domain.LogLine, s string) {
 	m := stdLogRe.FindStringSubmatch(s)
 	if m == nil {
 		return
@@ -96,8 +119,14 @@ func parseStdLog(line *domain.LogLine, s string) {
 	line.Message = m[2]
 	if lv := stdLevelRe.FindStringSubmatch(m[2]); lv != nil {
 		line.Level, line.Message = toLevel(lv[1]), lv[2]
-		parseText(line, lv[2])
+		p.parseText(line, lv[2])
 		line.Message = strings.TrimSpace(textKVRe.ReplaceAllString(lv[2], ""))
+	}
+}
+
+func setDuration(line *domain.LogLine, v string) {
+	if d, err := time.ParseDuration(v); err == nil {
+		line.Duration, line.HasDuration = d, true
 	}
 }
 

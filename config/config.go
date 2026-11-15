@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"strings"
 	"time"
 )
 
@@ -26,6 +27,10 @@ type Config struct {
 	Retention         time.Duration
 	MaxRecordedEvents int
 	MaxLogLines       int
+	// DurationKeys はログの所要時間として読むキー。JSON の数値は slog の既定と同じくナノ秒、文字列は "1.2s" の形で読む
+	DurationKeys []string
+	// SlowRequest を超える所要時間のログを遅いリクエストとみなす
+	SlowRequest time.Duration
 	// LogsFrom が "-" なら標準入力をログとして取り込む (serve / top のみ)
 	LogsFrom string
 	// UI と Command は gorviz run のときだけ使う。Command は "--" の後ろ (起動する対象のコマンド)
@@ -51,11 +56,18 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.DurationVar(&cfg.Retention, "retention", 5*time.Minute, "how long recorded traces are kept for replay")
 	fs.IntVar(&cfg.MaxRecordedEvents, "max-events", 2_000_000, "upper bound of recorded scheduler events kept in memory")
 	fs.IntVar(&cfg.MaxLogLines, "max-logs", 50_000, "upper bound of log lines kept in memory")
+	durationKeys := fs.String("duration-keys", "duration,latency,elapsed", "comma separated log keys read as the request duration")
+	fs.DurationVar(&cfg.SlowRequest, "slow-request", time.Second, "a request whose logged duration exceeds this is slow")
 	fs.StringVar(&cfg.LogsFrom, "logs", "", `read the target's logs from stdin when "-" (serve / top only; run reads the child's output)`)
 	fs.StringVar(&cfg.UI, "ui", "web", `UI to show while running the command: "web" or "top" (run only)`)
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
 	cfg.Command = fs.Args()
+	for k := range strings.SplitSeq(*durationKeys, ",") {
+		if k = strings.TrimSpace(k); k != "" {
+			cfg.DurationKeys = append(cfg.DurationKeys, k)
+		}
+	}
 	return &cfg, nil
 }
