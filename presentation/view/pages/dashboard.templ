@@ -1,0 +1,27 @@
+package pages
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/assets"
+	"github.com/kakkky/gorviz/presentation/view/components"
+	"github.com/kakkky/gorviz/presentation/view/layout"
+	"github.com/kakkky/gorviz/presentation/view/partials"
+)
+
+type DashboardViewModel struct {
+	TargetURL string
+	StreamURL string
+}
+
+templ Dashboard(vm DashboardViewModel) {
+	@layout.Base(vm.TargetURL, []string{assets.GMPReplayController.Path}) {
+		@turbo.StreamSSESource(partials.SnapshotStreamSourceID, vm.StreamURL)
+		<div id={ partials.SnapshotErrorID } class="error"></div>
+		@components.GMPReplay(components.GMPReplayViewModel{DataID: partials.GMPReplayDataID, Live: true})
+		<div id={ partials.SchedTraceID }></div>
+		<div id={ partials.SnapshotID }>
+			<div class="panel skeleton">collecting the first sample from the target...</div>
+		</div>
+	}
+}

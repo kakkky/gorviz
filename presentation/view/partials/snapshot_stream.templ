@@ -1,0 +1,37 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/presentation/view/components"
+)
+
+const (
+	SnapshotStreamSourceID = "snapshot-stream-source"
+	SnapshotID             = "snapshot"
+	SnapshotErrorID        = "snapshot-error"
+	GMPReplayDataID        = "gmp-replay-data"
+	SchedTraceID           = "schedtrace"
+)
+
+templ SnapshotStreamUpdate(vm components.SnapshotViewModel, replayJSON string) {
+	@turbo.StreamUpdate(SnapshotErrorID)
+	@turbo.StreamUpdate(GMPReplayDataID) {
+		@components.GMPReplayData(replayJSON)
+	}
+	@turbo.StreamUpdate(SnapshotID) {
+		@components.Snapshot(vm)
+	}
+}
+
+templ SnapshotErrorStreamUpdate(msg string) {
+	@turbo.StreamUpdate(SnapshotErrorID) {
+		<div class="panel">failed to poll the target: { msg }</div>
+	}
+}
+
+templ SchedTraceStreamUpdate(vm components.SchedTraceViewModel) {
+	@turbo.StreamUpdate(SchedTraceID) {
+		@components.SchedTrace(vm)
+	}
+}

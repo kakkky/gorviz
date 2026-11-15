@@ -1,0 +1,56 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/presentation/view/components"
+)
+
+const (
+	LogListFrameID   = "log-list"
+	LogReplayDataID  = "log-replay-data"
+)
+
+templ LogListFrame(vm components.LogListViewModel) {
+	@turbo.Frame(LogListFrameID) {
+		@components.LogList(vm)
+	}
+}
+
+type LogReplayViewModel struct {
+	Error       string
+	Time        string
+	Level       string
+	LevelClass  string
+	Message     string
+	Focus       string
+	WindowLinks []LogReplayWindowLinkViewModel
+	ReplayJSON  string
+}
+
+type LogReplayWindowLinkViewModel struct {
+	Label  string
+	URL    string
+	Active bool
+}
+
+templ LogReplayFrame(vm LogReplayViewModel) {
+	@turbo.Frame(components.LogReplayFrameID) {
+		if vm.Error != "" {
+			<section class="panel error">{ vm.Error }</section>
+		} else {
+			<section class="panel">
+				<h2>Replay around</h2>
+				<p><span class="muted">{ vm.Time }</span> <span class={ "level " + vm.LevelClass }>{ vm.Level }</span> { vm.Message }</p>
+				<p class="muted">{ vm.Focus }</p>
+				<p class="window-links">
+					window:
+					for _, l := range vm.WindowLinks {
+						<a href={ templ.SafeURL(l.URL) } class={ templ.KV("active", l.Active) }>{ l.Label }</a>
+					}
+				</p>
+			</section>
+			@components.GMPReplay(components.GMPReplayViewModel{DataID: LogReplayDataID, InitialJSON: vm.ReplayJSON})
+		}
+	}
+}

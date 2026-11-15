@@ -1,0 +1,34 @@
+package layout
+
+import (
+	"github.com/kakkky/hotwire-go/stimulus"
+	"github.com/kakkky/hotwire-go/turbo"
+)
+
+templ Base(targetURL string, controllers []string) {
+	<!DOCTYPE html>
+	<html lang="ja">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>gorviz</title>
+			<link rel="stylesheet" href="/assets/main.css"/>
+			// 一部の古いブラウザは module の読み込み開始後に出た import map を無視するので、Turbo の module より先に import map を出す
+			@stimulus.ScriptLoad(controllers...)
+			@turbo.ScriptImport()
+		</head>
+		<body>
+			<header>
+				<h1>gorviz</h1>
+				<span class="target">{ targetURL }</span>
+				<nav>
+					<a href="/">Live</a>
+					<a href="/explore">Explore</a>
+				</nav>
+			</header>
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
