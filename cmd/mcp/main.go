@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kakkky/gorviz/adapter/serverapi"
-	"github.com/kakkky/gorviz/presentation/mcp"
+	"github.com/kakkky/gorviz/internal/adapter/serverapi"
+	"github.com/kakkky/gorviz/internal/presentation/mcp"
 )
 
 func main() {

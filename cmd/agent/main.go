@@ -1,5 +1,5 @@
 // gorviz-agent は対象の隣に置き、trace・goroutine dump・ログを取ってリングバッファに持つ。
-// server へ外向きにつなぎ、server に求められたら返す。画面は持たない
+// server へ外向きにつなぎ、軽いもの (ログ・dump) は自分から送り、trace は server に求められたら返す。画面は持たない
 package main
 
 import (
@@ -17,18 +17,15 @@ import (
 
 	"github.com/kakkky/scope"
 
-	"github.com/kakkky/gorviz/adapter/client"
-	"github.com/kakkky/gorviz/adapter/schedtrace"
-	"github.com/kakkky/gorviz/config"
-	"github.com/kakkky/gorviz/driver/agent"
-	"github.com/kakkky/gorviz/driver/childprocess"
+	"github.com/kakkky/gorviz/internal/adapter/client"
+	"github.com/kakkky/gorviz/internal/config"
+	"github.com/kakkky/gorviz/internal/driver/agent"
 )
 
 const usage = `gorviz-agent records the Go runtime of targets serving net/http/pprof and serves it to a gorviz server.
 
 Usage:
-  gorviz-agent [flags]                       observe -target (comma separated targets for the daemon type)
-  gorviz-agent [flags] -- cmd args           start cmd with GODEBUG=schedtrace and observe it (local only)
+  gorviz-agent [flags]    observe -target (comma separated targets for the daemon type)
 
 Run "gorviz-agent -h" for flags.
 `
@@ -51,8 +48,11 @@ func run(args []string) error {
 		fmt.Fprint(os.Stderr, usage)
 		return err
 	}
-	if len(cfg.Command) > 0 {
-		return runChild(ctx, cfg)
+	// 省いたら hostname にし、レプリカごとに別の名前にする (同じ名前の agent は server で 1 つに束ねられてしまう)
+	if cfg.Name == "" {
+		if cfg.Name, err = os.Hostname(); err != nil {
+			return err
+		}
 	}
 	// daemon 型: 同じホストの複数の対象を、対象ごとに別の agent として server につなぐ
 	targets := strings.Split(cfg.TargetURL, ",")
@@ -65,61 +65,21 @@ func run(args []string) error {
 			if cfg.LogsFrom == "-" && len(targets) == 1 {
 				logs = append(logs, agent.LogSource{R: os.Stdin, Source: "stdin", Echo: io.Discard})
 			}
-			a := agent.New(&c, client.NewRuntimeClient(&c), schedtrace.NewStore())
+			a := agent.New(&c, client.NewRuntimeClient(&c))
 			sc.Go(func(ctx context.Context) error { return a.Run(ctx, logs...) })
 		}
 		return nil
 	})
 }
 
-// runChild は対象を子プロセスとして起動し、その標準エラー出力から schedtrace を読みながら観測する。対象が終了したら agent も止める
-func runChild(ctx context.Context, cfg *config.Config) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	cfg.Name = nameOf(cfg.Name, cfg.TargetURL, false)
-	child, err := childprocess.Start(ctx, cfg.Command)
-	if err != nil {
-		return err
-	}
-	store := schedtrace.NewStore()
-	a := agent.New(cfg, client.NewRuntimeClient(cfg), store)
-	// stderr には schedtrace と対象のログが混ざって流れてくるので、schedtrace を抜いた残りをログとして取り込む
-	stderrLogs, stderrLogsW := io.Pipe()
-	return scope.Run(ctx, func(sc *scope.Scope) error {
-		sc.Go(func(context.Context) error {
-			err := store.Consume(child.Stderr(), stderrLogsW)
-			stderrLogsW.CloseWithError(err)
-			return err
-		})
-		sc.Go(func(context.Context) error {
-			defer cancel()
-			if err := child.Wait(); err != nil && ctx.Err() == nil {
-				return fmt.Errorf("target exited: %w", err)
-			}
-			return nil
-		})
-		sc.Go(func(ctx context.Context) error {
-			return a.Run(ctx,
-				agent.LogSource{R: child.Stdout(), Source: "stdout", Echo: os.Stdout},
-				agent.LogSource{R: stderrLogs, Source: "stderr", Echo: os.Stderr},
-			)
-		})
-		return nil
-	})
-}
-
-// nameOf は agent の名前を決める。指定がなければ対象の host:port。daemon 型で複数の対象を見るときは、指定した名前に host:port を足す
+// nameOf は agent の名前を決める。daemon 型で複数の対象を見るときは、対象ごとに別の名前になるよう host:port を足す
 func nameOf(name, target string, many bool) string {
+	if !many {
+		return name
+	}
 	host := target
 	if u, err := url.Parse(target); err == nil && u.Host != "" {
 		host = u.Host
 	}
-	switch {
-	case name == "":
-		return host
-	case many:
-		return name + "/" + host
-	default:
-		return name
-	}
+	return name + "/" + host
 }

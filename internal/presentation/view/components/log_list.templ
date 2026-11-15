@@ -1,0 +1,70 @@
+package components
+
+import "strconv"
+
+type LogListViewModel struct {
+	Total     int
+	Shown     int
+	Histogram []LogHistogramBarViewModel
+	Lines     []LogRowViewModel
+}
+
+type LogHistogramBarViewModel struct {
+	Title    string
+	Segments []LogHistogramSegmentViewModel
+}
+
+type LogHistogramSegmentViewModel struct {
+	Class  string
+	Height string
+}
+
+type LogRowViewModel struct {
+	Time       string
+	Level      string
+	LevelClass string
+	Message    string
+	Source     string
+	Replayable bool
+	ReplayURL  string
+	// Exact はログを書いた G まで trace で特定できる (gorviz のロガーの差し込み口経由の) 行か
+	Exact    bool
+	Duration string
+}
+
+templ LogList(vm LogListViewModel) {
+	<div class="histogram">
+		for _, bar := range vm.Histogram {
+			<div class="histogram-bar" title={ bar.Title }>
+				for _, seg := range bar.Segments {
+					<div class={ seg.Class } style={ templ.SafeCSS("height:" + seg.Height) }></div>
+				}
+			</div>
+		}
+	</div>
+	<p class="muted">{ strconv.Itoa(vm.Shown) } of { strconv.Itoa(vm.Total) } lines (newest first). Click a line to replay the scheduler around it.</p>
+	<table class="log-table">
+		for _, l := range vm.Lines {
+			<tr class={ templ.KV("replayable", l.Replayable) }>
+				<td class="log-time">{ l.Time }</td>
+				<td><span class={ "level " + l.LevelClass }>{ l.Level }</span></td>
+				<td class="log-message">
+					if l.Replayable {
+						<a href={ templ.SafeURL(l.ReplayURL) } data-turbo-frame={ LogReplayFrameID }>{ l.Message }</a>
+					} else {
+						<span title="the trace around this line is not recorded">{ l.Message }</span>
+					}
+				</td>
+				<td class="muted">
+					if l.Exact {
+						<span title="the goroutine that wrote this line is identified exactly through gorviz's slog handler">G: FACT</span>
+					}
+				</td>
+				<td class="muted">{ l.Duration }</td>
+				<td class="muted">{ l.Source }</td>
+			</tr>
+		}
+	</table>
+}
+
+const LogReplayFrameID = "log-replay"

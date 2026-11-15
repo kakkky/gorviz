@@ -6,17 +6,16 @@ import (
 	"errors"
 	"flag"
 	"log/slog"
-	"net/rpc"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/kakkky/scope"
 
-	"github.com/kakkky/gorviz/adapter/agentrpc"
-	"github.com/kakkky/gorviz/config"
-	"github.com/kakkky/gorviz/driver/httpserver"
-	"github.com/kakkky/gorviz/driver/session"
+	"github.com/kakkky/gorviz/internal/adapter/agentrpc"
+	"github.com/kakkky/gorviz/internal/config"
+	"github.com/kakkky/gorviz/internal/driver/httpserver"
+	"github.com/kakkky/gorviz/internal/driver/session"
 )
 
 func main() {
@@ -41,8 +40,8 @@ func run(args []string) error {
 	return scope.Run(ctx, func(sc *scope.Scope) error {
 		sc.Go(srv.Run)
 		sc.Go(func(ctx context.Context) error {
-			return agentrpc.Accept(ctx, cfg.AgentAddr, func(h agentrpc.Hello, c *rpc.Client) {
-				registry.Attach(ctx, h, c, func(f func(context.Context) error) { sc.Go(f) })
+			return agentrpc.Accept(ctx, cfg.AgentAddr, func(h agentrpc.Hello) (*agentrpc.Client, bool) {
+				return registry.Attach(ctx, h, func(f func(context.Context) error) { sc.Go(f) })
 			})
 		})
 		return nil

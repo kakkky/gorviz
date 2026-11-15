@@ -1,11 +1,10 @@
-// library はライブラリ型 (gorvizagent をアプリに埋め込む形) の動作確認用の観測対象。pprof の HTTP は公開しない。
+// library はライブラリ型 (gorviz.Start で agent をアプリに埋め込む形) の動作確認用の観測対象。pprof の HTTP は公開しない。
 // gorviz-server の agent の口 (-agent-addr) に、アプリの中から直接つなぐ
 package main
 
 import (
 	"context"
 	"flag"
-	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -13,8 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kakkky/gorviz/gorvizagent"
-	"github.com/kakkky/gorviz/slogtrace"
+	"github.com/kakkky/gorviz"
 )
 
 func main() {
@@ -23,17 +21,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	a, err := gorvizagent.New(gorvizagent.Options{Server: *server, Name: "library-demo", Args: []string{"-dump-interval", "5s", "-leak-check-every", "2"}})
+	a, err := gorviz.Start(ctx, gorviz.Options{Server: *server, Name: "library-demo", DumpInterval: 5 * time.Second, LeakCheckEvery: 2})
 	if err != nil {
 		slog.Error("start gorviz agent", slog.Any("err", err))
 		os.Exit(1)
 	}
-	logger := slog.New(slogtrace.Wrap(slog.NewJSONHandler(io.MultiWriter(os.Stderr, a.LogWriter()), nil)))
-	go func() {
-		if err := a.Run(ctx); err != nil {
-			slog.Error("gorviz agent stopped", slog.Any("err", err))
-		}
-	}()
+	defer a.Stop()
+	logger := slog.New(gorviz.NewSlogHandler(slog.NewJSONHandler(os.Stderr, nil)))
 
 	var mu sync.Mutex
 	go func() {

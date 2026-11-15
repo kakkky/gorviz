@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kakkky/gorviz/slogtrace"
+	"github.com/kakkky/gorviz"
 )
 
-var logger = slog.New(slogtrace.Wrap(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
+var logger = slog.New(gorviz.NewSlogHandler(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 func main() {
 	for i := range 4 {
