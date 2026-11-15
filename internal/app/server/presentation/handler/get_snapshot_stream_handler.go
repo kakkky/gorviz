@@ -11,7 +11,6 @@ import (
 	"github.com/kakkky/hotwire-go/turbo"
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
-	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
@@ -51,7 +50,7 @@ func (h *GetSnapshotStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Req
 	ticker := time.NewTicker(h.interval)
 	defer ticker.Stop()
 	for {
-		out, err := h.getRuntimeSnapshotUsecase.Exec(ctx, usecase.GetRuntimeSnapshotUsecaseInput{})
+		out, err := h.getRuntimeSnapshotUsecase.Exec(ctx, usecase.GetRuntimeSnapshotUsecaseInput{Buckets: h.buckets})
 		if ctx.Err() != nil {
 			return
 		}
@@ -66,7 +65,7 @@ func (h *GetSnapshotStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Req
 				slog.ErrorContext(ctx, "encode gmp replay", slog.Any("err", err))
 				return
 			}
-			vm := toSnapshotViewModel(out.Snapshot, h.buckets)
+			vm := toSnapshotViewModel(out)
 			if issues, err := h.listIssuesUsecase.Exec(ctx, usecase.ListIssuesUsecaseInput{Now: time.Now()}); err == nil {
 				vm.IssueCount, vm.ErrorCount, vm.SlowCount = len(issues.Issues), issues.ErrorsLastMinute, issues.SlowLastMinute
 			}
@@ -83,14 +82,14 @@ func (h *GetSnapshotStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Req
 	}
 }
 
-func toSnapshotViewModel(out usecase.RuntimeSnapshot, buckets int) components.SnapshotViewModel {
+func toSnapshotViewModel(snapshot usecase.GetRuntimeSnapshotUsecaseOutput) components.SnapshotViewModel {
+	out := snapshot.Snapshot
 	tl := out.Timeline
-	procs := domain.SortedProcs(tl)
 
 	vm := components.SnapshotViewModel{
 		At:             out.At.Format(time.TimeOnly),
 		Window:         tl.Window.Round(time.Millisecond).String(),
-		ProcCount:      len(procs),
+		ProcCount:      len(snapshot.Lanes),
 		ThreadCount:    len(tl.Threads),
 		GoroutineCount: out.GoroutineCount,
 		Created:        tl.GoroutinesCreated,
@@ -131,12 +130,12 @@ func toSnapshotViewModel(out usecase.RuntimeSnapshot, buckets int) components.Sn
 		})
 	}
 
-	for _, lane := range procs {
+	for _, lane := range snapshot.Lanes {
 		laneVM := components.ProcLaneViewModel{
 			Proc:        fmt.Sprintf("P%d", lane.Proc),
-			Utilization: fmt.Sprintf("%.0f%%", domain.Utilization(lane, tl.Window)*100),
+			Utilization: fmt.Sprintf("%.0f%%", lane.Utilization*100),
 		}
-		for _, b := range domain.Buckets(lane, tl.Window, buckets) {
+		for _, b := range lane.Buckets {
 			if b.Busy == 0 {
 				laneVM.Cells = append(laneVM.Cells, components.LaneCellViewModel{Title: "idle"})
 				continue

@@ -47,6 +47,12 @@ func TestGetGoroutineUsecase_Exec(t *testing.T) {
 	assert.Equal(t, 100*ms, out.Breakdown.Unrecorded, "the gap between chunks is unrecorded")
 	assert.Equal(t, domain.CauseIOWait, out.Primary)
 	assert.Equal(t, domain.CertaintyFact, out.Certainty)
+	require.Len(t, out.Causes, len(domain.PrimaryCauses), "every cause is listed in the display order")
+	for i, c := range out.Causes {
+		assert.Equal(t, domain.PrimaryCauses[i], c.Cause)
+		assert.Equal(t, out.Breakdown.Durations[c.Cause], c.Duration)
+		assert.Equal(t, c.Cause == domain.CauseIOWait, c.Primary, "only the recorded primary cause is marked")
+	}
 	assert.Equal(t, "net.(*conn).Read", out.Function)
 	assert.Equal(t, "/app/db.go:42", out.Location)
 	assert.Equal(t, "network", out.WaitReason)

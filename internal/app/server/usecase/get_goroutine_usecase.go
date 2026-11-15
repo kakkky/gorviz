@@ -39,7 +39,9 @@ type GetGoroutineUsecaseOutput struct {
 	Dump    model.Goroutine
 	HasDump bool
 	// 診断: 主因と、At の時点で止まっていた場所
-	Breakdown  domain.StateBreakdown
+	Breakdown domain.StateBreakdown
+	// Causes は Breakdown を表示の順に並べたもの
+	Causes     []GoroutineCauseDuration
 	Primary    domain.PrimaryCause
 	HasPrimary bool
 	Certainty  domain.Certainty
@@ -52,6 +54,13 @@ type GetGoroutineUsecaseOutput struct {
 	ReplayFocus     time.Duration
 	HasReplay       bool
 	Leaked          []model.GoroutineID
+}
+
+type GoroutineCauseDuration struct {
+	Cause    domain.PrimaryCause
+	Duration time.Duration
+	// Primary は記録から言える (FACT) 主因のとき true。dump から推し量った主因 (INFERENCE) では立てない
+	Primary bool
 }
 
 // Exec は区間に重なる録画の区切りをすべて読み、G の時間を主因ごとに合計する。
@@ -86,6 +95,10 @@ func (us *GetGoroutineUsecase) Exec(_ context.Context, in GetGoroutineUsecaseInp
 	out.Certainty = domain.CertaintyFact
 	if !out.HasPrimary && out.HasDump {
 		out.Primary, out.HasPrimary, out.Certainty = domain.CauseOfGoroutine(out.Dump), true, domain.CertaintyInference
+	}
+
+	for _, c := range domain.PrimaryCauses {
+		out.Causes = append(out.Causes, GoroutineCauseDuration{Cause: c, Duration: out.Breakdown.Durations[c], Primary: out.HasPrimary && c == out.Primary && out.Certainty == domain.CertaintyFact})
 	}
 
 	if out.HasPrimary && out.Certainty == domain.CertaintyFact {

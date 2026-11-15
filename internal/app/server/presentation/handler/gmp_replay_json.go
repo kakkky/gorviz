@@ -2,10 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
-	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
 // gmpReplayJSON は gmp_replay_controller.js が読む形。イベントは件数が多いので配列に詰め、文字列は表の添字で持つ:
@@ -63,9 +63,10 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 		Leaked:      []int64{},
 		Truncated:   tl.EventsTruncated,
 	}
-	for _, l := range domain.SortedProcs(tl) {
+	for _, l := range tl.Procs {
 		r.Procs = append(r.Procs, int64(l.Proc))
 	}
+	slices.Sort(r.Procs)
 	reasonIdx := map[string]int64{}
 	functionIdx := map[string]int64{}
 	indexOf := func(fn string) int64 {

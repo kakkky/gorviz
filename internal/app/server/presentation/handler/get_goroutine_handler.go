@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
-	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
@@ -88,15 +87,14 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	}
 	vm.Unrecorded = out.Breakdown.Unrecorded.Round(time.Microsecond).String()
 	total := out.To.Sub(out.From)
-	for _, c := range domain.PrimaryCauses {
-		d := out.Breakdown.Durations[c]
-		ratio := float64(d) / float64(total)
+	for _, c := range out.Causes {
+		ratio := float64(c.Duration) / float64(total)
 		vm.Breakdown = append(vm.Breakdown, pages.BreakdownRowViewModel{
-			Cause:    string(c),
-			Duration: d.Round(time.Microsecond).String(),
+			Cause:    string(c.Cause),
+			Duration: c.Duration.Round(time.Microsecond).String(),
 			Percent:  fmt.Sprintf("%.0f%%", ratio*100),
 			Width:    fmt.Sprintf("%.1f%%", ratio*100),
-			Primary:  out.HasPrimary && c == out.Primary && out.Certainty == domain.CertaintyFact,
+			Primary:  c.Primary,
 		})
 	}
 	vm.LogsURL = logsURL(out.From.Add(-time.Second), out.To.Add(time.Second))
