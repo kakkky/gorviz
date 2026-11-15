@@ -73,6 +73,24 @@ func TestGetLogReplayUsecase_Exec(t *testing.T) {
 		assert.Equal(t, usecase.GetLogReplayUsecaseLogMark{Line: line, At: 100 * ms}, out.Focus)
 	})
 
+	t.Run("success: plain log is attributed to the only running goroutine as an inference", func(t *testing.T) {
+		t.Parallel()
+		uc, traces, logs := newUsecase()
+		running := chunk
+		running.Timeline.Procs = []domain.ProcLane{{Proc: 0}}
+		running.Timeline.Events = []domain.SchedEvent{
+			{At: 0, Kind: domain.SchedEventProc, Proc: 0, ProcStatus: domain.ProcRunning},
+			{At: 50 * ms, Kind: domain.SchedEventGoroutine, Goroutine: 8, Place: domain.GoroutinePlace{Kind: domain.PlaceRunning, Proc: 0, HasProc: true}},
+		}
+		traces.Append(running)
+		line := logs.Append(domain.LogLine{At: base.Add(100 * ms), Message: "plain"})
+
+		out, err := uc.NewGetLogReplayUsecase().Exec(context.Background(), usecase.GetLogReplayUsecaseInput{LogID: line.ID, Before: 200 * ms, After: 200 * ms})
+		require.NoError(t, err)
+
+		assert.Equal(t, usecase.GetLogReplayUsecaseLogMark{Line: line, At: 100 * ms, Goroutine: 8, Inferred: true}, out.Focus)
+	})
+
 	t.Run("error: log outside the recorded traces", func(t *testing.T) {
 		t.Parallel()
 		uc, traces, logs := newUsecase()

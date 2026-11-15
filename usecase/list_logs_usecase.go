@@ -20,9 +20,12 @@ func (us *UseCase) NewListLogsUsecase() *ListLogsUsecase {
 	return &ListLogsUsecase{logRecording: us.logRecording, traceRecording: us.traceRecording}
 }
 
+// ListLogsUsecaseInput の From / To が零値でなければ、その区間のログだけに絞る
 type ListLogsUsecaseInput struct {
 	Query string
 	Level domain.LogLevel
+	From  time.Time
+	To    time.Time
 	Limit int
 }
 
@@ -53,6 +56,9 @@ func (us *ListLogsUsecase) Exec(_ context.Context, in ListLogsUsecaseInput) (Lis
 			continue
 		}
 		if query != "" && !strings.Contains(strings.ToLower(l.Raw), query) {
+			continue
+		}
+		if (!in.From.IsZero() && l.At.Before(in.From)) || (!in.To.IsZero() && l.At.After(in.To)) {
 			continue
 		}
 		matched = append(matched, l)

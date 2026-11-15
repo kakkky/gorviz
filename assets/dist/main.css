@@ -145,3 +145,4 @@ table.issues td.links a { margin-right: 8px; }
 svg a.g-link { cursor: pointer; }
 
 a { color: var(--accent); }
+.issue-ref { margin-left: 8px; }

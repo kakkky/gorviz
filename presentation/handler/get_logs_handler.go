@@ -34,7 +34,11 @@ func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Content-Type", htmlContentType)
 	ctx := r.Context()
 	query, level := r.URL.Query().Get("q"), domain.LogLevel(r.URL.Query().Get("level"))
-	out, err := h.listLogsUsecase.Exec(ctx, usecase.ListLogsUsecaseInput{Query: query, Level: level, Limit: logsLimit})
+	in := usecase.ListLogsUsecaseInput{Query: query, Level: level, Limit: logsLimit}
+	// from / to (Unix ナノ秒) は Goroutine から「前後のログ」を開いたときに付く
+	in.From, _ = unixNanoParam(r, "from")
+	in.To, _ = unixNanoParam(r, "to")
+	out, err := h.listLogsUsecase.Exec(ctx, in)
 	if err != nil {
 		slog.ErrorContext(ctx, "list logs", slog.Any("err", err))
 		rw.WriteHeader(http.StatusInternalServerError)

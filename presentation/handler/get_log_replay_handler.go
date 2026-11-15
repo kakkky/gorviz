@@ -72,6 +72,9 @@ func (h *GetLogReplayHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	}
 
 	focus := fmt.Sprintf("located by the log's timestamp at %s; the goroutine that wrote it is unknown (wrap your slog handler with gorviz/slogtrace to identify it)", out.WindowStartedAt.Add(out.Focus.At).Local().Format("15:04:05.000000"))
+	if out.Focus.Inferred {
+		focus = fmt.Sprintf("INFERENCE: G%d (%s) was the only goroutine running at the log's timestamp, so it probably wrote the log (wrap your slog handler with gorviz/slogtrace to identify it exactly)", out.Focus.Goroutine, domain.ShortFunctionName(out.Timeline.Entries[out.Focus.Goroutine]))
+	}
 	if out.Focus.Exact {
 		focus = fmt.Sprintf("written by G%d (%s), located exactly through the trace", out.Focus.Goroutine, domain.ShortFunctionName(out.Timeline.Entries[out.Focus.Goroutine]))
 	}
@@ -84,7 +87,7 @@ func (h *GetLogReplayHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		Focus:      focus,
 		ReplayJSON: replayJSON,
 	}
-	if out.Focus.Exact {
+	if out.Focus.Exact || out.Focus.Inferred {
 		at := out.WindowStartedAt.Add(out.Focus.At)
 		var from time.Time
 		if out.Line.HasDuration {
@@ -92,6 +95,9 @@ func (h *GetLogReplayHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		}
 		vm.GoroutineURL = goroutineURL(out.Focus.Goroutine, at, from)
 		vm.GoroutineLabel = fmt.Sprintf("diagnose G%d", out.Focus.Goroutine)
+		if out.Focus.Inferred {
+			vm.GoroutineLabel += " (INFERENCE)"
+		}
 	}
 	for _, d := range replayHalfWindows {
 		vm.WindowLinks = append(vm.WindowLinks, partials.LogReplayWindowLinkViewModel{Label: "±" + d.String(), URL: logReplayURL(out.Line.ID, d), Active: d == half})

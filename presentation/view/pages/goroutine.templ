@@ -26,6 +26,8 @@ type GoroutineViewModel struct {
 	ReplayJSON string
 	NoReplay   string
 	LogsURL    string
+	// Issues はこの G (リークなら同じ生成元) を含む Issue
+	Issues []string
 }
 
 type BreakdownRowViewModel struct {
@@ -68,6 +70,14 @@ templ Goroutine(vm GoroutineViewModel) {
 				</table>
 				<p class="muted">gorviz reports what the runtime recorded. Finding the cause in the code and deciding the next step is up to you (or your LLM).</p>
 				<p><a href={ templ.SafeURL(vm.LogsURL) }>logs around this time</a></p>
+				if len(vm.Issues) > 0 {
+					<p>
+						issues including this goroutine:
+						for _, i := range vm.Issues {
+							<a href="/issues" class="issue-ref">{ i }</a>
+						}
+					</p>
+				}
 			</section>
 			<section class="panel">
 				<h2>Evidence: time by state <span class="muted">unrecorded { vm.Unrecorded }</span></h2>

@@ -37,11 +37,14 @@ type GetLogReplayUsecaseOutput struct {
 	Leaked     []domain.GoroutineID
 }
 
+// GetLogReplayUsecaseLogMark の Exact は、ログを書いた G を slogtrace の番号で特定できた (FACT) か。
+// Inferred は、番号はないが、ログの時刻にちょうど 1 つの G だけが走っていたので、その G が書いたと推し量った (INFERENCE) か
 type GetLogReplayUsecaseLogMark struct {
 	Line      domain.LogLine
 	At        time.Duration
 	Goroutine domain.GoroutineID
 	Exact     bool
+	Inferred  bool
 }
 
 // Exec はログ 1 行の時刻の前後を、録画した trace から切り出す。
@@ -66,7 +69,7 @@ func (us *GetLogReplayUsecase) Exec(_ context.Context, in GetLogReplayUsecaseInp
 		Line:            line,
 		Timeline:        timeline,
 		WindowStartedAt: chunk.StartedAt.Add(from),
-		Focus:           GetLogReplayUsecaseLogMark{Line: line, At: focus.At - from, Goroutine: focus.Goroutine, Exact: focus.Exact},
+		Focus:           GetLogReplayUsecaseLogMark{Line: line, At: focus.At - from, Goroutine: focus.Goroutine, Exact: focus.Exact, Inferred: focus.Inferred},
 	}
 	windowStart, windowEnd := out.WindowStartedAt, out.WindowStartedAt.Add(timeline.Window)
 	for _, l := range us.logRecording.Snapshot() {
@@ -100,5 +103,25 @@ func (us *GetLogReplayUsecase) locate(line domain.LogLine) (domain.TraceChunk, G
 	if !ok {
 		return domain.TraceChunk{}, GetLogReplayUsecaseLogMark{}, false
 	}
-	return chunk, GetLogReplayUsecaseLogMark{Line: line, At: chunk.Offset(line.At)}, true
+	mark := GetLogReplayUsecaseLogMark{Line: line, At: chunk.Offset(line.At)}
+	if g, ok := onlyRunningGoroutine(chunk.Timeline, mark.At); ok {
+		mark.Goroutine, mark.Inferred = g, true
+	}
+	return chunk, mark, true
+}
+
+// onlyRunningGoroutine は at の時点で走っていた G がちょうど 1 つならそれを返す。
+// ログを書く G は走っているはずだが、ログの時刻は書いた瞬間とずれうるので、候補が 1 つのときだけ推し量る
+func onlyRunningGoroutine(tl domain.SchedulerTimeline, at time.Duration) (domain.GoroutineID, bool) {
+	var (
+		found domain.GoroutineID
+		n     int
+	)
+	for _, p := range tl.StateAt(at).Procs {
+		if p.HasRunning && !p.RunningInSyscall {
+			found = p.Running
+			n++
+		}
+	}
+	return found, n == 1
 }

@@ -18,11 +18,12 @@ const goroutineReplayHalf = 250 * time.Millisecond
 
 type GetGoroutineHandler struct {
 	getGoroutineUsecase *usecase.GetGoroutineUsecase
+	listIssuesUsecase   *usecase.ListIssuesUsecase
 	targetURL           string
 }
 
-func NewGetGoroutineHandler(getGoroutineUsecase *usecase.GetGoroutineUsecase, targetURL string) *GetGoroutineHandler {
-	return &GetGoroutineHandler{getGoroutineUsecase: getGoroutineUsecase, targetURL: targetURL}
+func NewGetGoroutineHandler(getGoroutineUsecase *usecase.GetGoroutineUsecase, listIssuesUsecase *usecase.ListIssuesUsecase, targetURL string) *GetGoroutineHandler {
+	return &GetGoroutineHandler{getGoroutineUsecase: getGoroutineUsecase, listIssuesUsecase: listIssuesUsecase, targetURL: targetURL}
 }
 
 // goroutineURL は Goroutine 画面への URL。時刻は Unix ナノ秒で渡す。from を省くと at の前後を見る
@@ -97,7 +98,16 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 			Primary:  out.HasPrimary && c == out.Primary && out.Certainty == domain.CertaintyFact,
 		})
 	}
-	vm.LogsURL = "/logs"
+	vm.LogsURL = logsURL(out.From.Add(-time.Second), out.To.Add(time.Second))
+	if issues, err := h.listIssuesUsecase.Exec(ctx, usecase.ListIssuesUsecaseInput{Now: time.Now()}); err == nil {
+		for _, i := range issues.Issues {
+			sameGoroutine := i.HasGoroutine && i.Goroutine == out.Goroutine
+			sameOrigin := i.Kind == domain.IssueLeak && out.HasDump && i.Subject == string(out.Dump.Origin())
+			if sameGoroutine || sameOrigin {
+				vm.Issues = append(vm.Issues, fmt.Sprintf("%s %s — %s", i.Kind, i.Certainty, i.Summary))
+			}
+		}
+	}
 
 	if !out.HasReplay {
 		vm.NoReplay = "the trace at this time is not recorded (outside the retention, or between recorded chunks)"
@@ -112,6 +122,10 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		vm.NoReplay = "failed to build the replay"
 	}
 	render()
+}
+
+func logsURL(from, to time.Time) string {
+	return "/logs?" + url.Values{"from": {strconv.FormatInt(from.UnixNano(), 10)}, "to": {strconv.FormatInt(to.UnixNano(), 10)}}.Encode()
 }
 
 func unixNanoParam(r *http.Request, key string) (time.Time, error) {

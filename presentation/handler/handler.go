@@ -52,7 +52,7 @@ func (h *Handler) Routes() []Route {
 		},
 		{
 			Pattern: "GET /goroutines/{id}",
-			Handler: NewGetGoroutineHandler(h.usecase.NewGetGoroutineUsecase(), h.cfg.TargetURL),
+			Handler: NewGetGoroutineHandler(h.usecase.NewGetGoroutineUsecase(), h.usecase.NewListIssuesUsecase(), h.cfg.TargetURL),
 		},
 		{
 			Pattern: "GET /snapshots/stream",
