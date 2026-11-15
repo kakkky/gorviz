@@ -47,13 +47,15 @@ const (
 
 // SchedEvent は再生の 1 コマ。Kind が goroutine なら Goroutine が Place に移ったこと、
 // proc なら Proc が ProcStatus になったこと (running なら Thread に乗ったこと) を表す。
-// Function はその時点で G がいた関数 (スケジューラ内部を除く)。trace にスタックが載るイベント (ブロック・停止・syscall) でだけ埋まる
+// Function はその時点で G がいた関数 (スケジューラ内部を除く)。trace にスタックが載るイベント (ブロック・停止・syscall) でだけ埋まる。
+// Created はこのイベントで G が生まれたこと (窓の中で作られた G) を表す
 type SchedEvent struct {
 	At         time.Duration
 	Kind       SchedEventKind
 	Goroutine  GoroutineID
 	Place      GoroutinePlace
 	Function   string
+	Created    bool
 	Proc       ProcID
 	ProcStatus ProcStatus
 	Thread     ThreadID
@@ -279,6 +281,9 @@ func (t SchedulerTimeline) Slice(from, to time.Duration) SchedulerTimeline {
 		out.Events = append(out.Events, ev)
 		if ev.Kind == SchedEventGoroutine && ev.Place.Kind == PlaceDead {
 			out.GoroutinesDestroyed++
+		}
+		if ev.Created {
+			out.GoroutinesCreated++
 		}
 	}
 

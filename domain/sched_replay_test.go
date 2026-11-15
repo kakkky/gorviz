@@ -146,6 +146,7 @@ func TestSchedulerTimeline_Slice(t *testing.T) {
 	lrq := domain.GoroutinePlace{Kind: domain.PlaceLocalQueue, Proc: 0, HasProc: true}
 	running := domain.GoroutinePlace{Kind: domain.PlaceRunning, Proc: 0, HasProc: true}
 	dead := domain.GoroutinePlace{Kind: domain.PlaceDead}
+	created := func(e domain.SchedEvent) domain.SchedEvent { e.Created = true; return e }
 	pRunning := domain.SchedEvent{At: 0, Kind: domain.SchedEventProc, Proc: 0, ProcStatus: domain.ProcRunning}
 
 	tl := domain.SchedulerTimeline{
@@ -162,6 +163,7 @@ func TestSchedulerTimeline_Slice(t *testing.T) {
 			gEv(2*ms, 3, lrq),
 			gEv(4*ms, 1, dead),
 			gEv(4*ms, 2, running),
+			created(gEv(4500*time.Microsecond, 4, lrq)),
 			gEv(9*ms, 2, dead),
 		},
 	}
@@ -176,12 +178,14 @@ func TestSchedulerTimeline_Slice(t *testing.T) {
 		gEv(0, 3, lrq),
 		gEv(1*ms, 1, dead),
 		gEv(1*ms, 2, running),
+		created(gEv(1500*time.Microsecond, 4, lrq)),
 	}, got.Events, "state at 3ms is carried as t=0 events keeping queue order, and later events are shifted")
 	assert.Equal(t, []domain.ProcLane{{Proc: 0, Spans: []domain.SchedSpan{
 		{Goroutine: 1, Start: 0, End: 1 * ms},
 		{Goroutine: 2, Start: 1 * ms, End: 2 * ms},
 	}}}, got.Procs)
 	assert.Equal(t, 1, got.GoroutinesDestroyed)
+	assert.Equal(t, 1, got.GoroutinesCreated, "goroutines created inside the slice are counted")
 	assert.Equal(t, tl.StateAt(5*ms).GlobalQueue, got.StateAt(2*ms).GlobalQueue)
 	assert.Equal(t, tl.StateAt(5*ms).Procs, got.StateAt(2*ms).Procs)
 }

@@ -157,7 +157,7 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 				function = domain.CurrentFunction(frames)
 			}
 			if place, ok := placeOf(ev, st, from, to, threadOf); ok {
-				emit(domain.SchedEvent{Kind: domain.SchedEventGoroutine, Goroutine: domain.GoroutineID(g), Place: place, Function: function})
+				emit(domain.SchedEvent{Kind: domain.SchedEventGoroutine, Goroutine: domain.GoroutineID(g), Place: place, Function: function, Created: from == trace.GoNotExist})
 			}
 			if from == trace.GoNotExist && to != trace.GoNotExist {
 				tl.GoroutinesCreated++
