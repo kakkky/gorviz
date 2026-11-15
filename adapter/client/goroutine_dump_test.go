@@ -120,7 +120,7 @@ created by main.main in goroutine 1
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := parseGoroutineDump(strings.NewReader(tt.dump))
+			got, err := ParseGoroutineDump(strings.NewReader(tt.dump))
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})

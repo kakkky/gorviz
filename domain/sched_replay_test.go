@@ -189,3 +189,24 @@ func TestSchedulerTimeline_Slice(t *testing.T) {
 	assert.Equal(t, tl.StateAt(5*ms).GlobalQueue, got.StateAt(2*ms).GlobalQueue)
 	assert.Equal(t, tl.StateAt(5*ms).Procs, got.StateAt(2*ms).Procs)
 }
+
+func TestTraceChunk_Since(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	c := domain.TraceChunk{
+		StartedAt: base,
+		Timeline: domain.SchedulerTimeline{Window: 10 * ms, Events: []domain.SchedEvent{
+			{At: 2 * ms, Kind: domain.SchedEventGoroutine, Goroutine: 1, Place: domain.GoroutinePlace{Kind: domain.PlaceGlobalQueue}},
+			{At: 8 * ms, Kind: domain.SchedEventGoroutine, Goroutine: 1, Place: domain.GoroutinePlace{Kind: domain.PlaceDead}},
+		}},
+		LogMarks: []domain.TraceLogMark{{Seq: 1, At: 3 * ms}, {Seq: 2, At: 7 * ms}},
+	}
+
+	got := c.Since(base.Add(5 * ms))
+
+	assert.Equal(t, base.Add(5*ms), got.StartedAt)
+	assert.Equal(t, 5*ms, got.Timeline.Window)
+	assert.Equal(t, []domain.TraceLogMark{{Seq: 2, At: 2 * ms}}, got.LogMarks, "marks before the cut are dropped and later ones are shifted")
+	assert.Equal(t, domain.PlaceGlobalQueue, got.Timeline.Events[0].Place.Kind, "the state at the cut is carried in")
+}

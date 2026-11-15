@@ -17,8 +17,8 @@ var goroutineHeaderRe = regexp.MustCompile(`^goroutine (\d+)\b[^\[]*\[([^\]]+)\]
 
 var waitMinutesRe = regexp.MustCompile(`^(\d+) minutes?$`)
 
-// parseGoroutineDump は /debug/pprof/goroutine?debug=2 (panic 時と同じ形式) を読む。
-func parseGoroutineDump(r io.Reader) ([]domain.Goroutine, error) {
+// ParseGoroutineDump は /debug/pprof/goroutine?debug=2 (panic 時と同じ形式) を読む。アプリの中で取った dump (ライブラリ型) にも使う
+func ParseGoroutineDump(r io.Reader) ([]domain.Goroutine, error) {
 	var (
 		gs     []domain.Goroutine
 		cur    *domain.Goroutine

@@ -33,7 +33,7 @@ func (c *RuntimeClient) FetchGoroutines(ctx context.Context) ([]domain.Goroutine
 		return nil, err
 	}
 	defer body.Close()
-	return parseGoroutineDump(body)
+	return ParseGoroutineDump(body)
 }
 
 func (c *RuntimeClient) FetchGoroutinesWithLeakCheck(ctx context.Context) ([]domain.Goroutine, error) {
@@ -42,7 +42,7 @@ func (c *RuntimeClient) FetchGoroutinesWithLeakCheck(ctx context.Context) ([]dom
 		return nil, err
 	}
 	defer body.Close()
-	return parseGoroutineDump(body)
+	return ParseGoroutineDump(body)
 }
 
 func (c *RuntimeClient) FetchTraceChunk(ctx context.Context, duration time.Duration) (domain.TraceChunk, error) {

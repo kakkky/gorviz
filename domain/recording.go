@@ -78,3 +78,23 @@ type SavedRecordings interface {
 	List() []SavedRecording
 	Chunks(id string) ([]TraceChunk, bool)
 }
+
+// Since は t より前の部分を落とした区切りを返す。FlightRecorder から切り出すと前の区切りと重なるので、重なりを落とすのに使う。
+// t の時点の状態は先頭に積むので、残った部分だけで再生や内訳の計算ができる
+func (c TraceChunk) Since(t time.Time) TraceChunk {
+	from := c.Offset(t)
+	if from <= 0 {
+		return c
+	}
+	out := c
+	out.StartedAt = c.StartedAt.Add(from)
+	out.Timeline = c.Timeline.Slice(from, c.Timeline.Window)
+	out.LogMarks = nil
+	for _, m := range c.LogMarks {
+		if m.At >= from {
+			m.At -= from
+			out.LogMarks = append(out.LogMarks, m)
+		}
+	}
+	return out
+}
