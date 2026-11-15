@@ -15,3 +15,29 @@ type RuntimeClient interface {
 	// FetchTraceChunk は duration の間 execution trace を取る。trace は対象のプロセスで同時に 1 本しか取れない
 	FetchTraceChunk(ctx context.Context, duration time.Duration) (TraceChunk, error)
 }
+
+// GoroutineDump は agent が取った goroutine dump 1 回分。LeakCheck はその dump で runtime のリーク判定を走らせたか
+type GoroutineDump struct {
+	At         time.Time
+	Goroutines []Goroutine
+	LeakCheck  LeakCheckStatus
+}
+
+type LeakCheckStatus string
+
+const (
+	LeakCheckDone        LeakCheckStatus = "done"
+	LeakCheckSkipped     LeakCheckStatus = "skipped"
+	LeakCheckUnsupported LeakCheckStatus = "unsupported"
+	LeakCheckDisabled    LeakCheckStatus = "disabled"
+)
+
+// DumpSource は直近の goroutine dump の取得元。server は agent が取った dump をこれで読む (自分では対象に触らない)
+type DumpSource interface {
+	LatestDump() (GoroutineDump, bool)
+}
+
+// LogSource は対象のログの取得元。server は agent が取り込んだログを after より新しい分だけ読む
+type LogSource interface {
+	LogsSince(after LogLineID, limit int) []LogLine
+}

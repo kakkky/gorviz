@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"cmp"
 	"errors"
 	"fmt"
@@ -325,4 +326,9 @@ func placeOf(ev trace.Event, st trace.StateTransition, from, to trace.GoState, t
 		return domain.GoroutinePlace{Kind: domain.PlaceDead}, true
 	}
 	return domain.GoroutinePlace{}, false
+}
+
+// ParseTrace は取ったままの trace を読む。server が保存した録画を読み直すのに使う
+func ParseTrace(raw []byte, receivedAt time.Time) (domain.TraceChunk, error) {
+	return buildTraceChunk(bytes.NewReader(raw), receivedAt)
 }

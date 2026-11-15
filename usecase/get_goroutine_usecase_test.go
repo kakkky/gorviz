@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kakkky/gorviz/adapter/kvs"
-	"github.com/kakkky/gorviz/adapter/logparse"
 	"github.com/kakkky/gorviz/adapter/recording"
 	"github.com/kakkky/gorviz/adapter/schedtrace"
 	"github.com/kakkky/gorviz/config"
@@ -39,7 +38,7 @@ func TestGetGoroutineUsecase_Exec(t *testing.T) {
 		Window: time.Second,
 		Events: []domain.SchedEvent{gEv(0, network, "", ""), gEv(400*ms, running, "", "")},
 	}})
-	uc := usecase.NewUseCase(cfg, nil, kvs.NewInMemoryKVS(), schedtrace.NewStore(), traces, recording.NewLogStore(cfg), logparse.NewParser(cfg))
+	uc := usecase.NewServerUseCase(cfg, nil, nil, kvs.NewInMemoryKVS(), schedtrace.NewStore(), traces, recording.NewLogStore(cfg), nil)
 
 	out, err := uc.NewGetGoroutineUsecase().Exec(context.Background(), usecase.GetGoroutineUsecaseInput{
 		Goroutine: 5, From: base.Add(500 * ms), To: base.Add(1600 * ms), At: base.Add(900 * ms), ReplayHalf: 50 * ms,

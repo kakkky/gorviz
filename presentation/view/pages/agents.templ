@@ -1,0 +1,45 @@
+package pages
+
+import "github.com/kakkky/gorviz/presentation/view/layout"
+
+type AgentsViewModel struct {
+	Current string
+	Agents  []AgentViewModel
+}
+
+type AgentViewModel struct {
+	Name      string
+	Target    string
+	Connected bool
+	SelectURL string
+}
+
+// Agents は server につながった agent の一覧。1 つ選ぶと、以降の画面はその agent のものになる
+templ Agents(vm AgentsViewModel) {
+	@layout.Base(vm.Current, "Agents") {
+		<section class="panel">
+			<h2>Agents</h2>
+			if len(vm.Agents) == 0 {
+				<p class="muted">no agent has connected yet. Start one with: gorviz-agent -target http://localhost:6060 -agent-addr localhost:7071</p>
+			} else {
+				<table>
+					<tr><th>name</th><th>target</th><th>status</th><th></th></tr>
+					for _, a := range vm.Agents {
+						<tr>
+							<td>{ a.Name }</td>
+							<td>{ a.Target }</td>
+							<td>
+								if a.Connected {
+									<span class="badge fact">connected</span>
+								} else {
+									<span class="badge inference">disconnected</span>
+								}
+							</td>
+							<td><a href={ templ.SafeURL(a.SelectURL) }>open</a></td>
+						</tr>
+					}
+				</table>
+			}
+		</section>
+	}
+}

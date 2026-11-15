@@ -3,7 +3,6 @@ package usecase
 import (
 	"cmp"
 	"context"
-	"errors"
 	"maps"
 	"slices"
 	"sync"
@@ -13,35 +12,20 @@ import (
 )
 
 const (
-	goroutineSamplesKey   = "runtime-snapshot:goroutine-samples"
-	dumpCountKey          = "runtime-snapshot:dump-count"
-	lastDumpAtKey         = "runtime-snapshot:last-dump-at"
-	leakCheckStatusKey    = "runtime-snapshot:leak-check-status"
-	leakCheckSupportedKey = "runtime-snapshot:leak-check-supported"
-	leakedGoroutinesKey   = "runtime-snapshot:leaked-goroutines"
+	goroutineSamplesKey = "runtime-snapshot:goroutine-samples"
+	lastDumpAtKey       = "runtime-snapshot:last-dump-at"
 	// latestGoroutinesKey は直近の goroutine dump。録画した trace のラベル付けに、Live 以外 (Explore) からも使う
 	latestGoroutinesKey = "runtime-snapshot:latest-goroutines"
 	latestSnapshotKey   = "runtime-snapshot:latest"
 	topOriginsLimit     = 10
 )
 
-type LeakCheckStatus string
-
-const (
-	LeakCheckDone        LeakCheckStatus = "done"
-	LeakCheckSkipped     LeakCheckStatus = "skipped"
-	LeakCheckUnsupported LeakCheckStatus = "unsupported"
-	LeakCheckDisabled    LeakCheckStatus = "disabled"
-)
-
 type RecordRuntimeSnapshotUsecase struct {
-	runtimeClient  domain.RuntimeClient
+	dumpSource     domain.DumpSource
 	inMemoryKVS    domain.InMemoryKVS
 	traceRecording domain.TraceRecording
 	traceWindow    time.Duration
-	dumpInterval   time.Duration
 	historySize    int
-	leakCheckEvery int
 	leakPolicy     domain.LeakDetectionPolicy
 	// 履歴の読み書きが混ざると件数の推移が壊れるので、Exec は直列にする
 	mu *sync.Mutex
@@ -49,13 +33,11 @@ type RecordRuntimeSnapshotUsecase struct {
 
 func (us *UseCase) NewRecordRuntimeSnapshotUsecase() *RecordRuntimeSnapshotUsecase {
 	return &RecordRuntimeSnapshotUsecase{
-		runtimeClient:  us.runtimeClient,
+		dumpSource:     us.dumpSource,
 		inMemoryKVS:    us.inMemoryKVS,
 		traceRecording: us.traceRecording,
 		traceWindow:    us.cfg.TraceWindow,
-		dumpInterval:   us.cfg.DumpInterval,
 		historySize:    us.cfg.HistorySize,
-		leakCheckEvery: us.cfg.LeakCheckEvery,
 		leakPolicy: domain.LeakDetectionPolicy{
 			MinSamples: us.cfg.LeakMinSamples,
 			MinGrowth:  us.cfg.LeakMinGrowth,
@@ -90,7 +72,7 @@ type RuntimeSnapshot struct {
 	Recording        domain.RecordingSpan
 	HasRecording     bool
 	Leaks            []domain.Leak
-	LeakCheckStatus  LeakCheckStatus
+	LeakCheckStatus  domain.LeakCheckStatus
 	LeakedGoroutines []domain.GoroutineID
 	// GoroutineHistory は直近の観測ごとの G の総数。リークは「右肩上がり」で見えるので推移を返す
 	GoroutineHistory []int
@@ -129,25 +111,20 @@ type goroutineSampleHistory struct {
 	totals  []int
 }
 
-func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRuntimeSnapshotUsecaseInput) (RecordRuntimeSnapshotUsecaseOutput, error) {
+func (us *RecordRuntimeSnapshotUsecase) Exec(_ context.Context, in RecordRuntimeSnapshotUsecaseInput) (RecordRuntimeSnapshotUsecaseOutput, error) {
 	us.mu.Lock()
 	defer us.mu.Unlock()
 
-	lastDumpAt, dumped := getOr(us.inMemoryKVS, lastDumpAtKey, time.Time{}), false
-	goroutines := getOr(us.inMemoryKVS, latestGoroutinesKey, []domain.Goroutine(nil))
-	leakCheckStatus := getOr(us.inMemoryKVS, leakCheckStatusKey, LeakCheckSkipped)
-	if lastDumpAt.IsZero() || in.Now.Sub(lastDumpAt) >= us.dumpInterval {
-		dumpCount := getOr(us.inMemoryKVS, dumpCountKey, 0) + 1
-		us.inMemoryKVS.Set(dumpCountKey, dumpCount)
-		gs, status, err := us.fetchGoroutines(ctx, us.leakCheckStatusFor(dumpCount))
-		if err != nil {
-			return RecordRuntimeSnapshotUsecaseOutput{}, err
-		}
-		goroutines, leakCheckStatus, lastDumpAt, dumped = us.carryOverLeaked(gs), status, in.Now, true
-		us.inMemoryKVS.Set(latestGoroutinesKey, goroutines)
-		us.inMemoryKVS.Set(lastDumpAtKey, lastDumpAt)
-		us.inMemoryKVS.Set(leakCheckStatusKey, leakCheckStatus)
+	// dump は agent が取る。server は agent の最新の dump を読み、新しいものだけを履歴に足す
+	dump, ok := us.dumpSource.LatestDump()
+	if !ok {
+		return RecordRuntimeSnapshotUsecaseOutput{}, domain.ErrNotFound.With("the agent has not taken a goroutine dump yet")
 	}
+	goroutines := dump.Goroutines
+	lastDumpAt := getOr(us.inMemoryKVS, lastDumpAtKey, time.Time{})
+	dumped := dump.At.After(lastDumpAt)
+	us.inMemoryKVS.Set(lastDumpAtKey, dump.At)
+	us.inMemoryKVS.Set(latestGoroutinesKey, goroutines)
 
 	// trace は録画ループが取り続けているので、ここでは取らずに最新の区切りの末尾を使う
 	var (
@@ -166,14 +143,14 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRunti
 
 	history := getOr(us.inMemoryKVS, goroutineSamplesKey, goroutineSampleHistory{})
 	if dumped {
-		history.samples = appendBounded(history.samples, domain.NewGoroutineSample(in.Now, goroutines), us.historySize)
+		history.samples = appendBounded(history.samples, domain.NewGoroutineSample(dump.At, goroutines), us.historySize)
 		history.totals = appendBounded(history.totals, len(goroutines), us.historySize)
 		us.inMemoryKVS.Set(goroutineSamplesKey, history)
 	}
 
 	snapshot := RuntimeSnapshot{
 		At:                in.Now,
-		DumpAt:            lastDumpAt,
+		DumpAt:            dump.At,
 		TimelineStartedAt: startedAt,
 		Runtime:           load,
 		Timeline:          timeline,
@@ -182,57 +159,13 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRunti
 		TopOrigins:        topOrigins(goroutines, topOriginsLimit),
 		Scopes:            domain.SummarizeScopes(goroutines),
 		Leaks:             domain.DetectLeaks(history.samples, goroutines, us.leakPolicy),
-		LeakCheckStatus:   leakCheckStatus,
+		LeakCheckStatus:   dump.LeakCheck,
 		GoroutineHistory:  slices.Clone(history.totals),
 		LeakedGoroutines:  leakedIDs(goroutines),
 	}
 	snapshot.Recording, snapshot.HasRecording = us.traceRecording.Span()
 	us.inMemoryKVS.Set(latestSnapshotKey, snapshot)
 	return RecordRuntimeSnapshotUsecaseOutput{Snapshot: snapshot}, nil
-}
-
-// carryOverLeaked は以前のリーク検査で到達不能と判定された G に、検査を飛ばした回でも Leaked を立てる。
-// 到達不能になった G は二度と動かないので、一度判定されたら G が消えるまでリークとして扱ってよい。
-func (us *RecordRuntimeSnapshotUsecase) carryOverLeaked(gs []domain.Goroutine) []domain.Goroutine {
-	known := getOr(us.inMemoryKVS, leakedGoroutinesKey, map[domain.GoroutineID]struct{}{})
-	leaked := make(map[domain.GoroutineID]struct{}, len(known))
-	for i := range gs {
-		if _, ok := known[gs[i].ID]; ok {
-			gs[i].Leaked = true
-		}
-		if gs[i].Leaked {
-			leaked[gs[i].ID] = struct{}{}
-		}
-	}
-	us.inMemoryKVS.Set(leakedGoroutinesKey, leaked)
-	return gs
-}
-
-func (us *RecordRuntimeSnapshotUsecase) fetchGoroutines(ctx context.Context, status LeakCheckStatus) ([]domain.Goroutine, LeakCheckStatus, error) {
-	if status != LeakCheckDone {
-		gs, err := us.runtimeClient.FetchGoroutines(ctx)
-		return gs, status, err
-	}
-	gs, err := us.runtimeClient.FetchGoroutinesWithLeakCheck(ctx)
-	if errors.Is(err, domain.ErrNotFound) {
-		us.inMemoryKVS.Set(leakCheckSupportedKey, false)
-		gs, err = us.runtimeClient.FetchGoroutines(ctx)
-		return gs, LeakCheckUnsupported, err
-	}
-	return gs, status, err
-}
-
-func (us *RecordRuntimeSnapshotUsecase) leakCheckStatusFor(dumpCount int) LeakCheckStatus {
-	switch {
-	case us.leakCheckEvery <= 0:
-		return LeakCheckDisabled
-	case !getOr(us.inMemoryKVS, leakCheckSupportedKey, true):
-		return LeakCheckUnsupported
-	case (dumpCount-1)%us.leakCheckEvery == 0:
-		return LeakCheckDone
-	default:
-		return LeakCheckSkipped
-	}
 }
 
 func leakedIDs(gs []domain.Goroutine) []domain.GoroutineID {

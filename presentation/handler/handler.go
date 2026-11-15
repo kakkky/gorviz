@@ -3,7 +3,6 @@ package handler
 import (
 	"net/http"
 
-	"github.com/kakkky/gorviz/assets"
 	"github.com/kakkky/gorviz/config"
 	"github.com/kakkky/gorviz/usecase"
 )
@@ -57,10 +56,6 @@ func (h *Handler) Routes() []Route {
 		{
 			Pattern: "GET /snapshots/stream",
 			Handler: NewGetSnapshotStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewGetSchedTraceUsecase(), h.usecase.NewListIssuesUsecase(), h.cfg.Refresh, h.cfg.TimelineBuckets),
-		},
-		{
-			Pattern: "GET /assets/",
-			Handler: http.StripPrefix("/assets/", http.FileServerFS(assets.FS())),
 		},
 	}
 }

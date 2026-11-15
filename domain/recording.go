@@ -58,3 +58,23 @@ type RecordingSpan struct {
 	Bytes      int64
 	LimitBytes int64
 }
+
+// SavedRecording は server に保存した、Issue の前後の録画 1 件。agent のリングバッファから消えたあとも、これで調べられる
+type SavedRecording struct {
+	ID      string
+	Kind    IssueKind
+	Subject string
+	At      time.Time
+	From    time.Time
+	To      time.Time
+	Chunks  int
+	Bytes   int64
+}
+
+type SavedRecordings interface {
+	// Save は録画を保存する。同じ ID がすでにあるかは Has で確かめる
+	Save(rec SavedRecording, chunks []TraceChunk) error
+	Has(id string) bool
+	List() []SavedRecording
+	Chunks(id string) ([]TraceChunk, bool)
+}

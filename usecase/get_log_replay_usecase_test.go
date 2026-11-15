@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kakkky/gorviz/adapter/kvs"
-	"github.com/kakkky/gorviz/adapter/logparse"
 	"github.com/kakkky/gorviz/adapter/recording"
 	"github.com/kakkky/gorviz/adapter/schedtrace"
 	"github.com/kakkky/gorviz/config"
@@ -25,7 +24,7 @@ func TestGetLogReplayUsecase_Exec(t *testing.T) {
 
 	newUsecase := func() (*usecase.UseCase, *recording.TraceStore, *recording.LogStore) {
 		traces, logs := recording.NewTraceStore(cfg), recording.NewLogStore(cfg)
-		return usecase.NewUseCase(cfg, nil, kvs.NewInMemoryKVS(), schedtrace.NewStore(), traces, logs, logparse.NewParser(cfg)), traces, logs
+		return usecase.NewServerUseCase(cfg, nil, nil, kvs.NewInMemoryKVS(), schedtrace.NewStore(), traces, logs, nil), traces, logs
 	}
 	chunk := domain.TraceChunk{
 		StartedAt: base,
