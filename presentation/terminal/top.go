@@ -47,7 +47,7 @@ func NewTop(cfg *config.Config, uc *usecase.UseCase) *Top {
 		getRuntimeSnapshotUsecase: uc.NewGetRuntimeSnapshotUsecase(),
 		getSchedTraceUsecase:      uc.NewGetSchedTraceUsecase(),
 		targetURL:                 cfg.TargetURL,
-		interval:                  cfg.Interval,
+		interval:                  cfg.Refresh,
 		buckets:                   min(cfg.TimelineBuckets, 80),
 		out:                       os.Stdout,
 	}

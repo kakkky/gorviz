@@ -23,7 +23,7 @@ type RuntimeClient struct {
 func NewRuntimeClient(cfg *config.Config) *RuntimeClient {
 	return &RuntimeClient{
 		baseURL:    strings.TrimRight(cfg.TargetURL, "/"),
-		httpClient: &http.Client{Timeout: cfg.HTTPTimeout + cfg.TraceWindow},
+		httpClient: &http.Client{Timeout: cfg.HTTPTimeout + cfg.ChunkDuration},
 	}
 }
 

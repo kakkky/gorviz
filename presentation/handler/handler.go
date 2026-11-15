@@ -36,7 +36,7 @@ func (h *Handler) Routes() []Route {
 		},
 		{
 			Pattern: "GET /snapshots/stream",
-			Handler: NewGetSnapshotStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewGetSchedTraceUsecase(), h.cfg.Interval, h.cfg.TimelineBuckets),
+			Handler: NewGetSnapshotStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewGetSchedTraceUsecase(), h.cfg.Refresh, h.cfg.TimelineBuckets),
 		},
 		{
 			Pattern: "GET /explore",

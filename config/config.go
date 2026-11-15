@@ -8,13 +8,16 @@ import (
 type Config struct {
 	TargetURL string
 	HTTPAddr  string
-	Interval  time.Duration
-	// TraceWindow は 1 回の観測で execution trace を取る長さ。対象のオーバーヘッドに効くので短めにする。
+	// Refresh は画面 (Live の再生・CLI) を新しくする間隔。対象には触らず、録画済みのものを読むだけ
+	Refresh time.Duration
+	// DumpInterval は goroutine dump を取る間隔。dump は対象の全 G を止める (STW) ので間を空ける
+	DumpInterval time.Duration
+	// TraceWindow は Live に出す長さ。録画の最新の区切りの末尾をこの長さだけ切り出す
 	TraceWindow    time.Duration
 	LeakMinSamples int
 	LeakMinGrowth  int
 	HistorySize    int
-	// LeakCheckEvery 回に 1 回だけ goroutineleak を取る。対象で GC が 1 回走るため、毎回の観測では取らない。
+	// LeakCheckEvery 回の dump に 1 回だけ goroutineleak を取る。対象で GC が 1 回走るため、毎回の dump では取らない。
 	LeakCheckEvery  int
 	HTTPTimeout     time.Duration
 	TimelineBuckets int
@@ -35,12 +38,13 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.StringVar(&cfg.TargetURL, "target", "http://localhost:6060", "base URL of the target's net/http/pprof server")
 	fs.StringVar(&cfg.HTTPAddr, "addr", "localhost:7070", "listen address of the GUI (serve only)")
-	fs.DurationVar(&cfg.Interval, "interval", 2*time.Second, "polling interval")
-	fs.DurationVar(&cfg.TraceWindow, "trace-window", 500*time.Millisecond, "length of execution trace captured per poll")
-	fs.IntVar(&cfg.LeakMinSamples, "leak-min-samples", 5, "samples required before reporting a growth-based leak suspect")
+	fs.DurationVar(&cfg.Refresh, "refresh", 2*time.Second, "refresh interval of the live views (does not touch the target)")
+	fs.DurationVar(&cfg.DumpInterval, "dump-interval", time.Minute, "interval of goroutine dumps (each dump stops the world briefly)")
+	fs.DurationVar(&cfg.TraceWindow, "trace-window", 500*time.Millisecond, "length of the latest recorded trace shown in the live view")
+	fs.IntVar(&cfg.LeakMinSamples, "leak-min-samples", 5, "dumps required before reporting a growth-based leak suspect")
 	fs.IntVar(&cfg.LeakMinGrowth, "leak-min-growth", 10, "minimum non-decreasing growth of waiting goroutines per origin to be a suspect")
-	fs.IntVar(&cfg.LeakCheckEvery, "leak-check-every", 5, "run the runtime's GC-based leak check once per this many polls (0 disables it)")
-	fs.IntVar(&cfg.HistorySize, "history", 30, "number of samples kept for leak detection")
+	fs.IntVar(&cfg.LeakCheckEvery, "leak-check-every", 5, "run the runtime's GC-based leak check once per this many dumps (0 disables it)")
+	fs.IntVar(&cfg.HistorySize, "history", 30, "number of dumps kept for leak detection")
 	fs.DurationVar(&cfg.HTTPTimeout, "http-timeout", 10*time.Second, "timeout of each request to the target")
 	fs.IntVar(&cfg.TimelineBuckets, "buckets", 100, "number of columns of the P timeline")
 	fs.DurationVar(&cfg.ChunkDuration, "chunk", 2*time.Second, "length of each recorded execution trace chunk")
