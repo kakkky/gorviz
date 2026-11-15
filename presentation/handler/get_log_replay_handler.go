@@ -51,7 +51,7 @@ func (h *GetLogReplayHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	replay := newGMPReplayJSON(out.Timeline, out.Leaked)
+	replay := newGMPReplayJSON(out.Timeline, out.Leaked, out.WindowStartedAt)
 	focusG := int64(-1)
 	if out.Focus.Exact {
 		focusG = int64(out.Focus.Goroutine)
@@ -76,12 +76,22 @@ func (h *GetLogReplayHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		focus = fmt.Sprintf("written by G%d (%s), located exactly through the trace", out.Focus.Goroutine, domain.ShortFunctionName(out.Timeline.Entries[out.Focus.Goroutine]))
 	}
 	vm := partials.LogReplayViewModel{
+		Duration:   formatDuration(out.Line),
 		Time:       out.Line.At.Local().Format("15:04:05.000"),
 		Level:      levelLabel(out.Line.Level),
 		LevelClass: levelClass(out.Line.Level),
 		Message:    out.Line.Message,
 		Focus:      focus,
 		ReplayJSON: replayJSON,
+	}
+	if out.Focus.Exact {
+		at := out.WindowStartedAt.Add(out.Focus.At)
+		var from time.Time
+		if out.Line.HasDuration {
+			from = at.Add(-out.Line.Duration)
+		}
+		vm.GoroutineURL = goroutineURL(out.Focus.Goroutine, at, from)
+		vm.GoroutineLabel = fmt.Sprintf("diagnose G%d", out.Focus.Goroutine)
 	}
 	for _, d := range replayHalfWindows {
 		vm.WindowLinks = append(vm.WindowLinks, partials.LogReplayWindowLinkViewModel{Label: "±" + d.String(), URL: logReplayURL(out.Line.ID, d), Active: d == half})
@@ -98,5 +108,5 @@ func (h *GetLogReplayHandler) renderError(rw http.ResponseWriter, r *http.Reques
 }
 
 func logReplayURL(id domain.LogLineID, half time.Duration) string {
-	return fmt.Sprintf("/explore/logs/%d/replay?half=%s", id, half)
+	return fmt.Sprintf("/logs/%d/replay?half=%s", id, half)
 }

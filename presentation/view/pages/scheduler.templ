@@ -3,24 +3,25 @@ package pages
 import (
 	"github.com/kakkky/hotwire-go/turbo"
 
-	"github.com/kakkky/gorviz/assets"
 	"github.com/kakkky/gorviz/presentation/view/components"
 	"github.com/kakkky/gorviz/presentation/view/layout"
 	"github.com/kakkky/gorviz/presentation/view/partials"
 )
 
-type DashboardViewModel struct {
+type SchedulerViewModel struct {
 	TargetURL string
 	StreamURL string
 }
 
-templ Dashboard(vm DashboardViewModel) {
-	@layout.Base(vm.TargetURL, []string{assets.GMPReplayController.Path}) {
+// Scheduler (見出しは Runtime Scheduler) は GMP の概念図で最新の観測窓を再生し続ける。G を選ぶと Goroutine に移る
+templ Scheduler(vm SchedulerViewModel) {
+	@layout.Base(vm.TargetURL, "Scheduler") {
+		<h2 class="page-title">Runtime Scheduler</h2>
 		@turbo.StreamSSESource(partials.SnapshotStreamSourceID, vm.StreamURL)
 		<div id={ partials.SnapshotErrorID } class="error"></div>
 		@components.GMPReplay(components.GMPReplayViewModel{DataID: partials.GMPReplayDataID, Live: true})
 		<div id={ partials.SchedTraceID }></div>
-		<div id={ partials.SnapshotID }>
+		<div id={ partials.SchedulerSnapshotID }>
 			<div class="panel skeleton">collecting the first sample from the target...</div>
 		</div>
 	}

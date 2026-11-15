@@ -31,6 +31,10 @@ type Config struct {
 	DurationKeys []string
 	// SlowRequest を超える所要時間のログを遅いリクエストとみなす
 	SlowRequest time.Duration
+	// Issue の固定の閾値。超えたものは FACT として出す
+	ErrorSpikePerMinute int
+	CPUWaitRatio        float64
+	GCPerSecond         float64
 	// LogsFrom が "-" なら標準入力をログとして取り込む (serve / top のみ)
 	LogsFrom string
 	// UI と Command は gorviz run のときだけ使う。Command は "--" の後ろ (起動する対象のコマンド)
@@ -58,6 +62,9 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.IntVar(&cfg.MaxLogLines, "max-logs", 50_000, "upper bound of log lines kept in memory")
 	durationKeys := fs.String("duration-keys", "duration,latency,elapsed", "comma separated log keys read as the request duration")
 	fs.DurationVar(&cfg.SlowRequest, "slow-request", time.Second, "a request whose logged duration exceeds this is slow")
+	fs.IntVar(&cfg.ErrorSpikePerMinute, "error-spike", 10, "errors of the same shape per minute reported as ERROR_SPIKE")
+	fs.Float64Var(&cfg.CPUWaitRatio, "cpu-wait", 1, "average number of goroutines waiting for a P reported as CPU_WAIT_SPIKE")
+	fs.Float64Var(&cfg.GCPerSecond, "gc-per-second", 5, "GC cycles per second reported as MEMORY_PRESSURE")
 	fs.StringVar(&cfg.LogsFrom, "logs", "", `read the target's logs from stdin when "-" (serve / top only; run reads the child's output)`)
 	fs.StringVar(&cfg.UI, "ui", "web", `UI to show while running the command: "web" or "top" (run only)`)
 	if err := fs.Parse(args); err != nil {

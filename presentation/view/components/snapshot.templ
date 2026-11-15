@@ -4,6 +4,7 @@ import "strconv"
 
 type SnapshotViewModel struct {
 	At             string
+	DumpAt         string
 	Window         string
 	ProcCount      int
 	ThreadCount    int
@@ -15,7 +16,13 @@ type SnapshotViewModel struct {
 	History        SparklineViewModel
 	TopOrigins     []OriginCountViewModel
 	LeakCheck      string
-	Leaks          []LeakViewModel
+	HeapLive       string
+	HeapGoal       string
+	GCPerSecond    string
+	CPUWaiting     string
+	IssueCount     int
+	ErrorCount     int
+	SlowCount      int
 }
 
 type GoroutineStateViewModel struct {
@@ -48,33 +55,61 @@ type OriginCountViewModel struct {
 	Origin string
 }
 
-type LeakViewModel struct {
-	Certainty   string
-	Count       int
-	Growth      string
-	LongestWait string
-	Origin      string
-}
-
-templ Snapshot(vm SnapshotViewModel) {
+// OverviewSnapshot は全体の様子を 1 画面で見せる。問題に気づいたら Issues へ進む
+templ OverviewSnapshot(vm SnapshotViewModel) {
 	<section class="panel">
 		<h2>Overview <span class="muted">{ vm.At }</span></h2>
 		<div class="stats">
+			<a class="stat stat-link" href="/issues">
+				<div class={ "value", templ.KV("error", vm.IssueCount > 0) }>{ strconv.Itoa(vm.IssueCount) }</div>
+				<div class="label">open issues</div>
+			</a>
+			@stat("goroutines", strconv.Itoa(vm.GoroutineCount))
+			@stat("errors (last minute)", strconv.Itoa(vm.ErrorCount))
+			@stat("slow requests (last minute)", strconv.Itoa(vm.SlowCount))
+			@stat("goroutines waiting for a P (avg)", vm.CPUWaiting)
+			@stat("heap live / GC goal", vm.HeapLive+" / "+vm.HeapGoal)
+			@stat("GC cycles / s", vm.GCPerSecond)
+		</div>
+	</section>
+	<div class="grid-2">
+		<section class="panel">
+			<h2>Goroutine count <span class="muted">last { strconv.Itoa(vm.History.Samples) } dumps, { strconv.Itoa(vm.History.Min) }–{ strconv.Itoa(vm.History.Max) }, latest dump { vm.DumpAt }</span></h2>
+			<svg class="sparkline" viewBox="0 0 100 100" preserveAspectRatio="none">
+				<polyline points={ vm.History.Points }></polyline>
+			</svg>
+			<div class="states">
+				for _, s := range vm.States {
+					<div class={ s.Class } style={ templ.SafeCSS("width:" + s.Percent) } title={ s.Label + ": " + strconv.Itoa(s.Count) }></div>
+				}
+			</div>
+			<div class="legend">
+				for _, s := range vm.States {
+					<span><i class={ s.Class }></i>{ s.Label } { strconv.Itoa(s.Count) }</span>
+				}
+			</div>
+		</section>
+		<section class="panel">
+			<h2>Top origins <span class="muted">runtime leak check: { vm.LeakCheck }</span></h2>
+			<table>
+				<tr><th>count</th><th>created by</th></tr>
+				for _, o := range vm.TopOrigins {
+					<tr><td>{ strconv.Itoa(o.Count) }</td><td class="origin">{ o.Origin }</td></tr>
+				}
+			</table>
+		</section>
+	</div>
+}
+
+// SchedulerSnapshot は GMP 再生の下に出す、観測窓の P ごとの様子
+templ SchedulerSnapshot(vm SnapshotViewModel) {
+	<section class="panel">
+		<h2>Window <span class="muted">{ vm.At }</span></h2>
+		<div class="stats">
 			@stat("P (GOMAXPROCS)", strconv.Itoa(vm.ProcCount))
 			@stat("M seen in trace", strconv.Itoa(vm.ThreadCount))
-			@stat("G total", strconv.Itoa(vm.GoroutineCount))
 			@stat("G created / exited", "+"+strconv.Itoa(vm.Created)+" / -"+strconv.Itoa(vm.Exited))
 			@stat("trace window", vm.Window)
-		</div>
-		<div class="states">
-			for _, s := range vm.States {
-				<div class={ s.Class } style={ templ.SafeCSS("width:" + s.Percent) } title={ s.Label + ": " + strconv.Itoa(s.Count) }></div>
-			}
-		</div>
-		<div class="legend">
-			for _, s := range vm.States {
-				<span><i class={ s.Class }></i>{ s.Label } { strconv.Itoa(s.Count) }</span>
-			}
 		</div>
 	</section>
 	<section class="panel">
@@ -91,43 +126,6 @@ templ Snapshot(vm SnapshotViewModel) {
 			}
 		</div>
 	</section>
-	<div class="grid-2">
-		<section class="panel">
-			<h2>Goroutine count <span class="muted">last { strconv.Itoa(vm.History.Samples) } polls, { strconv.Itoa(vm.History.Min) }–{ strconv.Itoa(vm.History.Max) }</span></h2>
-			<svg class="sparkline" viewBox="0 0 100 100" preserveAspectRatio="none">
-				<polyline points={ vm.History.Points }></polyline>
-			</svg>
-			<h2>Top origins</h2>
-			<table>
-				<tr><th>count</th><th>created by</th></tr>
-				for _, o := range vm.TopOrigins {
-					<tr><td>{ strconv.Itoa(o.Count) }</td><td class="origin">{ o.Origin }</td></tr>
-				}
-			</table>
-		</section>
-		<section class="panel">
-			<h2>Leaks <span class="muted">runtime leak check: { vm.LeakCheck }</span></h2>
-			if len(vm.Leaks) == 0 {
-				<p class="muted">none</p>
-			} else {
-				<table>
-					<tr><th></th><th>count</th><th>growth</th><th>longest wait</th><th>created by</th></tr>
-					for _, s := range vm.Leaks {
-						<tr>
-							<td>
-								<span class="badge kind">LEAK</span>
-								@CertaintyBadge(s.Certainty)
-							</td>
-							<td>{ strconv.Itoa(s.Count) }</td>
-							<td>{ s.Growth }</td>
-							<td>{ s.LongestWait }</td>
-							<td class="origin">{ s.Origin }</td>
-						</tr>
-					}
-				</table>
-			}
-		</section>
-	</div>
 }
 
 templ stat(label, value string) {

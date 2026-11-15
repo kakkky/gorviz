@@ -24,6 +24,10 @@ type LogReplayViewModel struct {
 	LevelClass  string
 	Message     string
 	Focus       string
+	Duration    string
+	// GoroutineURL はログを書いた G の Goroutine 画面。G が trace で特定できたときだけ埋まる
+	GoroutineURL   string
+	GoroutineLabel string
 	WindowLinks []LogReplayWindowLinkViewModel
 	ReplayJSON  string
 }
@@ -43,6 +47,12 @@ templ LogReplayFrame(vm LogReplayViewModel) {
 				<h2>Replay around</h2>
 				<p><span class="muted">{ vm.Time }</span> <span class={ "level " + vm.LevelClass }>{ vm.Level }</span> { vm.Message }</p>
 				<p class="muted">{ vm.Focus }</p>
+				if vm.Duration != "" {
+					<p class="muted">request duration { vm.Duration }</p>
+				}
+				if vm.GoroutineURL != "" {
+					<p><a href={ templ.SafeURL(vm.GoroutineURL) } data-turbo-frame="_top">{ vm.GoroutineLabel }</a></p>
+				}
 				<p class="window-links">
 					window:
 					for _, l := range vm.WindowLinks {

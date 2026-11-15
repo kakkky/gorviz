@@ -38,8 +38,9 @@ export default class extends Controller {
 
   connect() {
     this.playing = true
-    this.current = null
-    this.pending = null
+    // Stimulus は connect より先に target の接続 (windowTargetConnected) を呼ぶので、最初から HTML にある窓を上書きしない
+    this.current ??= null
+    this.pending ??= null
     this.lastFrame = null
     this.tick = this.tick.bind(this)
     this.frame = requestAnimationFrame(this.tick)
@@ -298,7 +299,7 @@ export default class extends Controller {
       const cx = x0 + i * COL_W + COL_W / 2
       const lrqTop = 120
       const lrqH = LRQ_MAX * STEP + 34
-      box(out, cx - COL_W / 2 + 8, lrqTop, COL_W - 16, lrqH, `local run queue (${p.lrq.length})`)
+      box(out, cx - COL_W / 2 + 8, lrqTop, COL_W - 16, lrqH, `local run queue (${p.lrq.length})`, 10)
       const shown = p.lrq.slice(0, LRQ_MAX)
       shown.forEach((g, j) => this.circle(out, cx, lrqTop + lrqH - R - 6 - j * STEP, g, "runnable"))
       if (p.lrq.length > LRQ_MAX) out.push(`<text x="${cx + R + 4}" y="${lrqTop + 30}" font-size="11" fill="#555">+${p.lrq.length - LRQ_MAX}</text>`)
@@ -357,14 +358,17 @@ export default class extends Controller {
     const s = this.gs.get(g)
     const tip = [`G${g}${leaked ? " (leaked)" : ""}${focused ? " (wrote the clicked log)" : ""}`, `entry: ${this.entries.get(g) || "?"}`]
     if (s?.fn) tip.push(`now at: ${s.fn}`)
-    out.push(`<g><title>${esc(tip.join("\n"))}</title><circle cx="${cx}" cy="${cy}" r="${R}" fill="${c.fill}" ${stroke}/>`)
-    out.push(`<text x="${cx}" y="${cy + 3}" font-size="${g > 9999 ? 6 : 8}" text-anchor="middle" fill="${text}">G${g}</text></g>`)
+    // G を選ぶと、再生中の時点でその G の Goroutine 画面に移る
+    const href = this.current.startedAtNs > 0 ? `/goroutines/${g}?at=${Math.round(this.current.startedAtNs + this.t)}` : null
+    out.push(href ? `<a href="${href}" class="g-link">` : "<g>")
+    out.push(`<title>${esc(tip.join("\n"))}</title><circle cx="${cx}" cy="${cy}" r="${R}" fill="${c.fill}" ${stroke}/>`)
+    out.push(`<text x="${cx}" y="${cy + 3}" font-size="${g > 9999 ? 6 : 8}" text-anchor="middle" fill="${text}">G${g}</text>${href ? "</a>" : "</g>"}`)
   }
 }
 
-function box(out, x, y, w, h, label) {
+function box(out, x, y, w, h, label, fontSize = 14) {
   out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#777" stroke-dasharray="4 3"/>`)
-  out.push(`<text x="${x + 6}" y="${y + 18}" font-size="14" font-weight="700">${esc(label)}</text>`)
+  out.push(`<text x="${x + 6}" y="${y + 18}" font-size="${fontSize}" font-weight="700">${esc(label)}</text>`)
 }
 
 function triangle(out, cx, cy, size, status, label) {

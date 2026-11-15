@@ -96,7 +96,7 @@ header nav a:hover { color: var(--accent); }
 .replay-log .log-app { color: var(--warn); }
 .replay-log .log-focus { color: #6fa8ff; font-weight: 700; }
 
-.explore { display: grid; gap: 16px; }
+.logs-page { display: grid; gap: 16px; }
 .log-filter { display: flex; gap: 8px; margin-bottom: 12px; }
 .log-filter input, .log-filter select, .log-filter button { background: #0b0d11; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; font: inherit; }
 .log-filter input { flex: 1; }
@@ -121,4 +121,27 @@ header nav a:hover { color: var(--accent); }
 .level.debug, .level.unknown { background: #2c3445; color: var(--muted); }
 .window-links a { margin-left: 8px; color: var(--muted); }
 .window-links a.active { color: var(--accent); font-weight: 700; }
-.explore-logs { max-height: 60vh; overflow-y: auto; }
+.logs-list { max-height: 60vh; overflow-y: auto; }
+
+header nav a.active { color: var(--accent); font-weight: 700; }
+.page-title { margin: 0; font-size: 16px; }
+.stat-link { text-decoration: none; color: inherit; }
+.stat .value.error { color: var(--danger); }
+.badge.cause { background: var(--accent); color: #0f1115; margin-right: 4px; }
+.goroutine-title { font-size: 16px; }
+table.kv th { width: 140px; }
+table.breakdown td.bar-cell { width: 50%; }
+table.breakdown .bar { height: 12px; border-radius: 3px; background: var(--muted); }
+table.breakdown tr.primary td { font-weight: 700; }
+table.breakdown .bar.cause-RUNNING { background: var(--g-running); }
+table.breakdown .bar.cause-CPU_WAIT { background: var(--g-runnable); }
+table.breakdown .bar.cause-BLOCKED { background: var(--danger); }
+table.breakdown .bar.cause-IO_WAIT { background: var(--g-syscall); }
+table.breakdown .bar.cause-CGO { background: #e0a3ff; }
+table.breakdown .bar.cause-SLEEP { background: var(--g-waiting); }
+table.breakdown .bar.cause-GC { background: var(--warn); }
+table.issues td.links a { margin-right: 8px; }
+.sparkline.small { width: 120px; height: 24px; }
+svg a.g-link { cursor: pointer; }
+
+a { color: var(--accent); }

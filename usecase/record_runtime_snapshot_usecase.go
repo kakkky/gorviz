@@ -75,9 +75,13 @@ type RecordRuntimeSnapshotUsecaseOutput struct {
 // RuntimeSnapshot は観測 1 回分の結果。録画ループが定期的に作って置き、Live / CLI はそれを読むだけにする。
 // goroutine dump は毎回は取らないので、DumpAt はスナップショットの時刻 At より古いことがある
 type RuntimeSnapshot struct {
-	At               time.Time
-	DumpAt           time.Time
-	Timeline         domain.SchedulerTimeline
+	At       time.Time
+	DumpAt   time.Time
+	Timeline domain.SchedulerTimeline
+	// TimelineStartedAt は Timeline の時刻 0 に当たる壁時計の時刻
+	TimelineStartedAt time.Time
+	// Runtime は直近の録画の区切り 1 つ分から見た、ヒープ・GC・CPU 待ちの量
+	Runtime          RuntimeLoad
 	GoroutineCount   int
 	StateCounts      domain.GoroutineStateCounts
 	TopOrigins       []RuntimeSnapshotOriginCount
@@ -86,6 +90,29 @@ type RuntimeSnapshot struct {
 	LeakedGoroutines []domain.GoroutineID
 	// GoroutineHistory は直近の観測ごとの G の総数。リークは「右肩上がり」で見えるので推移を返す
 	GoroutineHistory []int
+}
+
+type RuntimeLoad struct {
+	HeapLiveBytes uint64
+	HeapGoalBytes uint64
+	GCPerSecond   float64
+	// CPUWaiting は P を待っている G の数の平均
+	CPUWaiting float64
+}
+
+func runtimeLoadOf(c domain.TraceChunk) RuntimeLoad {
+	w := c.Timeline.Window
+	if w <= 0 {
+		return RuntimeLoad{}
+	}
+	load := RuntimeLoad{
+		GCPerSecond: float64(c.Timeline.GCCycles) / w.Seconds(),
+		CPUWaiting:  float64(c.Timeline.TotalByCause()[domain.CauseCPUWait]) / float64(w),
+	}
+	if n := len(c.Timeline.Heap); n > 0 {
+		load.HeapLiveBytes, load.HeapGoalBytes = c.Timeline.Heap[n-1].LiveBytes, c.Timeline.Heap[n-1].GoalBytes
+	}
+	return load
 }
 
 type RuntimeSnapshotOriginCount struct {
@@ -119,10 +146,16 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRunti
 	}
 
 	// trace は録画ループが取り続けているので、ここでは取らずに最新の区切りの末尾を使う
-	var timeline domain.SchedulerTimeline
+	var (
+		timeline  domain.SchedulerTimeline
+		startedAt time.Time
+		load      RuntimeLoad
+	)
 	if chunk, ok := us.traceRecording.Latest(); ok {
 		w := chunk.Timeline.Window
 		timeline = chunk.Timeline.Slice(w-us.traceWindow, w)
+		startedAt = chunk.StartedAt.Add(max(w-us.traceWindow, 0))
+		load = runtimeLoadOf(chunk)
 		timeline.Entries = maps.Clone(timeline.Entries)
 		timeline.EnrichFromDump(goroutines)
 	}
@@ -135,16 +168,18 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRunti
 	}
 
 	snapshot := RuntimeSnapshot{
-		At:               in.Now,
-		DumpAt:           lastDumpAt,
-		Timeline:         timeline,
-		GoroutineCount:   len(goroutines),
-		StateCounts:      domain.CountGoroutineStates(goroutines),
-		TopOrigins:       topOrigins(goroutines, topOriginsLimit),
-		Leaks:            domain.DetectLeaks(history.samples, goroutines, us.leakPolicy),
-		LeakCheckStatus:  leakCheckStatus,
-		GoroutineHistory: slices.Clone(history.totals),
-		LeakedGoroutines: leakedIDs(goroutines),
+		At:                in.Now,
+		DumpAt:            lastDumpAt,
+		TimelineStartedAt: startedAt,
+		Runtime:           load,
+		Timeline:          timeline,
+		GoroutineCount:    len(goroutines),
+		StateCounts:       domain.CountGoroutineStates(goroutines),
+		TopOrigins:        topOrigins(goroutines, topOriginsLimit),
+		Leaks:             domain.DetectLeaks(history.samples, goroutines, us.leakPolicy),
+		LeakCheckStatus:   leakCheckStatus,
+		GoroutineHistory:  slices.Clone(history.totals),
+		LeakedGoroutines:  leakedIDs(goroutines),
 	}
 	us.inMemoryKVS.Set(latestSnapshotKey, snapshot)
 	return RecordRuntimeSnapshotUsecaseOutput{Snapshot: snapshot}, nil

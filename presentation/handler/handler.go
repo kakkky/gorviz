@@ -32,19 +32,31 @@ func (h *Handler) Routes() []Route {
 	return []Route{
 		{
 			Pattern: "GET /{$}",
-			Handler: NewGetDashboardHandler(h.cfg.TargetURL),
+			Handler: NewGetOverviewHandler(h.cfg.TargetURL),
+		},
+		{
+			Pattern: "GET /issues",
+			Handler: NewGetIssuesHandler(h.usecase.NewListIssuesUsecase(), h.cfg.TargetURL),
+		},
+		{
+			Pattern: "GET /logs",
+			Handler: NewGetLogsHandler(h.usecase.NewListLogsUsecase(), h.cfg.TargetURL),
+		},
+		{
+			Pattern: "GET /logs/{id}/replay",
+			Handler: NewGetLogReplayHandler(h.usecase.NewGetLogReplayUsecase()),
+		},
+		{
+			Pattern: "GET /scheduler",
+			Handler: NewGetSchedulerHandler(h.cfg.TargetURL),
+		},
+		{
+			Pattern: "GET /goroutines/{id}",
+			Handler: NewGetGoroutineHandler(h.usecase.NewGetGoroutineUsecase(), h.cfg.TargetURL),
 		},
 		{
 			Pattern: "GET /snapshots/stream",
-			Handler: NewGetSnapshotStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewGetSchedTraceUsecase(), h.cfg.Refresh, h.cfg.TimelineBuckets),
-		},
-		{
-			Pattern: "GET /explore",
-			Handler: NewGetExploreHandler(h.usecase.NewListLogsUsecase(), h.cfg.TargetURL),
-		},
-		{
-			Pattern: "GET /explore/logs/{id}/replay",
-			Handler: NewGetLogReplayHandler(h.usecase.NewGetLogReplayUsecase()),
+			Handler: NewGetSnapshotStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewGetSchedTraceUsecase(), h.usecase.NewListIssuesUsecase(), h.cfg.Refresh, h.cfg.TimelineBuckets),
 		},
 		{
 			Pattern: "GET /assets/",

@@ -3,13 +3,12 @@ package pages
 import (
 	"github.com/kakkky/hotwire-go/turbo"
 
-	"github.com/kakkky/gorviz/assets"
 	"github.com/kakkky/gorviz/presentation/view/components"
 	"github.com/kakkky/gorviz/presentation/view/layout"
 	"github.com/kakkky/gorviz/presentation/view/partials"
 )
 
-type ExploreViewModel struct {
+type LogsViewModel struct {
 	TargetURL string
 	Query     string
 	Level     string
@@ -17,12 +16,12 @@ type ExploreViewModel struct {
 	Logs      components.LogListViewModel
 }
 
-templ Explore(vm ExploreViewModel) {
-	@layout.Base(vm.TargetURL, []string{assets.GMPReplayController.Path}) {
-		<div class="explore">
-			<section class="panel explore-logs">
+templ Logs(vm LogsViewModel) {
+	@layout.Base(vm.TargetURL, "Logs") {
+		<div class="logs-page">
+			<section class="panel logs-list">
 				<h2>Logs</h2>
-				<form method="get" action="/explore" class="log-filter" data-turbo-frame={ partials.LogListFrameID }>
+				<form method="get" action="/logs" class="log-filter" data-turbo-frame={ partials.LogListFrameID }>
 					<input type="search" name="q" value={ vm.Query } placeholder="search text"/>
 					<select name="level">
 						<option value="">all levels</option>

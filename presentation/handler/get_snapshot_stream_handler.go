@@ -21,14 +21,16 @@ import (
 type GetSnapshotStreamHandler struct {
 	getRuntimeSnapshotUsecase *usecase.GetRuntimeSnapshotUsecase
 	getSchedTraceUsecase      *usecase.GetSchedTraceUsecase
+	listIssuesUsecase         *usecase.ListIssuesUsecase
 	interval                  time.Duration
 	buckets                   int
 }
 
-func NewGetSnapshotStreamHandler(getRuntimeSnapshotUsecase *usecase.GetRuntimeSnapshotUsecase, getSchedTraceUsecase *usecase.GetSchedTraceUsecase, interval time.Duration, buckets int) *GetSnapshotStreamHandler {
+func NewGetSnapshotStreamHandler(getRuntimeSnapshotUsecase *usecase.GetRuntimeSnapshotUsecase, getSchedTraceUsecase *usecase.GetSchedTraceUsecase, listIssuesUsecase *usecase.ListIssuesUsecase, interval time.Duration, buckets int) *GetSnapshotStreamHandler {
 	return &GetSnapshotStreamHandler{
 		getRuntimeSnapshotUsecase: getRuntimeSnapshotUsecase,
 		getSchedTraceUsecase:      getSchedTraceUsecase,
+		listIssuesUsecase:         listIssuesUsecase,
 		interval:                  interval,
 		buckets:                   buckets,
 	}
@@ -62,12 +64,16 @@ func (h *GetSnapshotStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Req
 				slog.WarnContext(ctx, "get runtime snapshot", slog.Any("err", err))
 			}
 		} else {
-			replayJSON, err := newGMPReplayJSON(out.Snapshot.Timeline, out.Snapshot.LeakedGoroutines).marshal()
+			replayJSON, err := newGMPReplayJSON(out.Snapshot.Timeline, out.Snapshot.LeakedGoroutines, out.Snapshot.TimelineStartedAt).marshal()
 			if err != nil {
 				slog.ErrorContext(ctx, "encode gmp replay", slog.Any("err", err))
 				return
 			}
-			if err := sse.Write(ctx, partials.SnapshotStreamUpdate(toSnapshotViewModel(out.Snapshot, h.buckets), replayJSON)); err != nil {
+			vm := toSnapshotViewModel(out.Snapshot, h.buckets)
+			if issues, err := h.listIssuesUsecase.Exec(ctx, usecase.ListIssuesUsecaseInput{Now: time.Now()}); err == nil {
+				vm.IssueCount, vm.ErrorCount, vm.SlowCount = len(issues.Issues), issues.ErrorsLastMinute, issues.SlowLastMinute
+			}
+			if err := sse.Write(ctx, partials.SnapshotStreamUpdate(vm, replayJSON)); err != nil {
 				return
 			}
 		}
@@ -100,6 +106,11 @@ func toSnapshotViewModel(out usecase.RuntimeSnapshot, buckets int) components.Sn
 		Exited:         tl.GoroutinesDestroyed,
 		History:        toSparklineViewModel(out.GoroutineHistory),
 		LeakCheck:      string(out.LeakCheckStatus),
+		DumpAt:         out.DumpAt.Format(time.TimeOnly),
+		HeapLive:       formatBytes(out.Runtime.HeapLiveBytes),
+		HeapGoal:       formatBytes(out.Runtime.HeapGoalBytes),
+		GCPerSecond:    fmt.Sprintf("%.1f", out.Runtime.GCPerSecond),
+		CPUWaiting:     fmt.Sprintf("%.2f", out.Runtime.CPUWaiting),
 	}
 
 	for _, s := range []struct {
@@ -145,24 +156,15 @@ func toSnapshotViewModel(out usecase.RuntimeSnapshot, buckets int) components.Sn
 	for _, o := range out.TopOrigins {
 		vm.TopOrigins = append(vm.TopOrigins, components.OriginCountViewModel{Count: o.Count, Origin: string(o.Origin)})
 	}
-	for _, s := range out.Leaks {
-		vm.Leaks = append(vm.Leaks, components.LeakViewModel{
-			Certainty:   string(s.Certainty),
-			Count:       s.Count,
-			Growth:      fmt.Sprintf("%+d", s.Growth),
-			LongestWait: formatWait(s.LongestWait),
-			Origin:      string(s.Origin),
-		})
-	}
 	return vm
 }
 
-// goroutine dump の待機時間は分単位でしか出ないので、1 分未満は区別できない
-func formatWait(d time.Duration) string {
-	if d < time.Minute {
-		return "<1m"
+func formatBytes(b uint64) string {
+	const mib = 1 << 20
+	if b == 0 {
+		return "-"
 	}
-	return fmt.Sprintf("≥%dm", int(d.Minutes()))
+	return fmt.Sprintf("%.1f MiB", float64(b)/mib)
 }
 
 // goroutineColor は G の ID から色相を決める。黄金角ずつずらして、ID が近い G 同士でも色が離れるようにする

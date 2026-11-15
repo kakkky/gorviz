@@ -17,24 +17,24 @@ import (
 	"github.com/kakkky/gorviz/usecase"
 )
 
-const exploreLogLimit = 300
+const logsLimit = 300
 
 var logLevels = []domain.LogLevel{domain.LogLevelError, domain.LogLevelWarn, domain.LogLevelInfo, domain.LogLevelDebug}
 
-type GetExploreHandler struct {
+type GetLogsHandler struct {
 	listLogsUsecase *usecase.ListLogsUsecase
 	targetURL       string
 }
 
-func NewGetExploreHandler(listLogsUsecase *usecase.ListLogsUsecase, targetURL string) *GetExploreHandler {
-	return &GetExploreHandler{listLogsUsecase: listLogsUsecase, targetURL: targetURL}
+func NewGetLogsHandler(listLogsUsecase *usecase.ListLogsUsecase, targetURL string) *GetLogsHandler {
+	return &GetLogsHandler{listLogsUsecase: listLogsUsecase, targetURL: targetURL}
 }
 
-func (h *GetExploreHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Content-Type", htmlContentType)
 	ctx := r.Context()
 	query, level := r.URL.Query().Get("q"), domain.LogLevel(r.URL.Query().Get("level"))
-	out, err := h.listLogsUsecase.Exec(ctx, usecase.ListLogsUsecaseInput{Query: query, Level: level, Limit: exploreLogLimit})
+	out, err := h.listLogsUsecase.Exec(ctx, usecase.ListLogsUsecaseInput{Query: query, Level: level, Limit: logsLimit})
 	if err != nil {
 		slog.ErrorContext(ctx, "list logs", slog.Any("err", err))
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -48,10 +48,10 @@ func (h *GetExploreHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		for i, lv := range logLevels {
 			levels[i] = string(lv)
 		}
-		page = pages.Explore(pages.ExploreViewModel{TargetURL: h.targetURL, Query: query, Level: string(level), Levels: levels, Logs: logs})
+		page = pages.Logs(pages.LogsViewModel{TargetURL: h.targetURL, Query: query, Level: string(level), Levels: levels, Logs: logs})
 	}
 	if err := page.Render(ctx, rw); err != nil {
-		slog.ErrorContext(ctx, "render explore", slog.Any("err", err))
+		slog.ErrorContext(ctx, "render logs", slog.Any("err", err))
 	}
 }
 
@@ -94,6 +94,7 @@ func toLogListViewModel(out usecase.ListLogsUsecaseOutput) components.LogListVie
 			Replayable: l.Replayable,
 			ReplayURL:  logReplayURL(l.Line.ID, defaultReplayHalfWindow),
 			Exact:      l.Line.HasTraceSeq,
+			Duration:   formatDuration(l.Line),
 		})
 	}
 	return vm

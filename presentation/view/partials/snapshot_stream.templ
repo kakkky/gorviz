@@ -8,7 +8,8 @@ import (
 
 const (
 	SnapshotStreamSourceID = "snapshot-stream-source"
-	SnapshotID             = "snapshot"
+	OverviewSnapshotID     = "overview-snapshot"
+	SchedulerSnapshotID    = "scheduler-snapshot"
 	SnapshotErrorID        = "snapshot-error"
 	GMPReplayDataID        = "gmp-replay-data"
 	SchedTraceID           = "schedtrace"
@@ -19,8 +20,12 @@ templ SnapshotStreamUpdate(vm components.SnapshotViewModel, replayJSON string) {
 	@turbo.StreamUpdate(GMPReplayDataID) {
 		@components.GMPReplayData(replayJSON)
 	}
-	@turbo.StreamUpdate(SnapshotID) {
-		@components.Snapshot(vm)
+	// 同じ stream を Overview と Scheduler の両方で読む。開いている画面にない要素への更新は Turbo が無視する
+	@turbo.StreamUpdate(OverviewSnapshotID) {
+		@components.OverviewSnapshot(vm)
+	}
+	@turbo.StreamUpdate(SchedulerSnapshotID) {
+		@components.SchedulerSnapshot(vm)
 	}
 }
 

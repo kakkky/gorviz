@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/kakkky/gorviz/domain"
 )
@@ -11,14 +12,16 @@ import (
 //   - P: [atNs, 1, proc, status (0 = idle, 1 = running), thread (-1 = なし)]
 //   - entries: [goroutine, functions の添字] の組。G ごとの入口の関数
 type gmpReplayJSON struct {
-	WindowNs  int64     `json:"windowNs"`
-	Procs     []int64   `json:"procs"`
-	Reasons   []string  `json:"reasons"`
-	Functions []string  `json:"functions"`
-	Entries   [][]int64 `json:"entries"`
-	Events    [][]int64 `json:"events"`
-	Leaked    []int64   `json:"leaked"`
-	Truncated bool      `json:"truncated"`
+	WindowNs int64 `json:"windowNs"`
+	// StartedAtNs は窓の時刻 0 に当たる Unix ナノ秒。G をクリックしたとき Goroutine 画面に時刻を渡すのに使う
+	StartedAtNs int64     `json:"startedAtNs"`
+	Procs       []int64   `json:"procs"`
+	Reasons     []string  `json:"reasons"`
+	Functions   []string  `json:"functions"`
+	Entries     [][]int64 `json:"entries"`
+	Events      [][]int64 `json:"events"`
+	Leaked      []int64   `json:"leaked"`
+	Truncated   bool      `json:"truncated"`
 	// Logs と Focus は Explore でログから再生するときだけ入る
 	Logs  []gmpReplayLogJSON  `json:"logs"`
 	Focus *gmpReplayFocusJSON `json:"focus,omitempty"`
@@ -46,17 +49,18 @@ var placeCodes = map[domain.GoroutinePlaceKind]int64{
 	domain.PlaceDead:        5,
 }
 
-func newGMPReplayJSON(tl domain.SchedulerTimeline, leaked []domain.GoroutineID) gmpReplayJSON {
+func newGMPReplayJSON(tl domain.SchedulerTimeline, leaked []domain.GoroutineID, startedAt time.Time) gmpReplayJSON {
 	r := gmpReplayJSON{
-		Logs:      []gmpReplayLogJSON{},
-		WindowNs:  int64(tl.Window),
-		Procs:     []int64{},
-		Reasons:   []string{},
-		Functions: []string{},
-		Entries:   make([][]int64, 0, len(tl.Entries)),
-		Events:    make([][]int64, 0, len(tl.Events)),
-		Leaked:    []int64{},
-		Truncated: tl.EventsTruncated,
+		StartedAtNs: startedAt.UnixNano(),
+		Logs:        []gmpReplayLogJSON{},
+		WindowNs:    int64(tl.Window),
+		Procs:       []int64{},
+		Reasons:     []string{},
+		Functions:   []string{},
+		Entries:     make([][]int64, 0, len(tl.Entries)),
+		Events:      make([][]int64, 0, len(tl.Events)),
+		Leaked:      []int64{},
+		Truncated:   tl.EventsTruncated,
 	}
 	for _, l := range tl.SortedProcs() {
 		r.Procs = append(r.Procs, int64(l.Proc))

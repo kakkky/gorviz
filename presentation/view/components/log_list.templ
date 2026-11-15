@@ -28,7 +28,8 @@ type LogRowViewModel struct {
 	Replayable bool
 	ReplayURL  string
 	// Exact はログを書いた G まで trace で特定できる (gorviz の slog ハンドラ経由の) 行か
-	Exact bool
+	Exact    bool
+	Duration string
 }
 
 templ LogList(vm LogListViewModel) {
@@ -56,9 +57,10 @@ templ LogList(vm LogListViewModel) {
 				</td>
 				<td class="muted">
 					if l.Exact {
-						<span title="the goroutine that wrote this line is identified through gorviz's slog handler">G-linked</span>
+						<span title="the goroutine that wrote this line is identified exactly through gorviz's slog handler">G: FACT</span>
 					}
 				</td>
+				<td class="muted">{ l.Duration }</td>
 				<td class="muted">{ l.Source }</td>
 			</tr>
 		}
