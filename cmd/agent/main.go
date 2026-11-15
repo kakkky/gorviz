@@ -48,11 +48,8 @@ func run(args []string) error {
 		fmt.Fprint(os.Stderr, usage)
 		return err
 	}
-	// 省いたら hostname にし、レプリカごとに別の名前にする (同じ名前の agent は server で 1 つに束ねられてしまう)
-	if cfg.Name == "" {
-		if cfg.Name, err = os.Hostname(); err != nil {
-			return err
-		}
+	if cfg.Name, err = agent.InstanceName(ctx, cfg.Name); err != nil {
+		return err
 	}
 	// daemon 型: 同じホストの複数の対象を、対象ごとに別の agent として server につなぐ
 	targets := strings.Split(cfg.TargetURL, ",")

@@ -57,7 +57,7 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.StringVar(&cfg.TargetURL, "target", "http://localhost:6060", "base URL of the target's net/http/pprof server")
 	fs.StringVar(&cfg.HTTPAddr, "addr", "localhost:7070", "listen address of the GUI and the API (server)")
 	fs.StringVar(&cfg.AgentAddr, "agent-addr", "localhost:7071", "TCP address where the server waits for agents and agents connect to")
-	fs.StringVar(&cfg.Name, "name", "", "name of the agent (default: the hostname)")
+	fs.StringVar(&cfg.Name, "name", "", "name of the agent (default: the hostname; on Cloud Run the instance ID is appended)")
 	fs.StringVar(&cfg.SaveDir, "save-dir", "", "directory where the server saves recordings around issues (empty: memory only)")
 	fs.DurationVar(&cfg.Refresh, "refresh", 2*time.Second, "refresh interval of the live views (does not touch the target)")
 	fs.DurationVar(&cfg.DumpInterval, "dump-interval", time.Minute, "interval of goroutine dumps (each dump stops the world briefly)")

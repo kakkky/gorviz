@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"sync/atomic"
 	"time"
 
@@ -25,7 +24,7 @@ var running atomic.Pointer[Agent]
 type Options struct {
 	// Server は gorviz-server が agent を待ち受けるアドレス (gorviz-server の -agent-addr)
 	Server string
-	// Name は agent の名前。server はこの名前で束ねる。省くと hostname (レプリカごとに別の名前になる)
+	// Name は agent の名前。server はこの名前で束ねる。省くと hostname (レプリカごとに別の名前になる)。Cloud Run では instance ID を足す
 	Name string
 	// DumpInterval は goroutine dump を取る間隔。dump は全 G を止める (STW) ので間を空ける。省くと 1 分
 	DumpInterval time.Duration
@@ -44,7 +43,7 @@ type Agent struct {
 
 // Start は agent を裏で動かし始める。ctx が終わるか Stop を呼ぶまで、録画と server へのつなぎを回す
 func Start(ctx context.Context, opt Options) (*Agent, error) {
-	cfg, err := configOf(opt)
+	cfg, err := configOf(ctx, opt)
 	if err != nil {
 		return nil, err
 	}
@@ -102,16 +101,14 @@ func (a *Agent) pumpLogs(ctx context.Context, w *io.PipeWriter) {
 	}
 }
 
-func configOf(opt Options) (*config.Config, error) {
+func configOf(ctx context.Context, opt Options) (*config.Config, error) {
 	cfg, err := config.NewConfig("gorviz", nil)
 	if err != nil {
 		return nil, err
 	}
-	cfg.AgentAddr, cfg.Name, cfg.TargetURL = opt.Server, opt.Name, "in-process"
-	if cfg.Name == "" {
-		if cfg.Name, err = os.Hostname(); err != nil {
-			return nil, err
-		}
+	cfg.AgentAddr, cfg.TargetURL = opt.Server, "in-process"
+	if cfg.Name, err = agent.InstanceName(ctx, opt.Name); err != nil {
+		return nil, err
 	}
 	if opt.DumpInterval > 0 {
 		cfg.DumpInterval = opt.DumpInterval
