@@ -1,13 +1,13 @@
 TEMPL_VERSION := v0.3.1070
 
-.PHONY: build test templ.gen gen example.leaky example.library overhead up
+.PHONY: build test templ.gen gen example.leaky example.library overhead launcher.up
 
-# gorviz (CLI)・gorviz-agent・gorviz-server・gorviz-tui・gorviz-mcp を bin/ に作る。gorviz up は同じディレクトリの agent と server を起動する
+# gorviz (CLI)・gorviz-launcher・gorviz-agent・gorviz-server・gorviz-mcp を bin/ に作る。gorviz-launcher は同じディレクトリの agent と server を起動する
 build:
 	go build -o bin/gorviz ./cmd/cli
+	go build -o bin/gorviz-launcher ./cmd/launcher
 	go build -o bin/gorviz-agent ./cmd/agent
 	go build -o bin/gorviz-server ./cmd/server
-	go build -o bin/gorviz-tui ./cmd/tui
 	go build -o bin/gorviz-mcp ./cmd/mcp
 
 test:
@@ -18,10 +18,9 @@ templ.gen:
 
 gen: templ.gen
 
-# 動作確認用の観測対象を gorviz の下で起動する。リークし続け、ときどきロック待ちで遅いリクエストを出す
-up: build
-	go build -o bin/leaky ./example/leaky
-	./bin/gorviz up -save-dir bin/recordings -dump-interval 5s -leak-check-every 2 -- ./bin/leaky
+# ローカルで server と agent をまとめて起動する。対象 (localhost:6060) は example.leaky などで別に起動しておく
+launcher.up: build
+	./bin/gorviz-launcher -target http://localhost:6060 -save-dir bin/recordings -dump-interval 5s -leak-check-every 2
 
 # 動作確認用の観測対象。localhost:6060 で pprof を公開する (agent を別に起動して観測する)
 example.leaky:
