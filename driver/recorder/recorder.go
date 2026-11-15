@@ -21,6 +21,9 @@ type Recorder struct {
 	recordTraceChunkUsecase      *usecase.RecordTraceChunkUsecase
 	recordRuntimeSnapshotUsecase *usecase.RecordRuntimeSnapshotUsecase
 	refresh                      time.Duration
+	intermittent                 bool
+	recordEvery                  time.Duration
+	recordFor                    time.Duration
 }
 
 func NewRecorder(cfg *config.Config, uc *usecase.UseCase) *Recorder {
@@ -28,6 +31,9 @@ func NewRecorder(cfg *config.Config, uc *usecase.UseCase) *Recorder {
 		recordTraceChunkUsecase:      uc.NewRecordTraceChunkUsecase(),
 		recordRuntimeSnapshotUsecase: uc.NewRecordRuntimeSnapshotUsecase(),
 		refresh:                      cfg.Refresh,
+		intermittent:                 cfg.RecordMode == "intermittent",
+		recordEvery:                  cfg.RecordEvery,
+		recordFor:                    cfg.RecordFor,
 	}
 }
 
@@ -39,14 +45,21 @@ func (r *Recorder) Run(ctx context.Context) error {
 	})
 }
 
+// recordTraces は常時なら区切りを間を空けずに取り続ける。間欠なら recordEvery ごとに recordFor の間だけ取る
 func (r *Recorder) recordTraces(ctx context.Context) error {
 	for ctx.Err() == nil {
-		if _, err := r.recordTraceChunkUsecase.Exec(ctx, usecase.RecordTraceChunkUsecaseInput{}); err != nil {
-			if ctx.Err() != nil {
-				return nil
+		started := time.Now()
+		for ctx.Err() == nil && (!r.intermittent || time.Since(started) < r.recordFor) {
+			if _, err := r.recordTraceChunkUsecase.Exec(ctx, usecase.RecordTraceChunkUsecaseInput{}); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				slog.WarnContext(ctx, "record trace chunk", slog.Any("err", err))
+				sleep(ctx, retryInterval)
 			}
-			slog.WarnContext(ctx, "record trace chunk", slog.Any("err", err))
-			sleep(ctx, retryInterval)
+		}
+		if r.intermittent {
+			sleep(ctx, r.recordEvery-time.Since(started))
 		}
 	}
 	return nil

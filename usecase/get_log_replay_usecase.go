@@ -56,7 +56,7 @@ func (us *GetLogReplayUsecase) Exec(_ context.Context, in GetLogReplayUsecaseInp
 	}
 	chunk, focus, ok := us.locate(line)
 	if !ok {
-		return GetLogReplayUsecaseOutput{}, domain.ErrNotFound.With("the trace around this log is not recorded (outside the retention, or before recording started)")
+		return GetLogReplayUsecaseOutput{}, domain.ErrNotFound.With("the trace around this log is not recorded (dropped from the ring buffer, before recording started, or outside the intermittent recording)")
 	}
 
 	from := max(focus.At-in.Before, 0)

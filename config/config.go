@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -26,7 +27,11 @@ type Config struct {
 	ChunkDuration time.Duration
 	// TraceBufferBytes は録画のリングバッファの上限。時間ではなくバイト数で決め、超えたら古い区切りから捨てる
 	TraceBufferBytes int64
-	MaxLogLines      int
+	// RecordMode は trace の録り方。always (既定) は間を空けずに録り続ける。intermittent は RecordEvery ごとに RecordFor だけ録り、負荷の総量を減らす代わりに問題の瞬間を録り逃すことがある
+	RecordMode  string
+	RecordEvery time.Duration
+	RecordFor   time.Duration
+	MaxLogLines int
 	// DurationKeys はログの所要時間として読むキー。JSON の数値は slog の既定と同じくナノ秒、文字列は "1.2s" の形で読む
 	DurationKeys []string
 	// SlowRequest を超える所要時間のログを遅いリクエストとみなす
@@ -58,6 +63,9 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.DurationVar(&cfg.HTTPTimeout, "http-timeout", 10*time.Second, "timeout of each request to the target")
 	fs.IntVar(&cfg.TimelineBuckets, "buckets", 100, "number of columns of the P timeline")
 	fs.DurationVar(&cfg.ChunkDuration, "chunk", 2*time.Second, "length of each recorded execution trace chunk")
+	fs.StringVar(&cfg.RecordMode, "record-mode", "always", `how to record the trace: "always" or "intermittent"`)
+	fs.DurationVar(&cfg.RecordEvery, "record-every", 15*time.Minute, "interval of recording in the intermittent mode")
+	fs.DurationVar(&cfg.RecordFor, "record-for", time.Minute, "length of each recording in the intermittent mode")
 	traceBufferMiB := fs.Int64("trace-buffer-mib", 256, "upper bound of the recorded trace ring buffer in MiB (raw trace and its parsed events)")
 	fs.IntVar(&cfg.MaxLogLines, "max-logs", 50_000, "upper bound of log lines kept in memory")
 	durationKeys := fs.String("duration-keys", "duration,latency,elapsed", "comma separated log keys read as the request duration")
@@ -73,6 +81,9 @@ func NewConfig(name string, args []string) (*Config, error) {
 	}
 	cfg.Command = fs.Args()
 	cfg.TraceBufferBytes = *traceBufferMiB << 20
+	if cfg.RecordMode != "always" && cfg.RecordMode != "intermittent" {
+		return nil, fmt.Errorf(`-record-mode must be "always" or "intermittent", got %q`, cfg.RecordMode)
+	}
 	for k := range strings.SplitSeq(*durationKeys, ",") {
 		if k = strings.TrimSpace(k); k != "" {
 			cfg.DurationKeys = append(cfg.DurationKeys, k)

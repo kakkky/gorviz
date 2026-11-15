@@ -110,7 +110,7 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	}
 
 	if !out.HasReplay {
-		vm.NoReplay = "the trace at this time is not recorded (outside the retention, or between recorded chunks)"
+		vm.NoReplay = "the trace at this time is not recorded (dropped from the ring buffer, between recorded chunks, or outside the intermittent recording)"
 		render()
 		return
 	}
