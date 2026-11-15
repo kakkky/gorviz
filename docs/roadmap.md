@@ -21,6 +21,13 @@
 - TUI で GUI とおおむね同じ画面を見られるようにする (今は Scheduler と Overview の一部だけ)
 - Goroutine から「その G を含む Issue」「前後のログ (時刻で絞った Logs)」に戻る導線
 
+## 実測
+
+`go run ./example/overhead` (Apple Silicon、GOMAXPROCS=8、2026-11-15) の結果。CPU・channel・割り当て・ロックを混ぜた仕事を trace なし / ありで交互に回した。
+
+- execution trace を取り続けたときの処理数の低下: 平均 2.4% (回ごとに -1〜6% とばらつく)。目安の 1〜2% より少し大きいが同程度
+- goroutine dump (`debug=2`) にかかる時間: 待機中の G が 1,000 で 2.5ms、10,000 で 70ms、100,000 で 780ms。G 1 つあたり約 7µs で、Datadog の目安 (約 1µs) より重い。`debug=2` は全 G のスタックを文字にする間ずっと世界を止めるため。G が多い対象では `-dump-interval` を長くするか、軽い形式 (`debug=1` や proto) に切り替える必要がある (未着手)
+
 ## 未着手
 
 上から順に進める。各段階の終わりに、その段階でできるようになることを確かめる。
