@@ -15,7 +15,7 @@ type SnapshotViewModel struct {
 	History        SparklineViewModel
 	TopOrigins     []OriginCountViewModel
 	LeakCheck      string
-	LeakSuspects   []LeakSuspectViewModel
+	Leaks          []LeakViewModel
 }
 
 type GoroutineStateViewModel struct {
@@ -48,8 +48,8 @@ type OriginCountViewModel struct {
 	Origin string
 }
 
-type LeakSuspectViewModel struct {
-	Confirmed   bool
+type LeakViewModel struct {
+	Certainty   string
 	Count       int
 	Growth      string
 	LongestWait string
@@ -106,20 +106,17 @@ templ Snapshot(vm SnapshotViewModel) {
 			</table>
 		</section>
 		<section class="panel">
-			<h2>Leak suspects <span class="muted">runtime leak check: { vm.LeakCheck }</span></h2>
-			if len(vm.LeakSuspects) == 0 {
+			<h2>Leaks <span class="muted">runtime leak check: { vm.LeakCheck }</span></h2>
+			if len(vm.Leaks) == 0 {
 				<p class="muted">none</p>
 			} else {
 				<table>
 					<tr><th></th><th>count</th><th>growth</th><th>longest wait</th><th>created by</th></tr>
-					for _, s := range vm.LeakSuspects {
+					for _, s := range vm.Leaks {
 						<tr>
 							<td>
-								if s.Confirmed {
-									<span class="badge leaked">LEAKED</span>
-								} else {
-									<span class="badge suspect">SUSPECT</span>
-								}
+								<span class="badge kind">LEAK</span>
+								@CertaintyBadge(s.Certainty)
 							</td>
 							<td>{ strconv.Itoa(s.Count) }</td>
 							<td>{ s.Growth }</td>

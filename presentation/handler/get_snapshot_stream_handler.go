@@ -145,9 +145,9 @@ func toSnapshotViewModel(out usecase.RuntimeSnapshot, buckets int) components.Sn
 	for _, o := range out.TopOrigins {
 		vm.TopOrigins = append(vm.TopOrigins, components.OriginCountViewModel{Count: o.Count, Origin: string(o.Origin)})
 	}
-	for _, s := range out.LeakSuspects {
-		vm.LeakSuspects = append(vm.LeakSuspects, components.LeakSuspectViewModel{
-			Confirmed:   s.Confirmed,
+	for _, s := range out.Leaks {
+		vm.Leaks = append(vm.Leaks, components.LeakViewModel{
+			Certainty:   string(s.Certainty),
 			Count:       s.Count,
 			Growth:      fmt.Sprintf("%+d", s.Growth),
 			LongestWait: formatWait(s.LongestWait),

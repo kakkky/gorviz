@@ -9,7 +9,7 @@ import (
 	"github.com/kakkky/gorviz/domain"
 )
 
-func TestDetectLeakSuspects(t *testing.T) {
+func TestDetectLeaks(t *testing.T) {
 	t.Parallel()
 	const leaky = domain.GoroutineOrigin("main.leak @ main.go:10")
 	const steady = domain.GoroutineOrigin("main.serve @ main.go:20")
@@ -22,22 +22,22 @@ func TestDetectLeakSuspects(t *testing.T) {
 		name    string
 		samples []domain.GoroutineSample
 		current []domain.Goroutine
-		want    []domain.LeakSuspect
+		want    []domain.Leak
 	}{
 		{
 			name:    "success: origin whose waiting count never decreases and grows enough is a suspect",
 			samples: []domain.GoroutineSample{sample(1, 3), sample(4, 3), sample(10, 3)},
-			want:    []domain.LeakSuspect{{Origin: leaky, Count: 10, Growth: 9}},
+			want:    []domain.Leak{{Origin: leaky, Count: 10, Growth: 9, Certainty: domain.CertaintyInference}},
 		},
 		{
 			name:    "success: origin whose count decreased once is not a suspect",
 			samples: []domain.GoroutineSample{sample(1, 3), sample(20, 3), sample(10, 3)},
-			want:    []domain.LeakSuspect{},
+			want:    []domain.Leak{},
 		},
 		{
 			name:    "success: growth-based detection waits for enough samples",
 			samples: []domain.GoroutineSample{sample(1, 3), sample(10, 3)},
-			want:    []domain.LeakSuspect{},
+			want:    []domain.Leak{},
 		},
 		{
 			name:    "success: goroutines marked leaked by runtime are confirmed even without history",
@@ -47,13 +47,13 @@ func TestDetectLeakSuspects(t *testing.T) {
 				{ID: 2, State: "chan receive", CreatedBy: "main.leak", CreatedAt: "main.go:10", Leaked: true},
 				{ID: 3, State: "select", CreatedBy: "main.serve", CreatedAt: "main.go:20"},
 			},
-			want: []domain.LeakSuspect{{Origin: leaky, Count: 2, LongestWait: 2 * time.Minute, Confirmed: true}},
+			want: []domain.Leak{{Origin: leaky, Count: 2, LongestWait: 2 * time.Minute, Certainty: domain.CertaintyFact}},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, domain.DetectLeakSuspects(tt.samples, tt.current, policy))
+			assert.Equal(t, tt.want, domain.DetectLeaks(tt.samples, tt.current, policy))
 		})
 	}
 }

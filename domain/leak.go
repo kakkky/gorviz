@@ -22,14 +22,14 @@ func NewGoroutineSample(at time.Time, gs []Goroutine) GoroutineSample {
 	return GoroutineSample{At: at, WaitingByOrigin: waiting}
 }
 
-type LeakSuspect struct {
+type Leak struct {
 	Origin      GoroutineOrigin
 	Count       int
 	Growth      int
 	LongestWait time.Duration
-	// Confirmed は runtime の goroutineleak プロファイル (GC で到達不能と判定された G) に載ったもの。
-	// それ以外は件数の推移から推測した疑い。
-	Confirmed bool
+	// Certainty は、runtime の goroutineleak プロファイル (GC で到達不能と判定された G) に載ったものなら FACT。
+	// 件数の推移から推測したものは INFERENCE
+	Certainty Certainty
 }
 
 type LeakDetectionPolicy struct {
@@ -37,23 +37,23 @@ type LeakDetectionPolicy struct {
 	MinGrowth  int
 }
 
-// DetectLeakSuspects は 2 つの根拠を合わせる:
-//   - Leaked の立った G: runtime が到達不能と判定した G。誤検知がないので、件数の推移を見ずに確定として扱う
-//   - samples: 観測のたびに生成元ごとの待機数を並べ、一度も減らずに MinGrowth 以上増えた生成元を疑いとする
-func DetectLeakSuspects(samples []GoroutineSample, current []Goroutine, policy LeakDetectionPolicy) []LeakSuspect {
+// DetectLeaks は 2 つの根拠を合わせる:
+//   - Leaked の立った G: runtime が到達不能と判定した G。誤検知がないので、件数の推移を見ずに FACT とする
+//   - samples: dump のたびに生成元ごとの待機数を並べ、一度も減らずに MinGrowth 以上増えた生成元を INFERENCE とする
+func DetectLeaks(samples []GoroutineSample, current []Goroutine, policy LeakDetectionPolicy) []Leak {
 	longestWait := map[GoroutineOrigin]time.Duration{}
 	for _, g := range current {
 		longestWait[g.Origin()] = max(longestWait[g.Origin()], g.Wait)
 	}
 
-	suspects := map[GoroutineOrigin]*LeakSuspect{}
+	suspects := map[GoroutineOrigin]*Leak{}
 	for _, g := range current {
 		if !g.Leaked {
 			continue
 		}
 		s, ok := suspects[g.Origin()]
 		if !ok {
-			s = &LeakSuspect{Origin: g.Origin(), Confirmed: true}
+			s = &Leak{Origin: g.Origin(), Certainty: CertaintyFact}
 			suspects[g.Origin()] = s
 		}
 		s.Count++
@@ -71,7 +71,8 @@ func DetectLeakSuspects(samples []GoroutineSample, current []Goroutine, policy L
 				s.Growth = growth
 				continue
 			}
-			suspects[origin] = &LeakSuspect{
+			suspects[origin] = &Leak{
+				Certainty:   CertaintyInference,
 				Origin:      origin,
 				Count:       count,
 				Growth:      growth,
@@ -80,13 +81,13 @@ func DetectLeakSuspects(samples []GoroutineSample, current []Goroutine, policy L
 		}
 	}
 
-	out := make([]LeakSuspect, 0, len(suspects))
+	out := make([]Leak, 0, len(suspects))
 	for _, s := range suspects {
 		out = append(out, *s)
 	}
-	slices.SortFunc(out, func(a, b LeakSuspect) int {
-		if a.Confirmed != b.Confirmed {
-			if a.Confirmed {
+	slices.SortFunc(out, func(a, b Leak) int {
+		if a.Certainty != b.Certainty {
+			if a.Certainty == CertaintyFact {
 				return -1
 			}
 			return 1

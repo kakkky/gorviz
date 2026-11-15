@@ -121,14 +121,14 @@ func (t *Top) render(sb *strings.Builder, out usecase.RuntimeSnapshot) {
 	}
 	sb.WriteString("\n")
 
-	fmt.Fprintf(sb, "%sLeak suspects%s %s(runtime leak check: %s)%s\n", bold, reset, dim, out.LeakCheckStatus, reset)
-	if len(out.LeakSuspects) == 0 {
+	fmt.Fprintf(sb, "%sLeaks%s %s(runtime leak check: %s)%s\n", bold, reset, dim, out.LeakCheckStatus, reset)
+	if len(out.Leaks) == 0 {
 		fmt.Fprintf(sb, "  %snone%s\n", dim, reset)
 	}
-	for _, s := range out.LeakSuspects {
-		label := yellow + "SUSPECT  " + reset
-		if s.Confirmed {
-			label = red + "LEAKED   " + reset
+	for _, s := range out.Leaks {
+		label := yellow + "LEAK INFERENCE  " + reset
+		if s.Certainty == domain.CertaintyFact {
+			label = red + "LEAK FACT       " + reset
 		}
 		fmt.Fprintf(sb, "  %s%6d  %+5d  wait %-5s  %s\n", label, s.Count, s.Growth, formatWait(s.LongestWait), truncate(string(s.Origin), maxLineLen-40))
 	}

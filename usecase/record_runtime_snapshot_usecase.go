@@ -81,7 +81,7 @@ type RuntimeSnapshot struct {
 	GoroutineCount   int
 	StateCounts      domain.GoroutineStateCounts
 	TopOrigins       []RuntimeSnapshotOriginCount
-	LeakSuspects     []domain.LeakSuspect
+	Leaks            []domain.Leak
 	LeakCheckStatus  LeakCheckStatus
 	LeakedGoroutines []domain.GoroutineID
 	// GoroutineHistory は直近の観測ごとの G の総数。リークは「右肩上がり」で見えるので推移を返す
@@ -141,7 +141,7 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(ctx context.Context, in RecordRunti
 		GoroutineCount:   len(goroutines),
 		StateCounts:      domain.CountGoroutineStates(goroutines),
 		TopOrigins:       topOrigins(goroutines, topOriginsLimit),
-		LeakSuspects:     domain.DetectLeakSuspects(history.samples, goroutines, us.leakPolicy),
+		Leaks:            domain.DetectLeaks(history.samples, goroutines, us.leakPolicy),
 		LeakCheckStatus:  leakCheckStatus,
 		GoroutineHistory: slices.Clone(history.totals),
 		LeakedGoroutines: leakedIDs(goroutines),

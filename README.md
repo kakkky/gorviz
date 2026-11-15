@@ -62,10 +62,10 @@ LRQ / GRQ の中身は runtime が外に出さないので、trace から推測�
 
 `gorviz run` は対象を `GODEBUG=schedtrace=1000,scheddetail=1` で起動し、runtime 自身が出す GRQ の長さ・P ごとの LRQ の長さ・gFree の数を表示する。推測と突き合わせるためのもので、対象を gorviz の子プロセスとして起動し直す必要があるためローカル専用。
 
-リークの判定には 2 種類ある:
+リーク (`LEAK`) の確かさは 2 種類ある:
 
-- **LEAKED**: runtime が到達不能と判定した G。誤検知がない
-- **SUSPECT**: 生成元ごとの待機中の G の数が、直近の観測で一度も減らずに `-leak-min-growth` 以上増えたもの。goroutineleak を持たない古い Go 向けの推測
+- **FACT**: runtime が到達不能と判定した G。誤検知がない
+- **INFERENCE**: 生成元ごとの待機中の G の数が、直近の dump で一度も減らずに `-leak-min-growth` 以上増えたもの。goroutineleak を持たない古い Go 向けの推測
 
 ## 構成
 
