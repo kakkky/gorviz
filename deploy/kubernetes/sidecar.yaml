@@ -1,0 +1,29 @@
+# sidecar 型: アプリと同じ Pod に置く。アプリと同じ Pod の資源を分け合うので、agent の資源と録画の上限を小さく決める
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: api}
+  template:
+    metadata:
+      labels: {app: api}
+      annotations:
+        gorviz.kakkky.dev/observe: "true"
+    spec:
+      containers:
+        - name: api
+          image: example.com/api:latest
+          # pprof は localhost だけに公開する (agent は同じ Pod から読む)
+          env:
+            - {name: PPROF_ADDR, value: "localhost:6060"}
+        - name: gorviz-agent
+          image: ghcr.io/kakkky/gorviz:latest
+          env:
+            - name: POD_NAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          command: ["sh", "-c", "gorviz-agent -name $POD_NAME -target http://localhost:6060 -agent-addr gorviz-server:7071 -trace-buffer-mib 64"]
+          resources:
+            limits: {cpu: 200m, memory: 160Mi}

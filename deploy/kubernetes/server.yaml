@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gorviz-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: gorviz-server}
+  template:
+    metadata:
+      labels: {app: gorviz-server}
+    spec:
+      containers:
+        - name: gorviz-server
+          image: ghcr.io/kakkky/gorviz:latest # PoC: イメージはまだ公開していない
+          command: ["gorviz-server", "-addr", "0.0.0.0:7070", "-agent-addr", "0.0.0.0:7071", "-save-dir", "/data"]
+          ports:
+            - {name: http, containerPort: 7070}
+            - {name: agents, containerPort: 7071}
+          volumeMounts:
+            - {name: recordings, mountPath: /data}
+      volumes:
+        - name: recordings
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gorviz-server
+spec:
+  selector: {app: gorviz-server}
+  ports:
+    - {name: http, port: 7070}
+    - {name: agents, port: 7071}

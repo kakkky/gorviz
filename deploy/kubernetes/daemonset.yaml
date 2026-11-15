@@ -1,0 +1,23 @@
+# daemon 型: ノードごとに 1 つ。同じノードの複数の Pod の pprof を観測し、対象ごとに別の agent として server につなぐ
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gorviz-agent
+spec:
+  selector:
+    matchLabels: {app: gorviz-agent}
+  template:
+    metadata:
+      labels: {app: gorviz-agent}
+    spec:
+      hostNetwork: true # 同じノードの Pod の pprof (localhost や Pod IP) に届くようにする
+      containers:
+        - name: gorviz-agent
+          image: ghcr.io/kakkky/gorviz:latest
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          # PoC: 対象は手で並べる。annotation で許可した Pod を自動で見つける仕組みは未実装
+          command: ["sh", "-c", "gorviz-agent -name $NODE_NAME -agent-addr gorviz-server:7071 -target http://10.0.0.10:6060,http://10.0.0.11:6060"]
+          resources:
+            limits: {cpu: 500m, memory: 512Mi}
