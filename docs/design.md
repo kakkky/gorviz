@@ -277,9 +277,10 @@ GUI の画面:
 
 ### gorviz-launcher
 
-`cmd/launcher`。ローカルで server と agent を子プロセスとしてまとめて起動する。
+`cmd/launcher`。ローカルで server と agent を 1 つのプロセスでまとめて動かす。
 
-- プロセスを立ち上げるだけで、通信の相手にはならない
+- プロセスは 1 つでも、server と agent は別々のアプリのまま。間は gorviz-server と gorviz-agent と同じく TCP (`-agent-addr`) でつなぐ
+- launcher 自身は組み立てるだけで、通信の相手にはならない
 - 対象は起動しない。ログを取り込むなら `./app 2>&1 | gorviz-launcher -logs -` のように標準入力へ流す
 
 ## 診断

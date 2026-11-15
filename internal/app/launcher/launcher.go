@@ -1,107 +1,41 @@
-// Package launcher はローカルで server と agent をまとめて起動する (gorviz-launcher)
+// Package launcher はローカルで server と agent を 1 つのプロセスでまとめて動かす (gorviz-launcher)。
+// プロセスは 1 つでも server と agent は別々のアプリのままで、間は gorviz-server と gorviz-agent と同じく TCP でつなぐ
 package launcher
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/kakkky/scope"
+
+	"github.com/kakkky/gorviz/internal/app/agent"
+	"github.com/kakkky/gorviz/internal/app/launcher/config"
+	"github.com/kakkky/gorviz/internal/app/server"
 )
 
-// Run は server と agent を子プロセスとして起動する。どちらかが終わったら、もう片方も止める
-func Run(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("gorviz-launcher", flag.ContinueOnError)
-	fs.Usage = func() {
-		fmt.Fprint(fs.Output(), `Usage: gorviz-launcher [-addr] [-agent-addr] [-save-dir] [agent flags]
-
-start a gorviz server and a gorviz agent together (local use). With "-logs -"
-the agent reads the target's logs piped to stdin
-
-`)
-		fs.PrintDefaults()
-	}
-	addr := fs.String("addr", "localhost:7070", "listen address of the GUI and the API")
-	agentAddr := fs.String("agent-addr", "localhost:7071", "TCP address between the server and the agent")
-	saveDir := fs.String("save-dir", "", "directory where the server saves recordings around issues")
-	if len(args) > 0 && (args[0] == "-h" || args[0] == "-help" || args[0] == "--help") {
-		fs.Usage()
-		return flag.ErrHelp
-	}
-	// agent のフラグはそのまま渡すので、ここでは知らないフラグで止まらないよう、自分のフラグだけを先頭から読む
-	known, rest := splitKnown(args, map[string]bool{"addr": true, "agent-addr": true, "save-dir": true})
-	if err := fs.Parse(known); err != nil {
-		return err
-	}
-	server := []string{"-addr", *addr, "-agent-addr", *agentAddr}
-	if *saveDir != "" {
-		server = append(server, "-save-dir", *saveDir)
-	}
-	agent := append([]string{"-agent-addr", *agentAddr}, rest...)
+// Run は server と agent を回す。どちらかが終わったら、もう片方も止める
+func Run(ctx context.Context, cfg *config.Config, stdin io.Reader) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	return scope.Run(ctx, func(sc *scope.Scope) error {
 		sc.Go(func(ctx context.Context) error {
 			defer cancel()
-			return runSibling(ctx, "gorviz-server", server)
+			return server.Run(ctx, cfg.Server)
 		})
 		sc.Go(func(ctx context.Context) error {
 			defer cancel()
 			// server が待ち受けを始めてからつなぐ。つながらなくても agent がつなぎ直すので、待つのは見た目のため
-			time.Sleep(300 * time.Millisecond)
-			return runSibling(ctx, "gorviz-agent", agent)
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(300 * time.Millisecond):
+			}
+			return agent.RunTargets(ctx, cfg.Agent, stdin)
 		})
-		fmt.Fprintf(os.Stderr, "gorviz: open http://%s\n", *addr)
+		fmt.Fprintf(os.Stderr, "gorviz: open http://%s\n", cfg.Server.HTTPAddr)
 		return nil
 	})
-}
-
-// runSibling は同じディレクトリにある gorviz-server / gorviz-agent を起動する。なければ PATH から探す
-func runSibling(ctx context.Context, name string, args []string) error {
-	path := name
-	if self, err := os.Executable(); err == nil {
-		if p := filepath.Join(filepath.Dir(self), name); fileExists(p) {
-			path = p
-		}
-	}
-	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-	cmd.WaitDelay = 5 * time.Second
-	if err := cmd.Run(); err != nil && ctx.Err() == nil {
-		return fmt.Errorf("%s: %w", name, err)
-	}
-	return nil
-}
-
-// splitKnown は先頭から自分の知っているフラグ (-name value / -name=value) だけを抜き出し、残りを順番どおり返す
-func splitKnown(args []string, names map[string]bool) (known, rest []string) {
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		name := a
-		for len(name) > 0 && name[0] == '-' {
-			name = name[1:]
-		}
-		key, _, hasValue := strings.Cut(name, "=")
-		if !names[key] {
-			rest = append(rest, a)
-			continue
-		}
-		known = append(known, a)
-		if !hasValue && i+1 < len(args) {
-			known = append(known, args[i+1])
-			i++
-		}
-	}
-	return known, rest
-}
-
-func fileExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
 }

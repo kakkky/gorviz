@@ -2,7 +2,7 @@ TEMPL_VERSION := v0.3.1070
 
 .PHONY: build test templ.gen gen example.leaky example.library overhead launcher.up
 
-# gorviz (CLI)・gorviz-launcher・gorviz-agent・gorviz-server・gorviz-mcp を bin/ に作る。gorviz-launcher は同じディレクトリの agent と server を起動する
+# gorviz (CLI)・gorviz-launcher・gorviz-agent・gorviz-server・gorviz-mcp を bin/ に作る。gorviz-launcher は server と agent を 1 つのプロセスで動かす
 build:
 	go build -o bin/gorviz ./cmd/cli
 	go build -o bin/gorviz-launcher ./cmd/launcher
