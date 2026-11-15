@@ -1,15 +1,17 @@
 // Package agent は agent を組み立てる。agent は対象 1 つを観測し、取る・持つ・軽いものを送る・trace を求められたら返すだけで、判定はしない。
-// cmd/agent (daemon 型・sidecar 型) は RunTargets を、アプリに埋め込むライブラリ型は New を使う
+// cmd/agent (daemon 型・sidecar 型) は RunTargets を、アプリに埋め込むライブラリ型は NewEmbedded を使う
 package agent
 
 import (
 	"context"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/kakkky/scope"
 
 	"github.com/kakkky/gorviz/internal/app/agent/adapter/client"
+	"github.com/kakkky/gorviz/internal/app/agent/adapter/inprocess"
 	"github.com/kakkky/gorviz/internal/app/agent/adapter/instance"
 	"github.com/kakkky/gorviz/internal/app/agent/adapter/kvs"
 	"github.com/kakkky/gorviz/internal/app/agent/adapter/logparse"
@@ -23,7 +25,13 @@ import (
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
 	"github.com/kakkky/gorviz/internal/app/agent/worker"
 	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
+	"github.com/kakkky/gorviz/internal/logmark"
 	"github.com/kakkky/gorviz/internal/runtimeparse"
+)
+
+const (
+	embeddedLogQueueSize = 10_000
+	maxFlightRecorder    = 64 << 20
 )
 
 type Agent struct {
@@ -99,4 +107,58 @@ func RunTargets(ctx context.Context, cfg *config.Config, stdin io.Reader) error 
 		}
 		return nil
 	})
+}
+
+// EmbedOptions は埋め込む agent の設定。0 値の項目は gorviz-agent のフラグの既定値を使う
+type EmbedOptions struct {
+	Server         string
+	Name           string
+	DumpInterval   time.Duration
+	LeakCheckEvery int
+}
+
+// Embedded はアプリに埋め込んだ agent (ライブラリ型)。trace はアプリの中の FlightRecorder から、ログはアプリのロガーから取る
+type Embedded struct {
+	agent     *Agent
+	client    *inprocess.RuntimeClient
+	forwarder *loginput.Forwarder
+}
+
+// NewEmbedded は FlightRecorder を始める。Run を呼ばないなら Close で止める
+func NewEmbedded(ctx context.Context, opt EmbedOptions) (*Embedded, error) {
+	cfg, err := config.NewConfig("gorviz", nil)
+	if err != nil {
+		return nil, err
+	}
+	cfg.AgentAddr, cfg.TargetURL = opt.Server, "in-process"
+	if cfg.Name, err = instance.Name(ctx, opt.Name); err != nil {
+		return nil, err
+	}
+	if opt.DumpInterval > 0 {
+		cfg.DumpInterval = opt.DumpInterval
+	}
+	if opt.LeakCheckEvery != 0 {
+		cfg.LeakCheckEvery = opt.LeakCheckEvery
+	}
+	c, err := inprocess.NewRuntimeClient(cfg.ChunkDuration, uint64(min(cfg.TraceBufferBytes, maxFlightRecorder)), runtimeparse.NewParser())
+	if err != nil {
+		return nil, err
+	}
+	return &Embedded{agent: New(cfg, c), client: c, forwarder: loginput.NewForwarder(embeddedLogQueueSize)}, nil
+}
+
+// Run はアプリのロガーのログを受け取りながら agent を回す。ctx が終わるまで返らず、返るときに FlightRecorder を止める
+func (e *Embedded) Run(ctx context.Context) error {
+	defer e.Close()
+	logmark.SetForward(e.forwarder.Enqueue)
+	defer logmark.SetForward(nil)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	r := e.forwarder.Reader(ctx)
+	defer r.Close()
+	return e.agent.Run(ctx, LogSource{R: r, Source: "app", Echo: io.Discard})
+}
+
+func (e *Embedded) Close() {
+	e.client.Stop()
 }

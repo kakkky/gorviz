@@ -3,21 +3,10 @@ package gorviz
 import (
 	"context"
 	"errors"
-	"io"
 	"sync/atomic"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/agent"
-	"github.com/kakkky/gorviz/internal/app/agent/adapter/inprocess"
-	"github.com/kakkky/gorviz/internal/app/agent/adapter/instance"
-	"github.com/kakkky/gorviz/internal/app/agent/config"
-	"github.com/kakkky/gorviz/internal/logmark"
-	"github.com/kakkky/gorviz/internal/runtimeparse"
-)
-
-const (
-	logQueueSize      = 10_000
-	maxFlightRecorder = 64 << 20
 )
 
 // running は今動いている埋め込みの agent。1 プロセスは 1 つの観測対象なので、agent も 1 つに限る
@@ -37,7 +26,6 @@ type Options struct {
 // Agent はアプリに埋め込んだ agent。直近の trace はアプリのメモリ (runtime の FlightRecorder) にあるので、
 // プロセスが落ちると直前の録画は残らない
 type Agent struct {
-	logs   chan []byte
 	cancel context.CancelFunc
 	done   chan struct{}
 	err    error
@@ -45,31 +33,21 @@ type Agent struct {
 
 // Start は agent を裏で動かし始める。ctx が終わるか Stop を呼ぶまで、録画と server へのつなぎを回す
 func Start(ctx context.Context, opt Options) (*Agent, error) {
-	cfg, err := configOf(ctx, opt)
+	e, err := agent.NewEmbedded(ctx, agent.EmbedOptions{Server: opt.Server, Name: opt.Name, DumpInterval: opt.DumpInterval, LeakCheckEvery: opt.LeakCheckEvery})
 	if err != nil {
 		return nil, err
 	}
-	c, err := inprocess.NewRuntimeClient(cfg.ChunkDuration, uint64(min(cfg.TraceBufferBytes, maxFlightRecorder)), runtimeparse.NewParser())
-	if err != nil {
-		return nil, err
-	}
-	a := &Agent{logs: make(chan []byte, logQueueSize), done: make(chan struct{})}
+	a := &Agent{done: make(chan struct{})}
 	if !running.CompareAndSwap(nil, a) {
-		c.Stop()
+		e.Close()
 		return nil, errors.New("gorviz: an agent is already running in this process")
 	}
-	logmark.SetForward(a.enqueue)
 	ctx, a.cancel = context.WithCancel(ctx)
-	r, w := io.Pipe()
-	go a.pumpLogs(ctx, w)
 	go func() {
 		defer close(a.done)
-		a.err = agent.New(cfg, c).Run(ctx, agent.LogSource{R: r, Source: "app", Echo: io.Discard})
-		logmark.SetForward(nil)
+		a.err = e.Run(ctx)
 		running.CompareAndSwap(a, nil)
 		a.cancel()
-		r.Close()
-		c.Stop()
 	}()
 	return a, nil
 }
@@ -79,44 +57,4 @@ func (a *Agent) Stop() error {
 	a.cancel()
 	<-a.done
 	return a.err
-}
-
-// enqueue は待たない。agent が読み切れないほどログが多いときは、アプリを止めないよう捨てる
-func (a *Agent) enqueue(line []byte) {
-	select {
-	case a.logs <- line:
-	default:
-	}
-}
-
-func (a *Agent) pumpLogs(ctx context.Context, w *io.PipeWriter) {
-	defer w.Close()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case line := <-a.logs:
-			if _, err := w.Write(line); err != nil {
-				return
-			}
-		}
-	}
-}
-
-func configOf(ctx context.Context, opt Options) (*config.Config, error) {
-	cfg, err := config.NewConfig("gorviz", nil)
-	if err != nil {
-		return nil, err
-	}
-	cfg.AgentAddr, cfg.TargetURL = opt.Server, "in-process"
-	if cfg.Name, err = instance.Name(ctx, opt.Name); err != nil {
-		return nil, err
-	}
-	if opt.DumpInterval > 0 {
-		cfg.DumpInterval = opt.DumpInterval
-	}
-	if opt.LeakCheckEvery != 0 {
-		cfg.LeakCheckEvery = opt.LeakCheckEvery
-	}
-	return cfg, nil
 }
