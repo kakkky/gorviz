@@ -10,12 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kakkky/scope"
-
-	"github.com/kakkky/gorviz/internal/adapter/agentrpc"
-	"github.com/kakkky/gorviz/internal/config"
-	"github.com/kakkky/gorviz/internal/driver/httpserver"
-	"github.com/kakkky/gorviz/internal/driver/session"
+	"github.com/kakkky/gorviz/internal/app/server"
+	"github.com/kakkky/gorviz/internal/app/server/config"
 )
 
 func main() {
@@ -35,15 +31,5 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	registry := session.NewRegistry(cfg)
-	srv := httpserver.NewHTTPServer(cfg, httpserver.NewServerMux(registry))
-	return scope.Run(ctx, func(sc *scope.Scope) error {
-		sc.Go(srv.Run)
-		sc.Go(func(ctx context.Context) error {
-			return agentrpc.Accept(ctx, cfg.AgentAddr, func(h agentrpc.Hello) (*agentrpc.Client, bool) {
-				return registry.Attach(ctx, h, func(f func(context.Context) error) { sc.Go(f) })
-			})
-		})
-		return nil
-	})
+	return server.Run(ctx, cfg)
 }

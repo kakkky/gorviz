@@ -1,0 +1,102 @@
+package pages
+
+import (
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+)
+
+type GoroutineViewModel struct {
+	TargetURL string
+	Error     string
+	Goroutine string
+	Entry     string
+	Interval  string
+	At        string
+	Leaked    bool
+	// 診断
+	Primary    string
+	Certainty  string
+	Function   string
+	Location   string
+	WaitReason string
+	CreatedBy  string
+	// 根拠
+	Breakdown  []BreakdownRowViewModel
+	Unrecorded string
+	ReplayJSON string
+	NoReplay   string
+	LogsURL    string
+	// Issues はこの G (リークなら同じ生成元) を含む Issue
+	Issues []string
+}
+
+type BreakdownRowViewModel struct {
+	Cause    string
+	Duration string
+	Percent  string
+	Width    string
+	Primary  bool
+}
+
+templ Goroutine(vm GoroutineViewModel) {
+	@layout.Base(vm.TargetURL, "") {
+		if vm.Error != "" {
+			<section class="panel error">{ vm.Error }</section>
+		} else {
+			<section class="panel">
+				<h2>Goroutine <span class="muted">{ vm.Interval }</span></h2>
+				<p class="goroutine-title">
+					<strong>{ vm.Goroutine }</strong> { vm.Entry }
+					if vm.Leaked {
+						<span class="badge kind">LEAK</span>
+						@components.CertaintyBadge("FACT")
+					}
+				</p>
+				<h3>Diagnosis</h3>
+				if vm.Primary == "" {
+					<p class="muted">no record of this goroutine in the interval (not in the recorded trace nor in the latest goroutine dump)</p>
+				} else {
+					<p>
+						<span class="badge cause">{ vm.Primary }</span>
+						@components.CertaintyBadge(vm.Certainty)
+					</p>
+				}
+				<table class="kv">
+					<tr><th>at</th><td>{ vm.At }</td></tr>
+					<tr><th>stopped in</th><td class="origin">{ vm.Function }</td></tr>
+					<tr><th>location</th><td class="origin">{ vm.Location }</td></tr>
+					<tr><th>wait reason</th><td>{ vm.WaitReason }</td></tr>
+					<tr><th>created by</th><td class="origin">{ vm.CreatedBy }</td></tr>
+				</table>
+				<p class="muted">gorviz reports what the runtime recorded. Finding the cause in the code and deciding the next step is up to you (or your LLM).</p>
+				<p><a href={ templ.SafeURL(vm.LogsURL) }>logs around this time</a></p>
+				if len(vm.Issues) > 0 {
+					<p>
+						issues including this goroutine:
+						for _, i := range vm.Issues {
+							<a href="/issues" class="issue-ref">{ i }</a>
+						}
+					</p>
+				}
+			</section>
+			<section class="panel">
+				<h2>Evidence: time by state <span class="muted">unrecorded { vm.Unrecorded }</span></h2>
+				<table class="breakdown">
+					for _, r := range vm.Breakdown {
+						<tr class={ templ.KV("primary", r.Primary) }>
+							<td>{ r.Cause }</td>
+							<td class="bar-cell"><div class={ "bar cause-" + r.Cause } style={ templ.SafeCSS("width:" + r.Width) }></div></td>
+							<td>{ r.Duration }</td>
+							<td class="muted">{ r.Percent }</td>
+						</tr>
+					}
+				</table>
+			</section>
+			if vm.ReplayJSON != "" {
+				@components.GMPReplay(components.GMPReplayViewModel{DataID: "goroutine-replay-data", InitialJSON: vm.ReplayJSON, Title: "Evidence: GMP replay"})
+			} else {
+				<section class="panel muted">{ vm.NoReplay }</section>
+			}
+		}
+	}
+}

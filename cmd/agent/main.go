@@ -7,19 +7,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
-	"github.com/kakkky/scope"
-
-	"github.com/kakkky/gorviz/internal/adapter/client"
-	"github.com/kakkky/gorviz/internal/config"
-	"github.com/kakkky/gorviz/internal/driver/agent"
+	"github.com/kakkky/gorviz/internal/app/agent"
+	"github.com/kakkky/gorviz/internal/app/agent/config"
 )
 
 const usage = `gorviz-agent records the Go runtime of targets serving net/http/pprof and serves it to a gorviz server.
@@ -48,35 +42,5 @@ func run(args []string) error {
 		fmt.Fprint(os.Stderr, usage)
 		return err
 	}
-	if cfg.Name, err = agent.InstanceName(ctx, cfg.Name); err != nil {
-		return err
-	}
-	// daemon 型: 同じホストの複数の対象を、対象ごとに別の agent として server につなぐ
-	targets := strings.Split(cfg.TargetURL, ",")
-	return scope.Run(ctx, func(sc *scope.Scope) error {
-		for _, target := range targets {
-			c := *cfg
-			c.TargetURL = strings.TrimSpace(target)
-			c.Name = nameOf(cfg.Name, c.TargetURL, len(targets) > 1)
-			var logs []agent.LogSource
-			if cfg.LogsFrom == "-" && len(targets) == 1 {
-				logs = append(logs, agent.LogSource{R: os.Stdin, Source: "stdin", Echo: io.Discard})
-			}
-			a := agent.New(&c, client.NewRuntimeClient(&c))
-			sc.Go(func(ctx context.Context) error { return a.Run(ctx, logs...) })
-		}
-		return nil
-	})
-}
-
-// nameOf は agent の名前を決める。daemon 型で複数の対象を見るときは、対象ごとに別の名前になるよう host:port を足す
-func nameOf(name, target string, many bool) string {
-	if !many {
-		return name
-	}
-	host := target
-	if u, err := url.Parse(target); err == nil && u.Host != "" {
-		host = u.Host
-	}
-	return name + "/" + host
+	return agent.RunTargets(ctx, cfg, os.Stdin)
 }

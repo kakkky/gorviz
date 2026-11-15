@@ -7,10 +7,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/adapter/inprocess"
-	"github.com/kakkky/gorviz/internal/config"
-	"github.com/kakkky/gorviz/internal/driver/agent"
+	"github.com/kakkky/gorviz/internal/app/agent"
+	"github.com/kakkky/gorviz/internal/app/agent/adapter/inprocess"
+	"github.com/kakkky/gorviz/internal/app/agent/adapter/instance"
+	"github.com/kakkky/gorviz/internal/app/agent/config"
 	"github.com/kakkky/gorviz/internal/logmark"
+	"github.com/kakkky/gorviz/internal/runtimeparse"
 )
 
 const (
@@ -47,7 +49,7 @@ func Start(ctx context.Context, opt Options) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := inprocess.NewRuntimeClient(cfg.ChunkDuration, uint64(min(cfg.TraceBufferBytes, maxFlightRecorder)))
+	c, err := inprocess.NewRuntimeClient(cfg.ChunkDuration, uint64(min(cfg.TraceBufferBytes, maxFlightRecorder)), runtimeparse.NewParser())
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +109,7 @@ func configOf(ctx context.Context, opt Options) (*config.Config, error) {
 		return nil, err
 	}
 	cfg.AgentAddr, cfg.TargetURL = opt.Server, "in-process"
-	if cfg.Name, err = agent.InstanceName(ctx, opt.Name); err != nil {
+	if cfg.Name, err = instance.Name(ctx, opt.Name); err != nil {
 		return nil, err
 	}
 	if opt.DumpInterval > 0 {

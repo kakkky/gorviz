@@ -1,0 +1,66 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+)
+
+const (
+	LogListFrameID   = "log-list"
+	LogReplayDataID  = "log-replay-data"
+)
+
+templ LogListFrame(vm components.LogListViewModel) {
+	@turbo.Frame(LogListFrameID) {
+		@components.LogList(vm)
+	}
+}
+
+type LogReplayViewModel struct {
+	Error       string
+	Time        string
+	Level       string
+	LevelClass  string
+	Message     string
+	Focus       string
+	Duration    string
+	// GoroutineURL はログを書いた G の Goroutine 画面。G が trace で特定できたときだけ埋まる
+	GoroutineURL   string
+	GoroutineLabel string
+	WindowLinks []LogReplayWindowLinkViewModel
+	ReplayJSON  string
+}
+
+type LogReplayWindowLinkViewModel struct {
+	Label  string
+	URL    string
+	Active bool
+}
+
+templ LogReplayFrame(vm LogReplayViewModel) {
+	@turbo.Frame(components.LogReplayFrameID) {
+		if vm.Error != "" {
+			<section class="panel error">{ vm.Error }</section>
+		} else {
+			<section class="panel">
+				<h2>Replay around</h2>
+				<p><span class="muted">{ vm.Time }</span> <span class={ "level " + vm.LevelClass }>{ vm.Level }</span> { vm.Message }</p>
+				<p class="muted">{ vm.Focus }</p>
+				if vm.Duration != "" {
+					<p class="muted">request duration { vm.Duration }</p>
+				}
+				if vm.GoroutineURL != "" {
+					<p><a href={ templ.SafeURL(vm.GoroutineURL) } data-turbo-frame="_top">{ vm.GoroutineLabel }</a></p>
+				}
+				<p class="window-links">
+					window:
+					for _, l := range vm.WindowLinks {
+						<a href={ templ.SafeURL(l.URL) } class={ templ.KV("active", l.Active) }>{ l.Label }</a>
+					}
+				</p>
+			</section>
+			@components.GMPReplay(components.GMPReplayViewModel{DataID: LogReplayDataID, InitialJSON: vm.ReplayJSON})
+		}
+	}
+}

@@ -6,14 +6,13 @@ package logmark
 import (
 	"bytes"
 	"context"
+	"github.com/kakkky/gorviz/internal/app/api/model"
 	"runtime/trace"
 	"strconv"
 	"sync/atomic"
-
-	"github.com/kakkky/gorviz/internal/domain"
 )
 
-const Key = domain.LogSeqAttrKey
+const Key = model.LogSeqAttrKey
 
 var (
 	seq     atomic.Uint64
@@ -27,7 +26,7 @@ func Mark(ctx context.Context) (uint64, bool) {
 		return 0, false
 	}
 	n := seq.Add(1)
-	trace.Log(ctx, domain.LogMarkCategory, strconv.FormatUint(n, 10))
+	trace.Log(ctx, model.LogMarkCategory, strconv.FormatUint(n, 10))
 	return n, true
 }
 

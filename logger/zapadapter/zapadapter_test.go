@@ -11,8 +11,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/kakkky/gorviz/internal/adapter/logparse"
-	"github.com/kakkky/gorviz/internal/config"
+	"github.com/kakkky/gorviz/internal/app/agent/adapter/logparse"
+	"github.com/kakkky/gorviz/internal/app/agent/config"
 	"github.com/kakkky/gorviz/internal/logmark/logmarktest"
 	"github.com/kakkky/gorviz/logger/zapadapter"
 )

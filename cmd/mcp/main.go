@@ -9,8 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kakkky/gorviz/internal/adapter/serverapi"
-	"github.com/kakkky/gorviz/internal/presentation/mcp"
+	"github.com/kakkky/gorviz/internal/app/mcp"
 )
 
 func main() {
@@ -22,7 +21,7 @@ func main() {
 	defer stop()
 	// stdout は MCP のやり取りに使うので、ログは stderr に出す
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
-	if err := mcp.New(serverapi.NewClient(*server, *agent), *server).Serve(ctx, os.Stdin, os.Stdout); err != nil {
+	if err := mcp.Serve(ctx, os.Stdin, os.Stdout, *server, *agent); err != nil {
 		slog.Error("gorviz-mcp failed", slog.Any("err", err))
 		os.Exit(1)
 	}

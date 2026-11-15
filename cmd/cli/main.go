@@ -10,10 +10,9 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
-	"github.com/kakkky/gorviz/internal/adapter/serverapi"
+	"github.com/kakkky/gorviz/internal/app/cli"
 )
 
 const usage = `gorviz is the command line of gorviz.
@@ -58,20 +57,7 @@ func issues(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	list, err := serverapi.NewClient(*server, *agent).Issues(ctx)
-	if err != nil {
-		return err
-	}
-	if len(list) == 0 {
-		fmt.Println("no issues detected")
-	}
-	for _, i := range list {
-		fmt.Printf("%-16s %-9s %s\n  %s\n", i.Kind, i.Certainty, i.Summary, i.Subject)
-		if i.Goroutine != nil {
-			fmt.Printf("  diagnose: %s/goroutines/%d?%s\n", *server, *i.Goroutine, i.GoroutineQuery)
-		}
-	}
-	return nil
+	return cli.Issues(ctx, os.Stdout, *server, *agent)
 }
 
 func export(ctx context.Context, args []string) error {
@@ -82,30 +68,5 @@ func export(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	c := serverapi.NewClient(*server, *agent)
-	recs, err := c.Recordings(ctx)
-	if err != nil {
-		return err
-	}
-	for _, r := range recs {
-		dir := filepath.Join(*out, r.ID)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-		for n := range r.Chunks {
-			raw, err := c.RecordingChunk(ctx, r.ID, n)
-			if err != nil {
-				return err
-			}
-			p := filepath.Join(dir, fmt.Sprintf("chunk-%d.trace", n))
-			if err := os.WriteFile(p, raw, 0o644); err != nil {
-				return err
-			}
-		}
-		fmt.Printf("%s: %d chunks → %s (go tool trace %s/chunk-0.trace)\n", r.ID, r.Chunks, dir, dir)
-	}
-	if len(recs) == 0 {
-		fmt.Println("no saved recordings")
-	}
-	return nil
+	return cli.Export(ctx, os.Stdout, *server, *agent, *out)
 }

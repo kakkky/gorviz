@@ -217,7 +217,7 @@ agent の役割を誰が担うかだけが変わる。server とクライアン�
 `cmd/server`。agent を束ね、診断して見せる。
 
 - **やること**
-  - agent からの接続を受け、agent ごとにセッションを持つ (`driver/session`)
+  - agent からの接続を受け、agent ごとにセッションを持つ (`internal/app/server`)
   - 数秒ごとに、push で届いたログ・dump から Issue を検出する
   - Issue をきっかけに、その前後の trace を pull してディスクに保存する (`-save-dir`)
   - 診断: goroutine ごとの状態別の時間内訳[^breakdown]と主因[^cause]
@@ -265,7 +265,7 @@ GUI の画面:
 
 ### クライアント (CLI / MCP)
 
-すべて server の HTTP API のクライアント。共通の型は `internal/api`、呼び出しは `internal/adapter/serverapi`。
+すべて server の HTTP API のクライアント。型と呼び出しのクライアントはどちらも `internal/app/api/serverapi`。
 
 | コンポーネント | 入口 | 誰向け | やること |
 | --- | --- | --- | --- |

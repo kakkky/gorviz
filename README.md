@@ -131,19 +131,19 @@ Claude Code などの MCP の設定に足す。
 
 ## 主なフラグ
 
-agent・server・launcher で共通。
+agent と server はそれぞれ自分の flag だけを受け付ける。launcher は `-addr` / `-agent-addr` / `-save-dir` を server に渡し、残りをすべて agent に渡す。
 
-- **取得 (agent)**
+- **取得 (gorviz-agent)**
   - `-chunk` (既定 2s): trace を区切る長さ
   - `-trace-buffer-mib` (既定 256): trace の直近を持つ上限。対象が忙しいほど持てる時間は短い
   - `-dump-interval` (既定 1m): goroutine dump の間隔。dump は全 goroutine を一瞬止める
   - `-leak-check-every` (既定 5): dump 何回に 1 回、runtime のリーク判定を行うか (GC を伴う。0 で無効)
   - `-record-mode` (既定 `always`): `intermittent` にすると `-record-every` ごとに `-record-for` だけ取る。負荷は減るが、問題の瞬間を取り逃すことがある
   - `-refresh` (既定 2s): agent が server へ送る間隔
-- **判定 (server)**
+- **判定 (gorviz-server)**
   - `-slow-request` / `-error-spike` / `-cpu-wait` / `-gc-per-second` / `-heap-near-goal`: Issue の閾値
   - `-leak-min-growth`: 件数の推移でリークとみなす増加数
-- **保存 (server)**
+- **保存 (gorviz-server)**
   - `-save-dir`: Issue の前後の trace を保存する先 (空ならメモリだけ)
 
 一覧は `-h` で見る。

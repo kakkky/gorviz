@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kakkky/gorviz/internal/adapter/logparse"
-	"github.com/kakkky/gorviz/internal/config"
+	"github.com/kakkky/gorviz/internal/app/agent/adapter/logparse"
+	"github.com/kakkky/gorviz/internal/app/agent/config"
 	"github.com/kakkky/gorviz/internal/logmark/logmarktest"
 	"github.com/kakkky/gorviz/logger/logrusadapter"
 )

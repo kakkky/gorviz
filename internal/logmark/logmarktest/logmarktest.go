@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	xtrace "golang.org/x/exp/trace"
 
-	"github.com/kakkky/gorviz/internal/domain"
+	"github.com/kakkky/gorviz/internal/app/api/model"
 	"github.com/kakkky/gorviz/internal/logmark"
 )
 
@@ -51,7 +51,7 @@ func Capture(t *testing.T, f func()) Result {
 			break
 		}
 		require.NoError(t, err)
-		if ev.Kind() == xtrace.EventLog && ev.Log().Category == domain.LogMarkCategory {
+		if ev.Kind() == xtrace.EventLog && ev.Log().Category == model.LogMarkCategory {
 			n, err := strconv.ParseUint(ev.Log().Message, 10, 64)
 			require.NoError(t, err)
 			res.Marks = append(res.Marks, n)

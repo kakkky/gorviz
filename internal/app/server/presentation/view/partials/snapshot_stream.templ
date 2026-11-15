@@ -1,0 +1,35 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+)
+
+const (
+	SnapshotStreamSourceID = "snapshot-stream-source"
+	OverviewSnapshotID     = "overview-snapshot"
+	SchedulerSnapshotID    = "scheduler-snapshot"
+	SnapshotErrorID        = "snapshot-error"
+	GMPReplayDataID        = "gmp-replay-data"
+)
+
+templ SnapshotStreamUpdate(vm components.SnapshotViewModel, replayJSON string) {
+	@turbo.StreamUpdate(SnapshotErrorID)
+	@turbo.StreamUpdate(GMPReplayDataID) {
+		@components.GMPReplayData(replayJSON)
+	}
+	// 同じ stream を Overview と Scheduler の両方で読む。開いている画面にない要素への更新は Turbo が無視する
+	@turbo.StreamUpdate(OverviewSnapshotID) {
+		@components.OverviewSnapshot(vm)
+	}
+	@turbo.StreamUpdate(SchedulerSnapshotID) {
+		@components.SchedulerSnapshot(vm)
+	}
+}
+
+templ SnapshotErrorStreamUpdate(msg string) {
+	@turbo.StreamUpdate(SnapshotErrorID) {
+		<div class="panel">failed to poll the target: { msg }</div>
+	}
+}
