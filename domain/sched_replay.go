@@ -48,7 +48,8 @@ const (
 
 // SchedEvent は再生の 1 コマ。Kind が goroutine なら Goroutine が Place に移ったこと、
 // proc なら Proc が ProcStatus になったこと (running なら Thread に乗ったこと) を表す。
-// Function はその時点で G がいた関数 (スケジューラ内部を除く)。trace にスタックが載るイベント (ブロック・停止・syscall) でだけ埋まる。
+// Function / Location はその時点で G がいた関数と位置 (file:line。スケジューラ内部を除く)。
+// trace にスタックが載るイベント (ブロック・停止・syscall) でだけ埋まる。
 // Created はこのイベントで G が生まれたこと (窓の中で作られた G) を表す
 type SchedEvent struct {
 	At         time.Duration
@@ -56,6 +57,7 @@ type SchedEvent struct {
 	Goroutine  GoroutineID
 	Place      GoroutinePlace
 	Function   string
+	Location   string
 	Created    bool
 	Proc       ProcID
 	ProcStatus ProcStatus
@@ -245,6 +247,20 @@ func (t SchedulerTimeline) Slice(from, to time.Duration) SchedulerTimeline {
 		Threads:         t.Threads,
 		Entries:         t.Entries,
 		EventsTruncated: t.EventsTruncated,
+	}
+	for _, r := range t.GC {
+		if r.End < from || r.Start > to {
+			continue
+		}
+		r.Start, r.End = max(r.Start, from)-from, min(r.End, to)-from
+		out.GC = append(out.GC, r)
+	}
+	for _, h := range t.Heap {
+		if h.At < from || h.At > to {
+			continue
+		}
+		h.At -= from
+		out.Heap = append(out.Heap, h)
 	}
 
 	lastG := map[GoroutineID]int{}

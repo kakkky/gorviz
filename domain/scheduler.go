@@ -34,6 +34,34 @@ type SchedulerTimeline struct {
 	EventsTruncated bool
 	// Entries は G ごとの入口の関数 (go 文で起動された関数)。trace の生成時のスタックと goroutine dump から集める
 	Entries map[GoroutineID]string
+	// GC は窓の中で GC が G を止めた / 手伝わせた区間 (At の昇順)
+	GC []GCRange
+	// Heap はヒープの大きさと GC の目標値の推移。trace に載る値をそのまま並べる
+	Heap []HeapSample
+	// GCCycles は窓の中で始まった GC の回数
+	GCCycles int
+}
+
+type GCRangeKind string
+
+const (
+	// GCStopTheWorld は全 G が止められた区間。どの G にとっても GC の時間になる
+	GCStopTheWorld GCRangeKind = "stw"
+	// GCMarkAssist は Goroutine が割り当ての代わりに GC の作業を手伝わされた区間
+	GCMarkAssist GCRangeKind = "mark_assist"
+)
+
+type GCRange struct {
+	Kind      GCRangeKind
+	Goroutine GoroutineID
+	Start     time.Duration
+	End       time.Duration
+}
+
+type HeapSample struct {
+	At        time.Duration
+	LiveBytes uint64
+	GoalBytes uint64
 }
 
 func (l ProcLane) Utilization(window time.Duration) float64 {

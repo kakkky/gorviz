@@ -1,9 +1,13 @@
 package client
 
 import (
+	"cmp"
 	"errors"
+	"fmt"
 	"io"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/exp/trace"
@@ -14,6 +18,11 @@ import (
 
 // 再生用イベントの上限。ブラウザに JSON で送って毎フレーム適用するので、忙しいプロセスで窓が長いと重くなりすぎる
 const maxReplayEvents = 50_000
+
+type gcRangeKey struct {
+	kind domain.GCRangeKind
+	g    trace.GoID
+}
 
 type runningSpan struct {
 	proc   domain.ProcID
@@ -52,6 +61,8 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 			}
 			return id
 		}
+		openGC = map[gcRangeKey]trace.Time{}
+		heap   domain.HeapSample
 		laneOf = func(p domain.ProcID) *domain.ProcLane {
 			l, ok := lanes[p]
 			if !ok {
@@ -103,6 +114,41 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 				}
 			}
 			continue
+		case trace.EventRangeBegin, trace.EventRangeActive, trace.EventRangeEnd:
+			r := ev.Range()
+			key, ok := gcRangeKeyOf(r)
+			if r.Name == "GC concurrent mark phase" && ev.Kind() == trace.EventRangeBegin {
+				tl.GCCycles++
+			}
+			if !ok {
+				continue
+			}
+			switch ev.Kind() {
+			case trace.EventRangeBegin:
+				openGC[key] = ev.Time()
+			case trace.EventRangeActive:
+				// 窓より前から続いている区間は、窓の先頭から始まったとみなす
+				openGC[key] = begin
+			case trace.EventRangeEnd:
+				if start, ok := openGC[key]; ok {
+					delete(openGC, key)
+					tl.GC = append(tl.GC, domain.GCRange{Kind: key.kind, Goroutine: domain.GoroutineID(key.g), Start: start.Sub(begin), End: ev.Time().Sub(begin)})
+				}
+			}
+			continue
+		case trace.EventMetric:
+			m := ev.Metric()
+			switch m.Name {
+			case "/memory/classes/heap/objects:bytes":
+				heap.LiveBytes = m.Value.Uint64()
+			case "/gc/heap/goal:bytes":
+				heap.GoalBytes = m.Value.Uint64()
+			default:
+				continue
+			}
+			heap.At = ev.Time().Sub(begin)
+			tl.Heap = append(tl.Heap, heap)
+			continue
 		case trace.EventStateTransition:
 		default:
 			continue
@@ -147,17 +193,18 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 		case trace.ResourceGoroutine:
 			g := st.Resource.Goroutine()
 			from, to := st.Goroutine()
-			frames := stackFunctions(st.Stack)
+			frames := stackFrames(st.Stack)
 			// 生成時のスタックは新しい G の入口から始まる。窓の前からいた G の状態記録のスタックは、その G 自身の今のスタック
 			if len(frames) > 0 && (from == trace.GoNotExist || from == trace.GoUndetermined) {
-				tl.Entries[domain.GoroutineID(g)] = frames[len(frames)-1]
+				tl.Entries[domain.GoroutineID(g)] = frames[len(frames)-1].Func
 			}
-			var function string
+			var function, location string
 			if from != trace.GoNotExist && len(frames) > 0 {
-				function = domain.CurrentFunction(frames)
+				f := currentFrame(frames)
+				function, location = f.Func, fmt.Sprintf("%s:%d", f.File, f.Line)
 			}
 			if place, ok := placeOf(ev, st, from, to, threadOf); ok {
-				emit(domain.SchedEvent{Kind: domain.SchedEventGoroutine, Goroutine: domain.GoroutineID(g), Place: place, Function: function, Created: from == trace.GoNotExist})
+				emit(domain.SchedEvent{Kind: domain.SchedEventGoroutine, Goroutine: domain.GoroutineID(g), Place: place, Function: function, Location: location, Created: from == trace.GoNotExist})
 			}
 			if from == trace.GoNotExist && to != trace.GoNotExist {
 				tl.GoroutinesCreated++
@@ -184,6 +231,10 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 	for g := range running {
 		closeSpan(g, last)
 	}
+	for key, start := range openGC {
+		tl.GC = append(tl.GC, domain.GCRange{Kind: key.kind, Goroutine: domain.GoroutineID(key.g), Start: start.Sub(begin), End: last.Sub(begin)})
+	}
+	slices.SortFunc(tl.GC, func(a, b domain.GCRange) int { return cmp.Compare(a.Start, b.Start) })
 	tl.Events = append(initial, tl.Events...)
 	tl.Window = last.Sub(begin)
 	for _, l := range lanes {
@@ -201,12 +252,34 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (domain.TraceChunk, erro
 	return chunk, nil
 }
 
-func stackFunctions(s trace.Stack) []string {
-	var fns []string
+func stackFrames(s trace.Stack) []trace.StackFrame {
+	var frames []trace.StackFrame
 	for f := range s.Frames() {
-		fns = append(fns, f.Func)
+		frames = append(frames, f)
 	}
-	return fns
+	return frames
+}
+
+// currentFrame は domain.CurrentFunction と同じ規則で、スケジューラ内部を除いた一番上のフレームを返す
+func currentFrame(frames []trace.StackFrame) trace.StackFrame {
+	for _, f := range frames {
+		if !domain.IsRuntimeFunction(f.Func) {
+			return f
+		}
+	}
+	return frames[0]
+}
+
+// gcRangeKeyOf は trace の区間のうち、G の時間を GC に取られたものを見分ける。
+// STW は止めた G に紐づいて記録されるが、全 G が止まるので G を問わない区間として扱う
+func gcRangeKeyOf(r trace.Range) (gcRangeKey, bool) {
+	switch {
+	case strings.HasPrefix(r.Name, "stop-the-world"):
+		return gcRangeKey{kind: domain.GCStopTheWorld}, true
+	case r.Name == "GC mark assist" && r.Scope.Kind == trace.ResourceGoroutine:
+		return gcRangeKey{kind: domain.GCMarkAssist, g: r.Scope.Goroutine()}, true
+	}
+	return gcRangeKey{}, false
 }
 
 // placeOf は G の状態遷移を、概念図上の置き場所に読み替える。runtime の run queue の中身は trace に出ないので、
