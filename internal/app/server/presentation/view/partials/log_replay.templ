@@ -45,7 +45,7 @@ templ LogReplayFrame(vm LogReplayViewModel) {
 		} else {
 			<section class="panel">
 				<h2>Replay around</h2>
-				<p><span class="muted">{ vm.Time }</span> <span class={ "level " + vm.LevelClass }>{ vm.Level }</span> { vm.Message }</p>
+				<p><span class="log-time">{ vm.Time }</span> <span class={ "level " + vm.LevelClass }>{ vm.Level }</span> { vm.Message }</p>
 				<p class="muted">{ vm.Focus }</p>
 				if vm.Duration != "" {
 					<p class="muted">request duration { vm.Duration }</p>

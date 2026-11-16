@@ -88,6 +88,9 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	vm.Unrecorded = out.Breakdown.Unrecorded.Round(time.Microsecond).String()
 	total := out.To.Sub(out.From)
 	for _, c := range out.Causes {
+		if c.Duration == 0 {
+			continue
+		}
 		ratio := float64(c.Duration) / float64(total)
 		vm.Breakdown = append(vm.Breakdown, pages.BreakdownRowViewModel{
 			Cause:    string(c.Cause),

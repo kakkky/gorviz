@@ -27,11 +27,11 @@ templ Base(targetURL string, active string) {
 			<title>gorviz</title>
 			<link rel="stylesheet" href="/assets/main.css"/>
 			// 一部の古いブラウザは module の読み込み開始後に出た import map を無視するので、Turbo の module より先に import map を出す
-			@stimulus.ScriptLoad(assets.GMPReplayController.Path)
+			@stimulus.ScriptLoad(assets.GMPReplayController.Path, assets.ChartSyncController.Path)
 			@turbo.ScriptImport()
 		</head>
 		<body>
-			<header>
+			<header class="app">
 				<h1>gorviz</h1>
 				<span class="target">{ targetURL }</span>
 				<nav>

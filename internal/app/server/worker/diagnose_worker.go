@@ -12,7 +12,7 @@ import (
 )
 
 // DiagnoseWorker は agent 1 つ分の判定を回し続ける。
-// refresh ごとに、agent から送られてきた軽いもの (ログ・dump) で判定し、Issue があれば前後の録画を agent に求めて保存する
+// refresh ごとに、agent から送られてきた軽いもの (ログ・dump) で判定と集計をし、閉じた区切りの集計と、Issue の前後の録画を保存する
 type DiagnoseWorker struct {
 	agent                        string
 	connected                    func() bool
@@ -20,6 +20,7 @@ type DiagnoseWorker struct {
 	syncLogsUsecase              *usecase.SyncLogsUsecase
 	recordRuntimeSnapshotUsecase *usecase.RecordRuntimeSnapshotUsecase
 	saveRecordingsUsecase        *usecase.SaveRecordingsUsecase
+	saveMetricsUsecase           *usecase.SaveMetricsUsecase
 }
 
 func NewDiagnoseWorker(agent string, connected func() bool, refresh time.Duration, uc *usecase.UseCase) *DiagnoseWorker {
@@ -30,6 +31,7 @@ func NewDiagnoseWorker(agent string, connected func() bool, refresh time.Duratio
 		syncLogsUsecase:              uc.NewSyncLogsUsecase(),
 		recordRuntimeSnapshotUsecase: uc.NewRecordRuntimeSnapshotUsecase(),
 		saveRecordingsUsecase:        uc.NewSaveRecordingsUsecase(),
+		saveMetricsUsecase:           uc.NewSaveMetricsUsecase(),
 	}
 }
 
@@ -54,6 +56,9 @@ func (d *DiagnoseWorker) diagnose(ctx context.Context, now time.Time) {
 	}
 	if _, err := d.recordRuntimeSnapshotUsecase.Exec(ctx, usecase.RecordRuntimeSnapshotUsecaseInput{Now: now}); err != nil && !errors.Is(err, model.ErrNotFound) {
 		slog.WarnContext(ctx, "record runtime snapshot", slog.String("agent", d.agent), slog.Any("err", err))
+	}
+	if _, err := d.saveMetricsUsecase.Exec(ctx, usecase.SaveMetricsUsecaseInput{Now: now}); err != nil {
+		slog.WarnContext(ctx, "save metrics", slog.String("agent", d.agent), slog.Any("err", err))
 	}
 	out, err := d.saveRecordingsUsecase.Exec(ctx, usecase.SaveRecordingsUsecaseInput{Now: now})
 	if err != nil {

@@ -60,7 +60,7 @@ func (a *API) overview(rw http.ResponseWriter, r *http.Request, uc *usecase.UseC
 	s := out.Snapshot
 	o := serverapi.OverviewJSON{
 		At: s.At, DumpAt: s.DumpAt, Goroutines: s.GoroutineCount, States: map[string]int{}, GoroutineHistory: s.GoroutineHistory,
-		HeapLiveBytes: s.Runtime.HeapLiveBytes, HeapGoalBytes: s.Runtime.HeapGoalBytes,
+		HeapObjectsBytes: s.Runtime.HeapObjectsBytes, HeapGoalBytes: s.Runtime.HeapGoalBytes,
 		GCPerSecond: s.Runtime.GCPerSecond, CPUWaiting: s.Runtime.CPUWaiting,
 	}
 	for k, v := range s.StateCounts {

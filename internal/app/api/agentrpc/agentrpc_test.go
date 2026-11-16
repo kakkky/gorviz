@@ -59,7 +59,7 @@ func TestAgentToServer(t *testing.T) {
 	hello := agentrpc.Hello{Name: "api", Target: "http://app:6060"}
 	accepted := make(chan agentrpc.Hello, 2)
 	agent := agentconn.NewClient(100)
-	serverUC := serverusecase.NewUseCase(serverusecase.Settings{}, agent, agent, nil, agent, nil, nil, agent)
+	serverUC := serverusecase.NewUseCase(serverusecase.Settings{}, agent, agent, nil, agent, nil, nil, nil, agent)
 	go func() {
 		_ = agentlistener.Accept(ctx, addr, func(h agentrpc.Hello) (agentlistener.Endpoint, bool) {
 			accepted <- h

@@ -28,7 +28,7 @@ func TestDetectLeaks(t *testing.T) {
 		{
 			name:    "success: origin whose waiting count never decreases and grows enough is a suspect",
 			samples: []domain.GoroutineSample{sample(1, 3), sample(4, 3), sample(10, 3)},
-			want:    []domain.Leak{{Origin: leaky, Count: 10, Growth: 9, Certainty: domain.CertaintyInference}},
+			want:    []domain.Leak{{Origin: leaky, Count: 10, Growth: 9, Certainty: domain.CertaintyInference, Trend: []int{1, 4, 10}}},
 		},
 		{
 			name:    "success: origin whose count decreased once is not a suspect",
@@ -49,6 +49,14 @@ func TestDetectLeaks(t *testing.T) {
 				{ID: 3, State: "select", CreatedBy: "main.serve", CreatedAt: "main.go:20"},
 			},
 			want: []domain.Leak{{Origin: leaky, Count: 2, LongestWait: 2 * time.Minute, Certainty: domain.CertaintyFact}},
+		},
+		{
+			name:    "success: goroutines marked leaked by runtime get the trend of their origin even when it is not growing enough",
+			samples: []domain.GoroutineSample{sample(2, 3), sample(1, 3)},
+			current: []model.Goroutine{
+				{ID: 1, State: "chan receive", CreatedBy: "main.leak", CreatedAt: "main.go:10", Leaked: true},
+			},
+			want: []domain.Leak{{Origin: leaky, Count: 1, Certainty: domain.CertaintyFact, Trend: []int{2, 1}}},
 		},
 	}
 	for _, tt := range tests {

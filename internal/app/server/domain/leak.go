@@ -28,6 +28,8 @@ type Leak struct {
 	Count       int
 	Growth      int
 	LongestWait time.Duration
+	// Trend は dump ごとの、この生成元の待機中の G の数 (古い順)
+	Trend []int
 	// Certainty は、runtime の goroutineleak プロファイル (GC で到達不能と判定された G) に載ったものなら FACT。
 	// 件数の推移から推測したものは INFERENCE
 	Certainty Certainty
@@ -84,6 +86,7 @@ func DetectLeaks(samples []GoroutineSample, current []model.Goroutine, policy Le
 
 	out := make([]Leak, 0, len(suspects))
 	for _, s := range suspects {
+		s.Trend = waitingTrend(samples, s.Origin)
 		out = append(out, *s)
 	}
 	slices.SortFunc(out, func(a, b Leak) int {
@@ -108,4 +111,15 @@ func monotonicGrowth(samples []GoroutineSample, origin model.GoroutineOrigin) (i
 		prev = cur
 	}
 	return prev - samples[0].WaitingByOrigin[origin], true
+}
+
+func waitingTrend(samples []GoroutineSample, origin model.GoroutineOrigin) []int {
+	if len(samples) == 0 {
+		return nil
+	}
+	trend := make([]int, len(samples))
+	for i, s := range samples {
+		trend[i] = s.WaitingByOrigin[origin]
+	}
+	return trend
 }

@@ -54,6 +54,7 @@ func LeakIssues(leaks []Leak, goroutines []model.Goroutine, dumpAt time.Time) []
 		issue := Issue{
 			Kind: model.IssueLeak, Certainty: l.Certainty, Subject: string(l.Origin), Location: string(l.Origin),
 			Summary: plural(l.Count, "goroutine") + " stuck",
+			Trend:   l.Trend,
 			At:      dumpAt, From: dumpAt.Add(-defaultIssueWindow),
 		}
 		if l.Growth > 0 {

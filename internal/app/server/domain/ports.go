@@ -44,3 +44,15 @@ type SavedRecordings interface {
 type AgentInbox interface {
 	Receive(logs []model.LogLine, dump *model.GoroutineDump)
 }
+
+// MetricStore は集計 (MetricPoint) の時系列の置き場。同じ区切りに足されたものは Merge して持つ。
+// 期間に応じて細かさの違う区切りで持ち、Range は step を描けるいちばん細かいものを返す
+type MetricStore interface {
+	Add(points ...MetricPoint)
+	// Range は [from, to] に入る区切りを古い順に、map を共有しない複製で返す
+	Range(from, to time.Time, step time.Duration) []MetricPoint
+	// Since は持っているいちばん古い区切り
+	Since() (time.Time, bool)
+	// Flush は閉じた区切り (now より前に終わったもの) をまだ書いていなければ書き、保持期間を過ぎたものを捨てる
+	Flush(now time.Time) error
+}

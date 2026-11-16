@@ -18,7 +18,7 @@ type OverviewJSON struct {
 	States           map[string]int       `json:"states"`
 	GoroutineHistory []int                `json:"goroutineHistory"`
 	TopOrigins       []OriginJSON         `json:"topOrigins"`
-	HeapLiveBytes    uint64               `json:"heapLiveBytes"`
+	HeapObjectsBytes uint64               `json:"heapObjectsBytes"`
 	HeapGoalBytes    uint64               `json:"heapGoalBytes"`
 	GCPerSecond      float64              `json:"gcPerSecond"`
 	CPUWaiting       float64              `json:"cpuWaiting"`

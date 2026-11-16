@@ -24,11 +24,12 @@ type UseCase struct {
 	traceRecording domain.TraceRecording
 	logRecording   domain.LogRecording
 	recordings     domain.SavedRecordings
+	metricStore    domain.MetricStore
 	agentInbox     domain.AgentInbox
 	snapshotMu     sync.Mutex
 }
 
-func NewUseCase(settings Settings, dumpSource domain.DumpSource, logSource domain.LogSource, inMemoryKVS domain.InMemoryKVS, traceRecording domain.TraceRecording, logRecording domain.LogRecording, recordings domain.SavedRecordings, agentInbox domain.AgentInbox) *UseCase {
+func NewUseCase(settings Settings, dumpSource domain.DumpSource, logSource domain.LogSource, inMemoryKVS domain.InMemoryKVS, traceRecording domain.TraceRecording, logRecording domain.LogRecording, recordings domain.SavedRecordings, metricStore domain.MetricStore, agentInbox domain.AgentInbox) *UseCase {
 	return &UseCase{
 		settings:       settings,
 		dumpSource:     dumpSource,
@@ -37,6 +38,7 @@ func NewUseCase(settings Settings, dumpSource domain.DumpSource, logSource domai
 		traceRecording: traceRecording,
 		logRecording:   logRecording,
 		recordings:     recordings,
+		metricStore:    metricStore,
 		agentInbox:     agentInbox,
 	}
 }

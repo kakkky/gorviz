@@ -62,7 +62,9 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 		}
 		openGC = map[gcRangeKey]trace.Time{}
 		heap   model.HeapSample
-		laneOf = func(p model.ProcID) *model.ProcLane {
+		// awaitingGoal は GC が終わって、次の heap goal をまだ読んでいない間 true
+		awaitingGoal bool
+		laneOf       = func(p model.ProcID) *model.ProcLane {
 			l, ok := lanes[p]
 			if !ok {
 				l = &model.ProcLane{Proc: p}
@@ -116,8 +118,18 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 		case trace.EventRangeBegin, trace.EventRangeActive, trace.EventRangeEnd:
 			r := ev.Range()
 			key, ok := gcRangeKeyOf(r)
-			if r.Name == "GC concurrent mark phase" && ev.Kind() == trace.EventRangeBegin {
-				tl.GCCycles++
+			if r.Name == "GC concurrent mark phase" {
+				switch ev.Kind() {
+				case trace.EventRangeBegin:
+					tl.GCCycles++
+				case trace.EventRangeEnd:
+					// runtime は mark の終わりに heap objects を生き残った量で置き直してから区間を閉じ、そのあと次の goal を出す。
+					// なので直前の heap objects が live heap になる。窓の始まりでまだ読んでいなければ分からない
+					if heap.ObjectsBytes > 0 {
+						tl.GCEnds = append(tl.GCEnds, model.GCEnd{At: ev.Time().Sub(begin), LiveHeapBytes: heap.ObjectsBytes})
+						awaitingGoal = true
+					}
+				}
 			}
 			if !ok {
 				continue
@@ -139,9 +151,13 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 			m := ev.Metric()
 			switch m.Name {
 			case "/memory/classes/heap/objects:bytes":
-				heap.LiveBytes = m.Value.Uint64()
+				heap.ObjectsBytes = m.Value.Uint64()
 			case "/gc/heap/goal:bytes":
 				heap.GoalBytes = m.Value.Uint64()
+				if awaitingGoal {
+					tl.GCEnds[len(tl.GCEnds)-1].HeapGoalBytes = heap.GoalBytes
+					awaitingGoal = false
+				}
 			default:
 				continue
 			}

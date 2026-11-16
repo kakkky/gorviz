@@ -36,7 +36,7 @@ func TestGetGoroutineUsecase_Exec(t *testing.T) {
 		Window: time.Second,
 		Events: []model.SchedEvent{gEv(0, network, "", ""), gEv(400*ms, running, "", "")},
 	}})
-	uc := usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, recording.NewLogStore(100), nil, nil)
+	uc := usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, recording.NewLogStore(100), nil, nil, nil)
 
 	out, err := uc.NewGetGoroutineUsecase().Exec(context.Background(), usecase.GetGoroutineUsecaseInput{
 		Goroutine: 5, From: base.Add(500 * ms), To: base.Add(1600 * ms), At: base.Add(900 * ms), ReplayHalf: 50 * ms,

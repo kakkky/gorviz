@@ -107,7 +107,7 @@ bin/gorviz export -out ./export             # 保存した trace を go tool tra
 
 GUI の画面:
 
-- **Overview**: 全体の様子 (未解決の Issue、goroutine 数・エラー・CPU 待ち・ヒープの推移)
+- **Overview**: runtime の様子の推移 (未解決の Issue、goroutine 数と状態・ヒープ・GC・mark assist・CPU 待ち)。期間を選んで見る
 - **Issues**: 検出した runtime の問題 (`LEAK` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE`) と、保存した前後の trace
 - **Logs**: ログ一覧。1 行選ぶと、その瞬間の前後を再生し、書いた goroutine に進める
 - **Scheduler**: 最新の区間を GMP の概念図で再生し続ける

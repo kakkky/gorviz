@@ -14,29 +14,40 @@ type LogsViewModel struct {
 	Level     string
 	Levels    []string
 	Logs      components.LogListViewModel
+	// Since と Until は時刻での絞り込み (時刻の入力欄の形)。TimeZone は入力欄の時刻のタイムゾーン
+	Since     string
+	Until     string
+	TimeZone  string
+	TimeError string
 }
 
 templ Logs(vm LogsViewModel) {
 	@layout.Base(vm.TargetURL, "Logs") {
 		<div class="logs-page">
 			<section class="panel logs-list">
-				<h2>Logs</h2>
+				<h2>Logs <span class="muted">click a line to replay the scheduler around it</span></h2>
 				<form method="get" action="/logs" class="log-filter" data-turbo-frame={ partials.LogListFrameID }>
-					<input type="search" name="q" value={ vm.Query } placeholder="search text"/>
+					<input type="search" name="q" value={ vm.Query } placeholder="search text (e.g. a trace_id from Datadog)"/>
 					<select name="level">
 						<option value="">all levels</option>
 						for _, lv := range vm.Levels {
 							<option value={ lv } selected?={ lv == vm.Level }>{ lv }</option>
 						}
 					</select>
+					<label>from <input type="datetime-local" name="since" step="1" value={ vm.Since }/></label>
+					<label>to <input type="datetime-local" name="until" step="1" value={ vm.Until }/></label>
+					<span class="faint">{ vm.TimeZone }</span>
 					<button type="submit">search</button>
 				</form>
+				if vm.TimeError != "" {
+					<p class="error">{ vm.TimeError }</p>
+				}
 				@turbo.Frame(partials.LogListFrameID) {
 					@components.LogList(vm.Logs)
 				}
 			</section>
 			@turbo.Frame(components.LogReplayFrameID) {
-				<section class="panel muted">Click a log line to replay the scheduler around it.</section>
+
 			}
 		</div>
 	}

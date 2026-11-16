@@ -51,7 +51,7 @@ func Base(targetURL string, active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = stimulus.ScriptLoad(assets.GMPReplayController.Path).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = stimulus.ScriptLoad(assets.GMPReplayController.Path, assets.ChartSyncController.Path).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -59,7 +59,7 @@ func Base(targetURL string, active string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</head><body><header><h1>gorviz</h1><span class=\"target\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</head><body><header class=\"app\"><h1>gorviz</h1><span class=\"target\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

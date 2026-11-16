@@ -3,6 +3,7 @@ package runtimeparse
 import (
 	"bytes"
 	"runtime"
+	"runtime/metrics"
 	"runtime/trace"
 	"slices"
 	"sync"
@@ -47,4 +48,29 @@ func TestBuildSchedulerTimeline(t *testing.T) {
 			assert.LessOrEqual(t, s.End, tl.Window)
 		}
 	}
+}
+
+func TestBuildSchedulerTimeline_GCEnds(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, trace.Start(&buf))
+	retained := make([][]byte, 0, 1000)
+	for i := range 1000 {
+		retained = append(retained, make([]byte, 4096+i))
+	}
+	runtime.GC()
+	trace.Stop()
+	samples := []metrics.Sample{{Name: "/gc/heap/live:bytes"}, {Name: "/gc/heap/goal:bytes"}}
+	metrics.Read(samples)
+	runtime.KeepAlive(retained)
+
+	chunk, err := buildTraceChunk(&buf, time.Now())
+	require.NoError(t, err)
+
+	require.NotEmpty(t, chunk.Timeline.GCEnds)
+	last := chunk.Timeline.GCEnds[len(chunk.Timeline.GCEnds)-1]
+	assert.Equal(t, samples[0].Value.Uint64(), last.LiveHeapBytes, "the heap objects right before the end of the mark phase is the live heap")
+	assert.Equal(t, samples[1].Value.Uint64(), last.HeapGoalBytes, "the goal emitted right after the end of the mark phase is the next heap goal")
+	gogc, ok := last.EffectiveGOGC()
+	require.True(t, ok)
+	assert.InDelta(t, 100, gogc, 30, "with the default GOGC, the goal is about twice the live heap")
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,9 +37,20 @@ func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	query, level := r.URL.Query().Get("q"), model.LogLevel(r.URL.Query().Get("level"))
 	in := usecase.ListLogsUsecaseInput{Query: query, Level: level, Limit: logsLimit}
-	// from / to (Unix ナノ秒) は Goroutine から「前後のログ」を開いたときに付く
+	// from / to (Unix ナノ秒) は Goroutine や Overview から開いたときに付く。since / until は画面の時刻の入力欄
 	in.From, _ = unixNanoParam(r, "from")
 	in.To, _ = unixNanoParam(r, "to")
+	var timeErr error
+	if t, ok, err := localTimeParam(r, "since"); ok {
+		in.From = t
+	} else if err != nil {
+		timeErr = err
+	}
+	if t, ok, err := localTimeParam(r, "until"); ok {
+		in.To = t
+	} else if err != nil {
+		timeErr = err
+	}
 	out, err := h.listLogsUsecase.Exec(ctx, in)
 	if err != nil {
 		slog.ErrorContext(ctx, "list logs", slog.Any("err", err))
@@ -52,7 +65,17 @@ func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		for i, lv := range logLevels {
 			levels[i] = string(lv)
 		}
-		page = pages.Logs(pages.LogsViewModel{TargetURL: h.targetURL, Query: query, Level: string(level), Levels: levels, Logs: logs})
+		vm := pages.LogsViewModel{TargetURL: h.targetURL, Query: query, Level: string(level), Levels: levels, Logs: logs, TimeZone: timeZoneLabel()}
+		if !in.From.IsZero() {
+			vm.Since = in.From.Local().Format(localTimeInputLayout)
+		}
+		if !in.To.IsZero() {
+			vm.Until = in.To.Local().Format(localTimeInputLayout)
+		}
+		if timeErr != nil {
+			vm.TimeError = timeErr.Error()
+		}
+		page = pages.Logs(vm)
 	}
 	if err := page.Render(ctx, rw); err != nil {
 		slog.ErrorContext(ctx, "render logs", slog.Any("err", err))
@@ -88,7 +111,9 @@ func toLogListViewModel(out usecase.ListLogsUsecaseOutput) components.LogListVie
 		vm.Histogram = append(vm.Histogram, bar)
 	}
 
+	sources := map[string]bool{}
 	for _, l := range out.Lines {
+		sources[l.Line.Source] = true
 		vm.Lines = append(vm.Lines, components.LogRowViewModel{
 			Time:       l.Line.At.Local().Format("15:04:05.000"),
 			Level:      levelLabel(l.Line.Level),
@@ -99,10 +124,18 @@ func toLogListViewModel(out usecase.ListLogsUsecaseOutput) components.LogListVie
 			ReplayURL:  logReplayURL(l.Line.ID, defaultReplayHalfWindow),
 			Exact:      l.Line.HasTraceSeq,
 			Duration:   formatDuration(l.Line),
+			OverviewURL: "/?" + url.Values{
+				"from": {strconv.FormatInt(l.Line.At.Add(-logOverviewHalfWindow).UnixMilli(), 10)},
+				"to":   {strconv.FormatInt(l.Line.At.Add(logOverviewHalfWindow).UnixMilli(), 10)},
+			}.Encode(),
 		})
 	}
+	vm.ShowSource = len(sources) > 1
 	return vm
 }
+
+// logOverviewHalfWindow は、ログの行から Overview を開くときに見る前後の長さ
+const logOverviewHalfWindow = 5 * time.Minute
 
 func levelLabel(lv model.LogLevel) string {
 	if lv == model.LogLevelUnknown {

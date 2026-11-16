@@ -18,13 +18,16 @@ const (
 	// latestGoroutinesKey は直近の goroutine dump。録画した trace のラベル付けに、Live 以外 (Explore) からも使う
 	latestGoroutinesKey = "runtime-snapshot:latest-goroutines"
 	latestSnapshotKey   = "runtime-snapshot:latest"
-	topOriginsLimit     = 10
+	// lastMetricChunkKey は集計に足した最後の録画の区切りの始まり
+	lastMetricChunkKey = "runtime-snapshot:last-metric-chunk"
+	topOriginsLimit    = 10
 )
 
 type RecordRuntimeSnapshotUsecase struct {
 	dumpSource     domain.DumpSource
 	inMemoryKVS    domain.InMemoryKVS
 	traceRecording domain.TraceRecording
+	metricStore    domain.MetricStore
 	traceWindow    time.Duration
 	historySize    int
 	leakPolicy     domain.LeakDetectionPolicy
@@ -37,6 +40,7 @@ func (us *UseCase) NewRecordRuntimeSnapshotUsecase() *RecordRuntimeSnapshotUseca
 		dumpSource:     us.dumpSource,
 		inMemoryKVS:    us.inMemoryKVS,
 		traceRecording: us.traceRecording,
+		metricStore:    us.metricStore,
 		traceWindow:    us.settings.TraceWindow,
 		historySize:    us.settings.HistorySize,
 		leakPolicy:     us.settings.Leak,
@@ -76,11 +80,15 @@ type RuntimeSnapshot struct {
 }
 
 type RuntimeLoad struct {
-	HeapLiveBytes uint64
-	HeapGoalBytes uint64
-	GCPerSecond   float64
+	HeapObjectsBytes uint64
+	HeapGoalBytes    uint64
+	GCPerSecond      float64
 	// CPUWaiting は P を待っている G の数の平均
 	CPUWaiting float64
+	// MarkAssistPerSecond は 1 秒あたりに G が GC を手伝わされた時間 (秒)
+	MarkAssistPerSecond float64
+	// GCEnds は区切りの中で終わった GC ごとの live heap と heap goal
+	GCEnds []model.GCEnd
 }
 
 func runtimeLoadOf(c model.TraceChunk) RuntimeLoad {
@@ -91,9 +99,17 @@ func runtimeLoadOf(c model.TraceChunk) RuntimeLoad {
 	load := RuntimeLoad{
 		GCPerSecond: float64(c.Timeline.GCCycles) / w.Seconds(),
 		CPUWaiting:  float64(domain.TotalByCause(c.Timeline)[domain.CauseCPUWait]) / float64(w),
+		GCEnds:      c.Timeline.GCEnds,
 	}
+	var assist time.Duration
+	for _, r := range c.Timeline.GC {
+		if r.Kind == model.GCMarkAssist {
+			assist += r.End - r.Start
+		}
+	}
+	load.MarkAssistPerSecond = assist.Seconds() / w.Seconds()
 	if n := len(c.Timeline.Heap); n > 0 {
-		load.HeapLiveBytes, load.HeapGoalBytes = c.Timeline.Heap[n-1].LiveBytes, c.Timeline.Heap[n-1].GoalBytes
+		load.HeapObjectsBytes, load.HeapGoalBytes = c.Timeline.Heap[n-1].ObjectsBytes, c.Timeline.Heap[n-1].GoalBytes
 	}
 	return load
 }
@@ -129,7 +145,8 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(_ context.Context, in RecordRuntime
 		startedAt time.Time
 		load      RuntimeLoad
 	)
-	if chunk, ok := us.traceRecording.Latest(); ok {
+	chunk, hasChunk := us.traceRecording.Latest()
+	if hasChunk {
 		w := chunk.Timeline.Window
 		timeline = chunk.Timeline.Slice(w-us.traceWindow, w)
 		startedAt = chunk.StartedAt.Add(max(w-us.traceWindow, 0))
@@ -161,7 +178,41 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(_ context.Context, in RecordRuntime
 	}
 	snapshot.Recording, snapshot.HasRecording = us.traceRecording.Span()
 	us.inMemoryKVS.Set(latestSnapshotKey, snapshot)
+	lastChunkAt := domain.KVSGetOr(us.inMemoryKVS, lastMetricChunkKey, time.Time{})
+	newChunk := hasChunk && !chunk.StartedAt.Equal(lastChunkAt)
+	if newChunk {
+		us.inMemoryKVS.Set(lastMetricChunkKey, chunk.StartedAt)
+	}
+	us.recordMetrics(in.Now, snapshot, newChunk, dumped, goroutines)
 	return RecordRuntimeSnapshotUsecaseOutput{Snapshot: snapshot}, nil
+}
+
+// recordMetrics は観測 1 回分を集計に足す。ヒープ・GC・CPU 待ちは新しい録画の区切りのときだけ (同じ区切りを二度数えて GC の回数などを重ねないため)、
+// G の数は新しい dump のときだけ
+func (us *RecordRuntimeSnapshotUsecase) recordMetrics(now time.Time, snapshot RuntimeSnapshot, newChunk, dumped bool, goroutines []model.Goroutine) {
+	var points []domain.MetricPoint
+	if newChunk {
+		load := snapshot.Runtime
+		p := domain.MetricPoint{At: now}
+		p.HeapObjects.Observe(float64(load.HeapObjectsBytes))
+		p.HeapGoal.Observe(float64(load.HeapGoalBytes))
+		p.GCPerSecond.Observe(load.GCPerSecond)
+		p.CPUWaiting.Observe(load.CPUWaiting)
+		p.MarkAssist.Observe(load.MarkAssistPerSecond)
+		for _, e := range load.GCEnds {
+			p.LiveHeap.Observe(float64(e.LiveHeapBytes))
+			if gogc, ok := e.EffectiveGOGC(); ok {
+				p.EffectiveGOGC.Observe(gogc)
+			}
+		}
+		points = append(points, p)
+	}
+	if dumped {
+		p := domain.MetricPoint{At: snapshot.DumpAt}
+		p.ObserveGoroutines(snapshot.StateCounts, goroutines)
+		points = append(points, p)
+	}
+	us.metricStore.Add(points...)
 }
 
 func leakedIDs(gs []model.Goroutine) []model.GoroutineID {

@@ -3,13 +3,14 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"
 )
 
 const snapshotStreamURL = "/snapshots/stream"
 
-// GetOverviewHandler と GetSchedulerHandler は枠だけを返し、中身は SSE (snapshot stream) で届く
+// GetOverviewHandler は枠だけを返し、中身は SSE で届く。?range= の期間を見る
 type GetOverviewHandler struct {
 	targetURL string
 }
@@ -19,8 +20,13 @@ func NewGetOverviewHandler(targetURL string) *GetOverviewHandler {
 }
 
 func (h *GetOverviewHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	window := overviewWindowOf(r)
 	rw.Header().Set("Content-Type", htmlContentType)
-	if err := pages.Overview(pages.OverviewViewModel{TargetURL: h.targetURL, StreamURL: snapshotStreamURL}).Render(r.Context(), rw); err != nil {
+	vm := pages.OverviewViewModel{TargetURL: h.targetURL, StreamURL: overviewStreamURLFor(window)}
+	for _, rg := range overviewRanges {
+		vm.Ranges = append(vm.Ranges, pages.RangeLinkViewModel{Label: rg.Key, URL: "/?" + url.Values{"range": {rg.Key}}.Encode(), Active: rg.Key == window.Key && !window.zoomed()})
+	}
+	if err := pages.Overview(vm).Render(r.Context(), rw); err != nil {
 		slog.ErrorContext(r.Context(), "render overview", slog.Any("err", err))
 	}
 }

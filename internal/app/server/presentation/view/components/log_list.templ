@@ -7,6 +7,8 @@ type LogListViewModel struct {
 	Shown     int
 	Histogram []LogHistogramBarViewModel
 	Lines     []LogRowViewModel
+	// ShowSource は取り込み元が複数あるときだけ、行ごとに取り込み元を出す
+	ShowSource bool
 }
 
 type LogHistogramBarViewModel struct {
@@ -30,6 +32,8 @@ type LogRowViewModel struct {
 	// Exact はログを書いた G まで trace で特定できる (gorviz のロガーの差し込み口経由の) 行か
 	Exact    bool
 	Duration string
+	// OverviewURL はこの行の前後の時間帯の Overview
+	OverviewURL string
 }
 
 templ LogList(vm LogListViewModel) {
@@ -42,7 +46,7 @@ templ LogList(vm LogListViewModel) {
 			</div>
 		}
 	</div>
-	<p class="muted">{ strconv.Itoa(vm.Shown) } of { strconv.Itoa(vm.Total) } lines (newest first). Click a line to replay the scheduler around it.</p>
+	<p class="muted log-count">{ strconv.Itoa(vm.Shown) } of { strconv.Itoa(vm.Total) } lines, newest first</p>
 	<table class="log-table">
 		for _, l := range vm.Lines {
 			<tr class={ templ.KV("replayable", l.Replayable) }>
@@ -55,13 +59,16 @@ templ LogList(vm LogListViewModel) {
 						<span title="the trace around this line is not recorded">{ l.Message }</span>
 					}
 				</td>
-				<td class="muted">
-					if l.Exact {
-						<span title="the goroutine that wrote this line is identified exactly through gorviz's slog handler">G: FACT</span>
+				<td class="side">
+					if l.Replayable && !l.Exact {
+						<span title="the goroutine that wrote this line is inferred from the timestamp (plug gorviz into your logger to identify it exactly)">G?</span>
 					}
 				</td>
-				<td class="muted">{ l.Duration }</td>
-				<td class="muted">{ l.Source }</td>
+				<td class="side">{ l.Duration }</td>
+				<td class="side"><a href={ templ.SafeURL(l.OverviewURL) } data-turbo-frame="_top" title="open the overview around this time (±5m)">overview</a></td>
+				if vm.ShowSource {
+					<td class="side">{ l.Source }</td>
+				}
 			</tr>
 		}
 	</table>

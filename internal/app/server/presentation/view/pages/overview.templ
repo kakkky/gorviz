@@ -3,6 +3,7 @@ package pages
 import (
 	"github.com/kakkky/hotwire-go/turbo"
 
+	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
@@ -10,14 +11,38 @@ import (
 type OverviewViewModel struct {
 	TargetURL string
 	StreamURL string
+	Ranges    []RangeLinkViewModel
+}
+
+// RangeLinkViewModel は Overview で選べる期間 1 つ。Active は今見ている期間
+type RangeLinkViewModel struct {
+	Label  string
+	URL    string
+	Active bool
 }
 
 templ Overview(vm OverviewViewModel) {
 	@layout.Base(vm.TargetURL, "Overview") {
-		@turbo.StreamSSESource(partials.SnapshotStreamSourceID, vm.StreamURL)
-		<div id={ partials.SnapshotErrorID } class="error"></div>
-		<div id={ partials.OverviewSnapshotID }>
-			<div class="panel skeleton">collecting the first sample from the target...</div>
+		@turbo.StreamSSESource(partials.OverviewStreamSourceID, vm.StreamURL)
+		<div class="overview-head">
+			<h2>Overview</h2>
+			<nav class="range" aria-label="time range">
+				for _, r := range vm.Ranges {
+					<a href={ templ.SafeURL(r.URL) } class={ templ.KV("active", r.Active) } aria-current={ ariaCurrent(r.Active) }>{ r.Label }</a>
+				}
+			</nav>
+		</div>
+		<div data-controller={ assets.ChartSyncController.Name } data-chart-sync-source-value={ partials.OverviewStreamSourceID }>
+			<div id={ partials.OverviewID } class="stack">
+				<div class="panel skeleton">collecting the first sample from the target...</div>
+			</div>
 		</div>
 	}
+}
+
+func ariaCurrent(active bool) string {
+	if active {
+		return "page"
+	}
+	return "false"
 }

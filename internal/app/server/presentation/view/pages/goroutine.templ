@@ -44,7 +44,7 @@ templ Goroutine(vm GoroutineViewModel) {
 			<section class="panel error">{ vm.Error }</section>
 		} else {
 			<section class="panel">
-				<h2>Goroutine <span class="muted">{ vm.Interval }</span></h2>
+				<h2>Goroutine <span class="muted mono">{ vm.Interval }</span></h2>
 				<p class="goroutine-title">
 					<strong>{ vm.Goroutine }</strong> { vm.Entry }
 					if vm.Leaked {
@@ -62,13 +62,12 @@ templ Goroutine(vm GoroutineViewModel) {
 					</p>
 				}
 				<table class="kv">
-					<tr><th>at</th><td>{ vm.At }</td></tr>
+					<tr><th>at</th><td class="mono">{ vm.At }</td></tr>
 					<tr><th>stopped in</th><td class="origin">{ vm.Function }</td></tr>
-					<tr><th>location</th><td class="origin">{ vm.Location }</td></tr>
+					<tr><th>location</th><td class="origin" title={ vm.Location }>{ components.ShortPath(vm.Location) }</td></tr>
 					<tr><th>wait reason</th><td>{ vm.WaitReason }</td></tr>
-					<tr><th>created by</th><td class="origin">{ vm.CreatedBy }</td></tr>
+					<tr><th>created by</th><td class="origin" title={ vm.CreatedBy }>{ components.ShortPath(vm.CreatedBy) }</td></tr>
 				</table>
-				<p class="muted">gorviz reports what the runtime recorded. Finding the cause in the code and deciding the next step is up to you (or your LLM).</p>
 				<p><a href={ templ.SafeURL(vm.LogsURL) }>logs around this time</a></p>
 				if len(vm.Issues) > 0 {
 					<p>
@@ -85,9 +84,9 @@ templ Goroutine(vm GoroutineViewModel) {
 					for _, r := range vm.Breakdown {
 						<tr class={ templ.KV("primary", r.Primary) }>
 							<td>{ r.Cause }</td>
-							<td class="bar-cell"><div class={ "bar cause-" + r.Cause } style={ templ.SafeCSS("width:" + r.Width) }></div></td>
-							<td>{ r.Duration }</td>
-							<td class="muted">{ r.Percent }</td>
+							<td class="bar-cell"><div class={ "bar cause-bg-" + r.Cause } style={ templ.SafeCSS("width:" + r.Width) }></div></td>
+							<td class="num mono">{ r.Duration }</td>
+							<td class="num mono muted">{ r.Percent }</td>
 						</tr>
 					}
 				</table>

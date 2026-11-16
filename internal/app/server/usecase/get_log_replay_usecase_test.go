@@ -21,7 +21,7 @@ func TestGetLogReplayUsecase_Exec(t *testing.T) {
 
 	newUsecase := func() (*usecase.UseCase, *fakeTraces, *recording.LogStore) {
 		traces, logs := &fakeTraces{}, recording.NewLogStore(100)
-		return usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, logs, nil, nil), traces, logs
+		return usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, logs, nil, nil, nil), traces, logs
 	}
 	chunk := model.TraceChunk{
 		StartedAt: base,

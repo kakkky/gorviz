@@ -37,6 +37,25 @@ type SchedulerTimeline struct {
 	Heap []HeapSample
 	// GCCycles は窓の中で始まった GC の回数
 	GCCycles int
+	// GCEnds は窓の中で終わった GC ごとの live heap と、次の heap goal
+	GCEnds []GCEnd
+}
+
+// GCEnd は GC が 1 回終わった時点の値。LiveHeapBytes は runtime/metrics の /gc/heap/live:bytes (その GC で生き残った量) と同じ値で、
+// HeapGoalBytes はそれをもとに決めた次の目標値 (おおよそ live heap × (1 + GOGC/100))
+type GCEnd struct {
+	At            time.Duration
+	LiveHeapBytes uint64
+	HeapGoalBytes uint64
+}
+
+// EffectiveGOGC は heap goal と live heap の比から逆算した GOGC。goal にはスタックとグローバル変数の分も入るので、設定した GOGC より数 % 大きく出る。
+// GOMEMLIMIT で goal が抑えられていれば、設定した GOGC より小さく出る
+func (e GCEnd) EffectiveGOGC() (float64, bool) {
+	if e.LiveHeapBytes == 0 || e.HeapGoalBytes == 0 {
+		return 0, false
+	}
+	return (float64(e.HeapGoalBytes)/float64(e.LiveHeapBytes) - 1) * 100, true
 }
 
 type GCRangeKind string
@@ -55,8 +74,10 @@ type GCRange struct {
 	End       time.Duration
 }
 
+// HeapSample は runtime/metrics の値。ObjectsBytes は /memory/classes/heap/objects:bytes (生きているオブジェクトと、まだ回収していないゴミ)、
+// GoalBytes は /gc/heap/goal:bytes (今の GC サイクルが終わるときのヒープの目標値)
 type HeapSample struct {
-	At        time.Duration
-	LiveBytes uint64
-	GoalBytes uint64
+	At           time.Duration
+	ObjectsBytes uint64
+	GoalBytes    uint64
 }

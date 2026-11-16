@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/kakkky/gorviz/internal/app/server/config"
+	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
 
@@ -52,6 +53,10 @@ func (h *Handler) Routes() []Route {
 		{
 			Pattern: "GET /goroutines/{id}",
 			Handler: NewGetGoroutineHandler(h.usecase.NewGetGoroutineUsecase(), h.usecase.NewListIssuesUsecase(), h.cfg.TargetURL),
+		},
+		{
+			Pattern: "GET /overview/stream",
+			Handler: NewGetOverviewStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewListIssuesUsecase(), h.usecase.NewGetMetricsUsecase(), h.cfg.Refresh, domain.IssuePolicy{CPUWaitRatio: h.cfg.CPUWaitRatio, GCPerSecond: h.cfg.GCPerSecond}),
 		},
 		{
 			Pattern: "GET /snapshots/stream",

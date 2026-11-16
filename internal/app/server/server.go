@@ -5,12 +5,14 @@ package server
 import (
 	"context"
 	"path/filepath"
+	"time"
 
 	"github.com/kakkky/scope"
 
 	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/agentconn"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/kvs"
+	"github.com/kakkky/gorviz/internal/app/server/adapter/metricstore"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/recording"
 	"github.com/kakkky/gorviz/internal/app/server/config"
 	"github.com/kakkky/gorviz/internal/app/server/domain"
@@ -49,11 +51,19 @@ func newSession(cfg *config.Config, hello agentrpc.Hello) (*agentsession.Session
 	if err != nil {
 		return nil, err
 	}
+	metricsDir := ""
+	if saveDir != "" {
+		metricsDir = filepath.Join(saveDir, "metrics")
+	}
+	metrics, err := metricstore.NewStore(metricsDir, time.Now())
+	if err != nil {
+		return nil, err
+	}
 	agent := agentconn.NewClient(cfg.MaxLogLines)
 	sessionCfg := *cfg
 	sessionCfg.TargetURL = hello.Name + " — " + hello.Target
 	uc := usecase.NewUseCase(settingsOf(cfg), agent, agent, kvs.NewInMemoryKVS(),
-		recording.NewCompositeTraceRecording(agent, saved), recording.NewLogStore(cfg.MaxLogLines), saved, agent)
+		recording.NewCompositeTraceRecording(agent, saved), recording.NewLogStore(cfg.MaxLogLines), saved, metrics, agent)
 	return &agentsession.Session{
 		Handler: handler.Session{
 			Name: hello.Name, Target: hello.Target, Connected: agent.Connected, UseCase: uc,
