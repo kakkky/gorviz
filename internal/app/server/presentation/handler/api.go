@@ -10,7 +10,6 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
 	"github.com/kakkky/gorviz/internal/app/api/serverapi"
-	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
 
@@ -61,7 +60,7 @@ func (a *API) overview(rw http.ResponseWriter, r *http.Request, uc *usecase.UseC
 	s := out.Snapshot
 	o := serverapi.OverviewJSON{
 		At: s.At, DumpAt: s.DumpAt, Goroutines: s.GoroutineCount, States: map[string]int{}, GoroutineHistory: s.GoroutineHistory,
-		Scopes: scopesJSON(s.Scopes), HeapLiveBytes: s.Runtime.HeapLiveBytes, HeapGoalBytes: s.Runtime.HeapGoalBytes,
+		HeapLiveBytes: s.Runtime.HeapLiveBytes, HeapGoalBytes: s.Runtime.HeapGoalBytes,
 		GCPerSecond: s.Runtime.GCPerSecond, CPUWaiting: s.Runtime.CPUWaiting,
 	}
 	for k, v := range s.StateCounts {
@@ -74,7 +73,7 @@ func (a *API) overview(rw http.ResponseWriter, r *http.Request, uc *usecase.UseC
 		o.Recording = &s.Recording
 	}
 	if issues, err := uc.NewListIssuesUsecase().Exec(r.Context(), usecase.ListIssuesUsecaseInput{Now: time.Now()}); err == nil {
-		o.Issues, o.ErrorsLastMinute, o.SlowLastMinute = len(issues.Issues), issues.ErrorsLastMinute, issues.SlowLastMinute
+		o.Issues = len(issues.Issues)
 	}
 	writeJSON(rw, o)
 }
@@ -87,7 +86,7 @@ func (a *API) issues(rw http.ResponseWriter, r *http.Request, uc *usecase.UseCas
 	}
 	issues := []serverapi.IssueJSON{}
 	for _, i := range out.Issues {
-		j := serverapi.IssueJSON{Kind: string(i.Kind), Certainty: string(i.Certainty), Subject: i.Subject, Summary: i.Summary, Location: i.Location, Trend: i.Trend, At: i.At, From: i.From, LogQuery: i.LogQuery}
+		j := serverapi.IssueJSON{Kind: string(i.Kind), Certainty: string(i.Certainty), Subject: i.Subject, Summary: i.Summary, Location: i.Location, Trend: i.Trend, At: i.At, From: i.From}
 		if i.HasGoroutine {
 			g := int64(i.Goroutine)
 			j.Goroutine = &g
@@ -192,12 +191,4 @@ func writeJSONError(rw http.ResponseWriter, status int, msg string) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(status)
 	_ = json.NewEncoder(rw).Encode(map[string]string{"error": msg})
-}
-
-func scopesJSON(scopes []domain.ScopeSummary) []serverapi.ScopeJSON {
-	out := make([]serverapi.ScopeJSON, 0, len(scopes))
-	for _, s := range scopes {
-		out = append(out, serverapi.ScopeJSON{Name: s.Name, Goroutines: s.Goroutines, Waiting: s.Waiting, Leaked: s.Leaked})
-	}
-	return out
 }

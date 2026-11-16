@@ -5,8 +5,6 @@ type IssueKind string
 
 const (
 	IssueLeak           IssueKind = "LEAK"
-	IssueErrorSpike     IssueKind = "ERROR_SPIKE"
-	IssueSlowRequest    IssueKind = "SLOW_REQUEST"
 	IssueCPUWaitSpike   IssueKind = "CPU_WAIT_SPIKE"
 	IssueMemoryPressure IssueKind = "MEMORY_PRESSURE"
 )

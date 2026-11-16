@@ -69,11 +69,8 @@ func settingsOf(cfg *config.Config) usecase.Settings {
 		TraceWindow: cfg.TraceWindow,
 		HistorySize: cfg.HistorySize,
 		Issue: domain.IssuePolicy{
-			ErrorSpikePerMinute: cfg.ErrorSpikePerMinute,
-			SlowRequest:         cfg.SlowRequest,
-			CPUWaitRatio:        cfg.CPUWaitRatio,
-			GCPerSecond:         cfg.GCPerSecond,
-			HeapNearGoal:        cfg.HeapNearGoal,
+			CPUWaitRatio: cfg.CPUWaitRatio,
+			GCPerSecond:  cfg.GCPerSecond,
 		},
 		Leak: domain.LeakDetectionPolicy{
 			MinSamples: cfg.LeakMinSamples,

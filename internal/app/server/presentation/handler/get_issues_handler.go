@@ -49,7 +49,7 @@ func (h *GetIssuesHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// toIssueViewModel は種類ごとの調べに入る先を並べる。代表の G があれば Goroutine、ログが絡む種類は絞った Logs
+// toIssueViewModel は種類ごとの調べに入る先を並べる。代表の G があれば Goroutine
 func toIssueViewModel(i domain.Issue) pages.IssueViewModel {
 	vm := pages.IssueViewModel{
 		Kind:      string(i.Kind),
@@ -63,9 +63,6 @@ func toIssueViewModel(i domain.Issue) pages.IssueViewModel {
 	}
 	if i.HasGoroutine {
 		vm.Links = append(vm.Links, pages.IssueLinkViewModel{Label: fmt.Sprintf("G%d", i.Goroutine), URL: goroutineURL(i.Goroutine, i.At, i.From)})
-	}
-	if i.LogQuery != "" {
-		vm.Links = append(vm.Links, pages.IssueLinkViewModel{Label: "logs", URL: "/logs?" + url.Values{"q": {i.LogQuery}}.Encode()})
 	}
 	if i.Kind == model.IssueCPUWaitSpike {
 		vm.Links = append(vm.Links, pages.IssueLinkViewModel{Label: "scheduler", URL: "/scheduler"})

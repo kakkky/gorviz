@@ -65,7 +65,6 @@ type RuntimeSnapshot struct {
 	GoroutineCount int
 	StateCounts    domain.GoroutineStateCounts
 	TopOrigins     []RuntimeSnapshotOriginCount
-	Scopes         []domain.ScopeSummary
 	// Recording は今持てている録画の区間。画面に示す
 	Recording        model.RecordingSpan
 	HasRecording     bool
@@ -155,7 +154,6 @@ func (us *RecordRuntimeSnapshotUsecase) Exec(_ context.Context, in RecordRuntime
 		GoroutineCount:    len(goroutines),
 		StateCounts:       domain.CountGoroutineStates(goroutines),
 		TopOrigins:        topOrigins(goroutines, topOriginsLimit),
-		Scopes:            domain.SummarizeScopes(goroutines),
 		Leaks:             domain.DetectLeaks(history.samples, goroutines, us.leakPolicy),
 		LeakCheckStatus:   dump.LeakCheck,
 		GoroutineHistory:  slices.Clone(history.totals),

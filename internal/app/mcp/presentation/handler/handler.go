@@ -213,11 +213,11 @@ var tools = []map[string]any{
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{}},
 	},
 	{
-		"name": "get_overview", "description": "Summary of the process: goroutine count and trend, open issues, errors and slow requests in the last minute, goroutines waiting for a P, heap and GC.",
+		"name": "get_overview", "description": "Summary of the process: goroutine count and trend, open issues, goroutines waiting for a P, heap and GC.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"agent": agentProp}},
 	},
 	{
-		"name": "list_issues", "description": "Detected issues (LEAK, ERROR_SPIKE, SLOW_REQUEST, CPU_WAIT_SPIKE, MEMORY_PRESSURE) with certainty (FACT / INFERENCE). An issue with a goroutine can be diagnosed with diagnose_goroutine using its goroutine, at and from.",
+		"name": "list_issues", "description": "Detected runtime issues (LEAK, CPU_WAIT_SPIKE, MEMORY_PRESSURE) with certainty (FACT / INFERENCE). An issue with a goroutine can be diagnosed with diagnose_goroutine using its goroutine, at and from.",
 		"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"agent": agentProp}},
 	},
 	{

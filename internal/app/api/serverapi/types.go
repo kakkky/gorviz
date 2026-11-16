@@ -18,14 +18,11 @@ type OverviewJSON struct {
 	States           map[string]int       `json:"states"`
 	GoroutineHistory []int                `json:"goroutineHistory"`
 	TopOrigins       []OriginJSON         `json:"topOrigins"`
-	Scopes           []ScopeJSON          `json:"scopes"`
 	HeapLiveBytes    uint64               `json:"heapLiveBytes"`
 	HeapGoalBytes    uint64               `json:"heapGoalBytes"`
 	GCPerSecond      float64              `json:"gcPerSecond"`
 	CPUWaiting       float64              `json:"cpuWaiting"`
 	Issues           int                  `json:"issues"`
-	ErrorsLastMinute int                  `json:"errorsLastMinute"`
-	SlowLastMinute   int                  `json:"slowLastMinute"`
 	Recording        *model.RecordingSpan `json:"recording,omitempty"`
 }
 
@@ -46,7 +43,6 @@ type IssueJSON struct {
 	From      time.Time `json:"from"`
 	// GoroutineQuery は /api/goroutines/{goroutine} に付ける問い合わせ (at / from)。代表の G を診断するのに使う
 	GoroutineQuery string `json:"goroutineQuery,omitempty"`
-	LogQuery       string `json:"logQuery,omitempty"`
 }
 
 type LogJSON struct {
@@ -86,12 +82,4 @@ type LogQuery struct {
 	From  time.Time
 	To    time.Time
 	Limit int
-}
-
-// ScopeJSON は 1 つのスコープに属する G の様子
-type ScopeJSON struct {
-	Name       string
-	Goroutines int
-	Waiting    int
-	Leaked     int
 }

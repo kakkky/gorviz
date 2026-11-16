@@ -108,7 +108,7 @@ bin/gorviz export -out ./export             # 保存した trace を go tool tra
 GUI の画面:
 
 - **Overview**: 全体の様子 (未解決の Issue、goroutine 数・エラー・CPU 待ち・ヒープの推移)
-- **Issues**: 検出した問題 (`LEAK` / `ERROR_SPIKE` / `SLOW_REQUEST` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE`) と、保存した前後の trace
+- **Issues**: 検出した runtime の問題 (`LEAK` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE`) と、保存した前後の trace
 - **Logs**: ログ一覧。1 行選ぶと、その瞬間の前後を再生し、書いた goroutine に進める
 - **Scheduler**: 最新の区間を GMP の概念図で再生し続ける
 - **Goroutine**: 1 つの goroutine の主因・止まっていた場所 (file:line)・根拠
@@ -135,8 +135,9 @@ Claude Code などの MCP の設定に足す。
 読み取り:
 
 - 書式: slog・zap・zerolog・logrus (JSON / テキスト) と標準 log の形式
-- 所要時間: `-duration-keys` (既定 `duration,latency,elapsed`) のキー。数値はナノ秒、文字列は `1.2s` の形
-- `-slow-request` (既定 1 秒) を超えたものを遅いリクエストとみなす
+- 所要時間: `-duration-keys` (既定 `duration,latency,elapsed`) のキー。数値はナノ秒、文字列は `1.2s` の形。ログを選んだときに、そのリクエストの区間を再生するのに使う
+
+遅いリクエストやエラーの増加に気づくのは APM (Datadog など) の役目とし、gorviz はそこで見つけたログ・時間帯から、goroutine と runtime の中で何が起きていたかを調べる入口にする。
 
 ## 主なフラグ
 
@@ -150,7 +151,7 @@ agent と server はそれぞれ自分の flag だけを受け付ける。launch
   - `-record-mode` (既定 `always`): `intermittent` にすると `-record-every` ごとに `-record-for` だけ取る。負荷は減るが、問題の瞬間を取り逃すことがある
   - `-refresh` (既定 2s): agent が server へ送る間隔
 - **判定 (gorviz-server)**
-  - `-slow-request` / `-error-spike` / `-cpu-wait` / `-gc-per-second` / `-heap-near-goal`: Issue の閾値
+  - `-cpu-wait` / `-gc-per-second`: Issue の閾値
   - `-leak-min-growth`: 件数の推移でリークとみなす増加数
 - **保存 (gorviz-server)**
   - `-save-dir`: Issue の前後の trace を保存する先 (空ならメモリだけ)

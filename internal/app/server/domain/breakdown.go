@@ -268,22 +268,3 @@ func LongestMarkAssist(t model.SchedulerTimeline) (model.GoroutineID, time.Durat
 	}
 	return best, first[best], longest > 0
 }
-
-// HeapGoalRatio は窓の中のヒープの大きさの、GC の目標値に対する割合の平均
-func HeapGoalRatio(t model.SchedulerTimeline) (float64, bool) {
-	var (
-		sum float64
-		n   int
-	)
-	for _, h := range t.Heap {
-		if h.GoalBytes == 0 {
-			continue
-		}
-		sum += float64(h.LiveBytes) / float64(h.GoalBytes)
-		n++
-	}
-	if n == 0 {
-		return 0, false
-	}
-	return sum / float64(n), true
-}

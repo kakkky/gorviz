@@ -22,13 +22,9 @@ type Config struct {
 	HistorySize     int
 	TimelineBuckets int
 	MaxLogLines     int
-	// SlowRequest を超える所要時間のログを遅いリクエストとみなす
-	SlowRequest time.Duration
 	// Issue の固定の閾値。超えたものは FACT として出す
-	ErrorSpikePerMinute int
-	CPUWaitRatio        float64
-	GCPerSecond         float64
-	HeapNearGoal        float64
+	CPUWaitRatio float64
+	GCPerSecond  float64
 	// TargetURL は画面の見出しに出す agent の名前と対象。flag ではなく、Session を作るときに agent ごとに入れる
 	TargetURL string
 }
@@ -46,11 +42,8 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.IntVar(&cfg.HistorySize, "history", 30, "number of dumps kept for leak detection")
 	fs.IntVar(&cfg.TimelineBuckets, "buckets", 100, "number of columns of the P timeline")
 	fs.IntVar(&cfg.MaxLogLines, "max-logs", 50_000, "upper bound of log lines kept in memory")
-	fs.DurationVar(&cfg.SlowRequest, "slow-request", time.Second, "a request whose logged duration exceeds this is slow")
-	fs.IntVar(&cfg.ErrorSpikePerMinute, "error-spike", 10, "errors of the same shape per minute reported as ERROR_SPIKE")
 	fs.Float64Var(&cfg.CPUWaitRatio, "cpu-wait", 1, "average number of goroutines waiting for a P reported as CPU_WAIT_SPIKE")
 	fs.Float64Var(&cfg.GCPerSecond, "gc-per-second", 5, "GC cycles per second reported as MEMORY_PRESSURE")
-	fs.Float64Var(&cfg.HeapNearGoal, "heap-near-goal", 0.95, "average heap / GC goal ratio reported as MEMORY_PRESSURE (INFERENCE)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
