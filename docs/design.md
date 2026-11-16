@@ -233,7 +233,7 @@ GUI の画面:
 | Overview | 全体の様子 (未解決 Issue の数、goroutine 数・エラー・CPU 待ち・ヒープの推移) |
 | Issues | 検出した問題の一覧。保存した trace もここに並ぶ |
 | Logs | ログ一覧。1 行選ぶと、その瞬間の前後を再生し、書いた goroutine に進める |
-| Scheduler | 最新の区間を GMP[^gmp] の概念図で再生し続ける |
+| Scheduler | 最新の録画の末尾を GMP[^gmp] の概念図で再生し続ける。再生する長さを選び、P ごとの帯 (CPU slots (P) over time) で時刻を選べる |
 | Goroutine | 1 つの goroutine の診断と根拠。どの画面から入っても最後はここに行き着く |
 | Agents | 見る agent (対象) を選ぶ |
 
@@ -290,7 +290,7 @@ GUI の画面:
 
 | ラベル | 付ける先 | 値 |
 | --- | --- | --- |
-| Issue の種類 | Issue | `LEAK` / `ERROR_SPIKE` / `SLOW_REQUEST` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE` |
+| Issue の種類 | Issue | `LEAK` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE` |
 | 確かさ[^certainty] | すべての診断 | `FACT` / `INFERENCE` |
 | 主因[^cause] | goroutine の診断 | `RUNNING` / `CPU_WAIT` / `BLOCKED` / `IO_WAIT` / `CGO` / `SLEEP` / `GC` |
 
@@ -299,10 +299,10 @@ Issue の種類:
 | 種類 | 意味 | `FACT` | `INFERENCE` |
 | --- | --- | --- | --- |
 | `LEAK` | goroutine のリーク | runtime の goroutineleak プロファイルが判定 | 生成元ごとの待機中の数が減らずに増え続けている (古い Go 向け) |
-| `ERROR_SPIKE` | 同じ種類のエラーログが多い | 固定の閾値を超えた | 普段との比較 |
-| `SLOW_REQUEST` | ログの所要時間が `-slow-request` を超えた | 固定の閾値を超えた | 普段との比較 |
 | `CPU_WAIT_SPIKE` | P に乗れず待つ時間が多い | 固定の閾値を超えた | 普段との比較 |
-| `MEMORY_PRESSURE` | ヒープが GC の目標値に張り付く / GC が頻発 | GC の頻度 | ヒープの張り付き |
+| `MEMORY_PRESSURE` | GC が頻発 | GC の頻度 | - |
+
+Issue は runtime 層の問題だけにする。遅いリクエストやエラーの増加 (アプリ層) に気づくのは APM (Datadog など) の役目で、gorviz はそこで見つけたログ・時間帯から goroutine と runtime を調べる入口を用意する (Logs の検索と時間の絞り込み)。
 
 主因 (状態別の時間内訳のうち最も長いもの):
 
