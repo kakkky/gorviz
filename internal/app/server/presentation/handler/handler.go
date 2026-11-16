@@ -48,7 +48,7 @@ func (h *Handler) Routes() []Route {
 		},
 		{
 			Pattern: "GET /scheduler",
-			Handler: NewGetSchedulerHandler(h.cfg.TargetURL),
+			Handler: NewGetSchedulerHandler(h.usecase.NewGetSchedulerReplayUsecase(), h.cfg.TargetURL, h.cfg.TraceWindow),
 		},
 		{
 			Pattern: "GET /goroutines/{id}",
@@ -57,10 +57,6 @@ func (h *Handler) Routes() []Route {
 		{
 			Pattern: "GET /overview/stream",
 			Handler: NewGetOverviewStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewListIssuesUsecase(), h.usecase.NewGetMetricsUsecase(), h.cfg.Refresh, domain.IssuePolicy{CPUWaitRatio: h.cfg.CPUWaitRatio, GCPerSecond: h.cfg.GCPerSecond}),
-		},
-		{
-			Pattern: "GET /snapshots/stream",
-			Handler: NewGetSnapshotStreamHandler(h.usecase.NewGetRuntimeSnapshotUsecase(), h.usecase.NewListIssuesUsecase(), h.cfg.Refresh, h.cfg.TimelineBuckets),
 		},
 	}
 }

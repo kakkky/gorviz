@@ -15,10 +15,7 @@ func (us *UseCase) NewGetRuntimeSnapshotUsecase() *GetRuntimeSnapshotUsecase {
 	return &GetRuntimeSnapshotUsecase{inMemoryKVS: us.inMemoryKVS}
 }
 
-// GetRuntimeSnapshotUsecaseInput の Buckets は、P ごとのレーンを何等分して返すか。0 なら区画は返さない
-type GetRuntimeSnapshotUsecaseInput struct {
-	Buckets int
-}
+type GetRuntimeSnapshotUsecaseInput struct{}
 
 type GetRuntimeSnapshotUsecaseOutput struct {
 	Snapshot RuntimeSnapshot
@@ -29,11 +26,10 @@ type GetRuntimeSnapshotUsecaseOutput struct {
 type ProcLaneSummary struct {
 	Proc        model.ProcID
 	Utilization float64
-	Buckets     []domain.LaneBucket
 }
 
 // Exec は録画ループが最後に作ったスナップショットを返す。まだ 1 度も観測できていなければ ErrNotFound
-func (us *GetRuntimeSnapshotUsecase) Exec(_ context.Context, in GetRuntimeSnapshotUsecaseInput) (GetRuntimeSnapshotUsecaseOutput, error) {
+func (us *GetRuntimeSnapshotUsecase) Exec(_ context.Context, _ GetRuntimeSnapshotUsecaseInput) (GetRuntimeSnapshotUsecaseOutput, error) {
 	v, ok := us.inMemoryKVS.Get(latestSnapshotKey)
 	snapshot, isSnapshot := v.(RuntimeSnapshot)
 	if !ok || !isSnapshot {
@@ -42,7 +38,7 @@ func (us *GetRuntimeSnapshotUsecase) Exec(_ context.Context, in GetRuntimeSnapsh
 	out := GetRuntimeSnapshotUsecaseOutput{Snapshot: snapshot}
 	tl := snapshot.Timeline
 	for _, lane := range domain.SortedProcs(tl) {
-		out.Lanes = append(out.Lanes, ProcLaneSummary{Proc: lane.Proc, Utilization: domain.Utilization(lane, tl.Window), Buckets: domain.Buckets(lane, tl.Window, in.Buckets)})
+		out.Lanes = append(out.Lanes, ProcLaneSummary{Proc: lane.Proc, Utilization: domain.Utilization(lane, tl.Window)})
 	}
 	return out, nil
 }

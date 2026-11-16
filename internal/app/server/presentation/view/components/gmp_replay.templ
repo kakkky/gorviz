@@ -6,51 +6,61 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/assets"
 )
 
-// GMPReplayViewModel の Live が true なら、SSE で DataID の要素に次々と窓が届く (Live 画面)。
-// false なら InitialJSON の窓 1 つだけを再生する (Explore でログをクリックしたとき)
+// GMPReplayViewModel の InitialJSON の窓 1 つを再生する。LatestURL があれば (Scheduler で最新を見ているとき)、最新を開き直すリンクを出す
 type GMPReplayViewModel struct {
 	DataID      string
-	Live        bool
+	LatestURL   string
 	InitialJSON string
 	Title       string
 }
 
 // GMPReplay は再生の操作部と描画先。SSE で中身を差し替えられるのは DataID の要素だけで、
-// 再生中の状態を持つ controller の要素そのものは差し替えない
+// 再生中の状態を持つ controller の要素そのものは差し替えない。children は見出しの行の右端に置く (Scheduler の長さのボタンなど)
 templ GMPReplay(vm GMPReplayViewModel) {
 	<section class="panel replay" { stimulus.AttrControllers(assets.GMPReplayController.Name)... }>
-		<h2>
-			if vm.Title != "" {
-				{ vm.Title }
-			} else {
-				GMP replay
+		<div class="replay-head">
+			<h2>
+				if vm.Title != "" {
+					{ vm.Title }
+				} else {
+					GMP replay
+				}
+			</h2>
+			<span class="period" { stimulus.AttrTargets(assets.GMPReplayController.Name, "period")... }></span>
+			if vm.LatestURL != "" {
+				<a class="latest" href={ templ.SafeURL(vm.LatestURL) } title="open the latest recording">↻ latest</a>
 			}
-		</h2>
-		<p class="muted">click a goroutine to open it</p>
+			<div class="replay-head-tools">
+				{ children... }
+			</div>
+		</div>
 		<div class="replay-controls">
-			<button type="button" { stimulus.AttrTargets(assets.GMPReplayController.Name, "play")... } { stimulus.AttrActions("click->" + assets.GMPReplayController.Name + "#togglePlay")... }>pause</button>
-			<select { stimulus.AttrTargets(assets.GMPReplayController.Name, "speed")... }>
-				<option value="0.005">0.005x</option>
-				<option value="0.01">0.01x</option>
-				<option value="0.02" selected>0.02x</option>
-				<option value="0.05">0.05x</option>
-				<option value="0.2">0.2x</option>
-			</select>
+			<div class="transport" role="group" aria-label="replay">
+				<button type="button" title="step back to the previous event" aria-label="previous event" { stimulus.AttrActions("click->" + assets.GMPReplayController.Name + "#prev")... }>⏮</button>
+				<button type="button" class="primary play" title="play" aria-label="play" { stimulus.AttrTargets(assets.GMPReplayController.Name, "play")... } { stimulus.AttrActions("click->" + assets.GMPReplayController.Name + "#togglePlay")... }>▶</button>
+				<button type="button" title="step forward to the next event" aria-label="next event" { stimulus.AttrActions("click->" + assets.GMPReplayController.Name + "#next")... }>⏭</button>
+			</div>
 			<input type="range" min="0" step="1000" class="seek" { stimulus.AttrTargets(assets.GMPReplayController.Name, "seek")... } { stimulus.AttrActions("input->" + assets.GMPReplayController.Name + "#seek")... }/>
 			<span class="clock" { stimulus.AttrTargets(assets.GMPReplayController.Name, "clock")... }></span>
-			if vm.Live {
-				<label><input type="checkbox" checked { stimulus.AttrTargets(assets.GMPReplayController.Name, "live")... }/> follow latest window</label>
-				<button type="button" hidden { stimulus.AttrTargets(assets.GMPReplayController.Name, "pending")... } { stimulus.AttrActions("click->" + assets.GMPReplayController.Name + "#loadLatest")... }>new window ready — load</button>
-			}
+			<label title="skip the events of other goroutines when stepping"><input type="checkbox" disabled { stimulus.AttrTargets(assets.GMPReplayController.Name, "focusOnly")... }/> <span { stimulus.AttrTargets(assets.GMPReplayController.Name, "focusOnlyLabel")... }>step only through the followed G (click a G first)</span></label>
 		</div>
+		<div class="replay-legend">
+			<span><span class="gdot cause-bg-RUNNING"></span> running</span>
+			<span><span class="gdot cause-bg-CPU_WAIT"></span> runnable (waiting for a P)</span>
+			<span><span class="gdot cause-bg-IO_WAIT"></span> syscall / I/O wait</span>
+			<span><span class="gdot cause-bg-BLOCKED"></span> blocked (lock, channel)</span>
+			<span><span class="gdot cause-bg-SLEEP"></span> sleep</span>
+			<span><span class="gdot cause-bg-GC"></span> GC</span>
+			<span title="goroutines parked inside the runtime, or with no wait reason in the trace"><span class="gdot other"></span> runtime / unknown</span>
+			<span title="the ring marks a leaked goroutine; the fill still shows its state"><span class="gdot is-leaked"></span> leaked (ring)</span>
+		</div>
+		<div class="gmp-lanes" { stimulus.AttrTargets(assets.GMPReplayController.Name, "lanes")... }></div>
 		<div class="replay-stage" { stimulus.AttrTargets(assets.GMPReplayController.Name, "stage")... }>
 			<p class="muted">waiting for the first trace window...</p>
 		</div>
-		<p class="muted replay-note">
-			The local / global run queues are inferred from the execution trace: a goroutine readied by a P is placed on that P's local run queue, and one descheduled by preemption, yield or a syscall without P is placed on the global run queue. runnext is not distinguished.
+		<div class="replay-note">
 			<span class="error" { stimulus.AttrTargets(assets.GMPReplayController.Name, "note")... }></span>
-		</p>
-		<pre class="replay-log" { stimulus.AttrTargets(assets.GMPReplayController.Name, "log")... }></pre>
+		</div>
 		<div id={ vm.DataID } hidden>
 			if vm.InitialJSON != "" {
 				@GMPReplayData(vm.InitialJSON)

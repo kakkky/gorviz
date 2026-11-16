@@ -2,27 +2,29 @@ package handler
 
 import (
 	"encoding/json"
-	"slices"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
 // gmpReplayJSON は gmp_replay_controller.js が読む形。イベントは件数が多いので配列に詰め、文字列は表の添字で持つ:
 //   - G: [atNs, 0, goroutine, place, proc (-1 = なし), thread (-1 = なし), reason (reasons の添字, -1 = なし), function (functions の添字, -1 = なし)]
 //   - P: [atNs, 1, proc, status (0 = idle, 1 = running), thread (-1 = なし)]
 //   - entries: [goroutine, functions の添字] の組。G ごとの入口の関数
+//   - lanes: P ごとに、G が走った区間 [startNs, endNs, goroutine] を並べたもの。procs と同じ順
 type gmpReplayJSON struct {
 	WindowNs int64 `json:"windowNs"`
 	// StartedAtNs は窓の時刻 0 に当たる Unix ナノ秒。G をクリックしたとき Goroutine 画面に時刻を渡すのに使う
-	StartedAtNs int64     `json:"startedAtNs"`
-	Procs       []int64   `json:"procs"`
-	Reasons     []string  `json:"reasons"`
-	Functions   []string  `json:"functions"`
-	Entries     [][]int64 `json:"entries"`
-	Events      [][]int64 `json:"events"`
-	Leaked      []int64   `json:"leaked"`
-	Truncated   bool      `json:"truncated"`
+	StartedAtNs int64       `json:"startedAtNs"`
+	Procs       []int64     `json:"procs"`
+	Lanes       [][][]int64 `json:"lanes"`
+	Reasons     []string    `json:"reasons"`
+	Functions   []string    `json:"functions"`
+	Entries     [][]int64   `json:"entries"`
+	Events      [][]int64   `json:"events"`
+	Leaked      []int64     `json:"leaked"`
+	Truncated   bool        `json:"truncated"`
 	// Logs と Focus は Explore でログから再生するときだけ入る
 	Logs  []gmpReplayLogJSON  `json:"logs"`
 	Focus *gmpReplayFocusJSON `json:"focus,omitempty"`
@@ -56,6 +58,7 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 		Logs:        []gmpReplayLogJSON{},
 		WindowNs:    int64(tl.Window),
 		Procs:       []int64{},
+		Lanes:       [][][]int64{},
 		Reasons:     []string{},
 		Functions:   []string{},
 		Entries:     make([][]int64, 0, len(tl.Entries)),
@@ -63,10 +66,14 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 		Leaked:      []int64{},
 		Truncated:   tl.EventsTruncated,
 	}
-	for _, l := range tl.Procs {
+	for _, l := range domain.SortedProcs(tl) {
 		r.Procs = append(r.Procs, int64(l.Proc))
+		spans := make([][]int64, 0, len(l.Spans))
+		for _, s := range l.Spans {
+			spans = append(spans, []int64{int64(s.Start), int64(s.End), int64(s.Goroutine)})
+		}
+		r.Lanes = append(r.Lanes, spans)
 	}
-	slices.Sort(r.Procs)
 	reasonIdx := map[string]int64{}
 	functionIdx := map[string]int64{}
 	indexOf := func(fn string) int64 {

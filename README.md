@@ -110,7 +110,7 @@ GUI の画面:
 - **Overview**: runtime の様子の推移 (未解決の Issue、goroutine 数と状態・ヒープ・GC・mark assist・CPU 待ち)。期間を選んで見る
 - **Issues**: 検出した runtime の問題 (`LEAK` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE`) と、保存した前後の trace
 - **Logs**: ログ一覧。1 行選ぶと、その瞬間の前後を再生し、書いた goroutine に進める
-- **Scheduler**: 最新の区間を GMP の概念図で再生し続ける
+- **Scheduler**: 最新の録画の末尾を GMP の概念図で再生し続ける。再生する長さ (100ms〜2s) をボタンで選び、P ごとの帯 (CPU slots (P) over time) で G が走った瞬間を選んで飛べる
 - **Goroutine**: 1 つの goroutine の主因・止まっていた場所 (file:line)・根拠
 - **Agents** (右上): 見る対象を選ぶ
 

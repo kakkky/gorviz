@@ -1,27 +1,51 @@
 package pages
 
 import (
-	"github.com/kakkky/hotwire-go/turbo"
-
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
 
+// SchedulerViewModel の Lengths は選べる再生の長さ。Active が今の長さ。LatestURL は今の長さで最新を開き直すリンク。
+// Past が true なら Issue から時刻を指定して開いた区間を、false なら開いたときの最新の区間を再生する
 type SchedulerViewModel struct {
-	TargetURL string
-	StreamURL string
+	TargetURL  string
+	Lengths    []RangeLinkViewModel
+	LatestURL  string
+	Past       bool
+	ReplayJSON string
+	Error      string
 }
 
-// Scheduler (見出しは Runtime Scheduler) は GMP の概念図で最新の観測窓を再生し続ける。G を選ぶと Goroutine に移る
+// Scheduler (見出しは Runtime Scheduler) は録画を選んだ長さだけ GMP の概念図で再生する。G を選ぶと Goroutine に移る
 templ Scheduler(vm SchedulerViewModel) {
 	@layout.Base(vm.TargetURL, "Scheduler") {
-		<h2 class="page-title">Runtime Scheduler</h2>
-		@turbo.StreamSSESource(partials.SnapshotStreamSourceID, vm.StreamURL)
-		<div id={ partials.SnapshotErrorID } class="error"></div>
-		@components.GMPReplay(components.GMPReplayViewModel{DataID: partials.GMPReplayDataID, Live: true})
-		<div id={ partials.SchedulerSnapshotID }>
-			<div class="panel skeleton">collecting the first sample from the target...</div>
-		</div>
+		if vm.Error != "" {
+			<div class="overview-head">
+				<h2>Scheduler</h2>
+				@schedulerTools(vm)
+			</div>
+			<section class="panel error">{ vm.Error } <a href={ templ.SafeURL(vm.LatestURL) }>reload</a></section>
+		} else if vm.Past {
+			@components.GMPReplay(components.GMPReplayViewModel{DataID: "scheduler-replay-data", InitialJSON: vm.ReplayJSON}) {
+				@schedulerTools(vm)
+			}
+		} else {
+			@components.GMPReplay(components.GMPReplayViewModel{DataID: "scheduler-replay-data", InitialJSON: vm.ReplayJSON, LatestURL: vm.LatestURL}) {
+				@schedulerTools(vm)
+			}
+		}
 	}
+}
+
+// schedulerTools は過去の時刻を見ているときの印と、再生する長さのボタン
+templ schedulerTools(vm SchedulerViewModel) {
+	if vm.Past {
+		<span class="muted">past moment · <a href={ templ.SafeURL(vm.LatestURL) }>back to the latest</a></span>
+	}
+	<span class="range-label muted">replay length</span>
+	<nav class="range" aria-label="replay length">
+		for _, l := range vm.Lengths {
+			<a href={ templ.SafeURL(l.URL) } class={ templ.KV("active", l.Active) } aria-current={ ariaCurrent(l.Active) }>{ l.Label }</a>
+		}
+	</nav>
 }

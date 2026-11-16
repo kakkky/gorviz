@@ -64,8 +64,9 @@ func toIssueViewModel(i domain.Issue) pages.IssueViewModel {
 	if i.HasGoroutine {
 		vm.Links = append(vm.Links, pages.IssueLinkViewModel{Label: fmt.Sprintf("G%d", i.Goroutine), URL: goroutineURL(i.Goroutine, i.At, i.From)})
 	}
+	// CPU 待ちの急増は録画の区切り 1 つ分で判定するので、その区切りの全体 (At は区切りの真ん中) を再生する
 	if i.Kind == model.IssueCPUWaitSpike {
-		vm.Links = append(vm.Links, pages.IssueLinkViewModel{Label: "scheduler", URL: "/scheduler"})
+		vm.Links = append(vm.Links, pages.IssueLinkViewModel{Label: "scheduler", URL: schedulerURLAt(i.At, 2*time.Second)})
 	}
 	return vm
 }
