@@ -25,12 +25,20 @@ goroutine のリークや、遅い / 失敗したリクエストの原因は、�
 ## クイックスタート
 
 ```sh
-make example.leaky   # 別の端末で
 make launcher.up
-open http://localhost:7070
+open http://localhost:8080   # デモの Todo アプリ
+open http://localhost:7070   # gorviz
 ```
 
-リークし続け、ときどきロック待ちで遅いリクエストを出すデモアプリを起動し、gorviz の server と agent で観測する。
+デモの Todo アプリ (`example/todo`) を gorviz の server と agent で観測する。Todo アプリには、画面の操作で起きる goroutine の不具合が入っている:
+
+- リマインダー付きで追加する → 通知のタイムアウトで goroutine が残り続ける (`LEAK`)
+- 今すぐバックアップ (1 分ごとにも自動で走る) → その間のリクエストがロック待ちで遅くなる (ログから入り、待たされた G が `BLOCKED` と分かる)
+- 完了にする → 2 分ごとに 30 秒、メール送信が失敗する (ログから入り、G は外の呼び出しを待っているだけと分かる)
+- サンプルを追加してから統計を見る → P が埋まり、他のリクエストが実行を待たされる (`CPU_WAIT_SPIKE`)
+- サンプルを追加してから CSV エクスポートを繰り返す → GC が頻発する (`MEMORY_PRESSURE`)
+
+裏では仮想ユーザー (`-users`、既定 3) が一覧・追加・完了を続ける。
 
 ## 使い方
 
@@ -155,7 +163,7 @@ agent と server はそれぞれ自分の flag だけを受け付ける。launch
 make build            # bin/ にすべてのバイナリを作る
 make test
 make gen              # templ のコードを生成し直す
-make example.leaky    # デモの対象を単体で起動 (pprof を localhost:6060 で公開)
+make example.todo     # デモの Todo アプリを単体で起動 (http://localhost:8080、pprof は localhost:6060)
 make example.library  # ライブラリ型のデモ (gorviz-server を先に起動しておく)
 make overhead         # gorviz が対象にかける負荷を測る
 ```

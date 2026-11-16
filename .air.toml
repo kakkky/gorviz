@@ -1,0 +1,26 @@
+# docker compose (compose.yaml) から使う。make launcher.up と同じ構成で、コンテナの外から見えるよう GUI と Todo アプリは 0.0.0.0 で待ち受ける
+root = "."
+tmp_dir = "bin/air"
+
+[build]
+  cmd = "templ generate && go build -o ./bin/air/gorviz-launcher ./cmd/launcher"
+  entrypoint = ["./bin/air/gorviz-launcher"]
+  args_bin = [
+    "-addr", "0.0.0.0:7070",
+    "-target", "http://localhost:6060",
+    "-save-dir", "bin/recordings",
+    "-dump-interval", "5s",
+    "-leak-check-every", "2",
+    "--", "go", "run", "./example/todo", "-addr", "0.0.0.0:8080",
+  ]
+  include_ext = ["go", "templ", "css", "js"]
+  exclude_dir = ["bin", ".git", ".playwright-mcp", "docs", "deploy"]
+  # templ generate が書く _templ.go で、もう一度作り直しが走らないようにする
+  exclude_regex = ["_templ\\.go$", "_test\\.go$"]
+  delay = 500
+  # launcher は Interrupt で Todo アプリを止めてから終わるので、強制終了の前に待つ
+  send_interrupt = true
+  kill_delay = "6s"
+
+[log]
+  main_only = true

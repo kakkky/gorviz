@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Todo</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #fff; --text: #1f2430; --muted: #6b7280; --line: #e5e7eb; --accent: #2563eb; --ok: #16a34a; --err: #dc2626; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", sans-serif; }
+  main { max-width: 760px; margin: 40px auto; padding: 0 16px; display: grid; gap: 16px; }
+  header { display: flex; align-items: baseline; gap: 12px; }
+  h1 { margin: 0; font-size: 26px; }
+  .count { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  form.add { display: flex; gap: 8px; align-items: center; }
+  input[type=text], input[type=search] { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  button, .button { padding: 9px 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; cursor: pointer; color: var(--text); text-decoration: none; white-space: nowrap; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:hover, .button:hover { filter: brightness(.97); }
+  label.reminder { color: var(--muted); font-size: 14px; display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+  .flash, .error { padding: 10px 14px; border-radius: 8px; }
+  .flash { background: #ecfdf5; color: var(--ok); }
+  .error { background: #fef2f2; color: var(--err); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: none; }
+  li .title { flex: 1; }
+  li.done .title { color: var(--muted); text-decoration: line-through; }
+  li form { margin: 0; }
+  li button { padding: 4px 10px; font-size: 13px; }
+  .tag { font-size: 11px; color: var(--accent); border: 1px solid #bfdbfe; border-radius: 999px; padding: 0 8px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tools form { margin: 0; }
+  .search { display: flex; gap: 8px; margin-bottom: 8px; }
+  .stats { display: flex; gap: 24px; }
+  .stats div { display: grid; }
+  .stats b { font-size: 22px; }
+  .stats span, footer { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Todo</h1>
+    <span class="count">{{.Total}} items</span>
+  </header>
+
+  {{with .Flash}}<div class="flash">{{.}}</div>{{end}}
+  {{with .Error}}<div class="error">{{.}}</div>{{end}}
+
+  <div class="card">
+    <form class="add" method="post" action="/todos">
+      <input type="text" name="title" placeholder="やることを入力" autofocus>
+      <label class="reminder"><input type="checkbox" name="reminder"> リマインダー</label>
+      <button class="primary">追加</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <form class="search" method="get" action="/">
+      <input type="search" name="q" value="{{.Query}}" placeholder="検索">
+      <button>検索</button>
+    </form>
+    <ul>
+      {{range .Todos}}
+      <li class="{{if .Done}}done{{end}}">
+        <span class="title">{{.Title}}</span>
+        {{if .Reminder}}<span class="tag">reminder</span>{{end}}
+        {{if not .Done}}
+        <form method="post" action="/todos/{{.ID}}/complete"><button>完了</button></form>
+        {{end}}
+        <form method="post" action="/todos/{{.ID}}/delete"><button>削除</button></form>
+      </li>
+      {{else}}
+      <li><span class="title count">no todos</span></li>
+      {{end}}
+    </ul>
+  </div>
+
+  {{with .Stats}}
+  <div class="card stats">
+    <div><b>{{.Total}}</b><span>todos</span></div>
+    <div><b>{{.Done}}</b><span>done</span></div>
+    <div><b>{{.Duplicates}}</b><span>duplicates</span></div>
+    <div><b>{{.Took}}</b><span>took</span></div>
+  </div>
+  {{end}}
+
+  <div class="card tools">
+    <a class="button" href="/?stats=1">統計を見る</a>
+    <a class="button" href="/export.csv">CSV エクスポート</a>
+    <form method="post" action="/backup"><button>今すぐバックアップ</button></form>
+    <form method="post" action="/seed"><button>サンプルを 1000 件追加</button></form>
+  </div>
+
+  <footer>rendered in {{.Elapsed}}{{with .Backup}} · last backup {{.}}{{end}}</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# 開発用: docker compose up で gorviz (http://localhost:7070) と観測対象の Todo アプリ (http://localhost:8080) を起動し、
+# .go・.templ・.css・.js を保存するたびに作り直す (make launcher.up と同じ構成)
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: docker/dev/Dockerfile
+    environment:
+      # 画面の時刻をホストと揃える。イメージに tzdata がなくても Go は GOROOT の zoneinfo を使う
+      TZ: ${TZ:-Asia/Tokyo}
+    volumes:
+      - .:/app
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+    ports:
+      - "7070:7070"
+      - "8080:8080"
+
+volumes:
+  go-mod:
+  go-build:
