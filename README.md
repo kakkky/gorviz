@@ -91,7 +91,7 @@ bin/gorviz-launcher -target http://localhost:6060                     # すで�
 
 # 別々に起動 (本番の形)
 bin/gorviz-server -addr localhost:7070 -agent-addr localhost:7071 -save-dir ./saved
-bin/gorviz-agent  -name api -target http://localhost:6060 -agent-addr localhost:7071
+bin/gorviz-agent  -name api-1 -service api -target http://localhost:6060 -agent-addr localhost:7071
 ```
 
 - 1 つの agent で複数の対象を見るときは `-target` をカンマで並べる
@@ -108,11 +108,12 @@ bin/gorviz export -out ./export             # 保存した trace を go tool tra
 GUI の画面:
 
 - **Overview**: runtime の様子の推移 (未解決の Issue、goroutine 数と状態・ヒープ・GC・mark assist・CPU 待ち)。期間を選んで見る
-- **Issues**: 検出した runtime の問題 (`LEAK` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE`) と、保存した前後の trace
-- **Logs**: ログ一覧。1 行選ぶと、その瞬間の前後を再生し、書いた goroutine に進める
-- **Scheduler**: 最新の録画の末尾を GMP の概念図で再生し続ける。再生する長さ (100ms〜2s) をボタンで選び、P ごとの帯 (CPU slots (P) over time) で G が走った瞬間を選んで飛べる
-- **Goroutine**: 1 つの goroutine の主因・止まっていた場所 (file:line)・根拠
-- **Agents** (右上): 見る対象を選ぶ
+- **Issues**: 検出した runtime の問題 (`LEAK` / `CPU_WAIT_SPIKE` / `MEMORY_PRESSURE`)。30 日残り、期間・文字・種類で絞り込める。1 つ選ぶと、回数の推移と見つかった回ごとの調べに入る先を出す
+- **Logs**: ログ一覧と件数の推移。行を開くと取り込んだままの行 (JSON ならキーと値) を見られ、右端の `Goroutine →` で書いた goroutine (分からなければその時刻の Scheduler) を開く
+- **Scheduler**: 録画を GMP の概念図で再生する。最新を見ているあいだは新しい窓に替わり続け、止めると窓の中を見返せる。窓の端まで再生すると録画の続きをつないで再生する
+- **Goroutine**: 1 つの goroutine の主因・止まっていた場所 (file:line)・その窓で書いたログと、その時刻の GMP 再生 (Scheduler と同じ操作)
+- 見る期間 (Scheduler・Goroutine では再生する区間) は、どの画面も右上の期間ピッカーで選ぶ
+- 見る対象は、左上の切り替えで service (agent の `-service`、launcher なら起動するコマンドの名前) とインスタンスを選ぶ
 
 ### LLM エージェントから使う
 
@@ -144,6 +145,7 @@ Claude Code などの MCP の設定に足す。
 agent と server はそれぞれ自分の flag だけを受け付ける。launcher は `-addr` / `-agent-addr` / `-save-dir` を server に渡し、残りをすべて agent に渡す。`--` より後ろは対象を起動するコマンド。
 
 - **取得 (gorviz-agent)**
+  - `-name` / `-service`: agent (インスタンス) の名前と、対象のアプリの名前。画面の左上の切り替えで、service ごとにインスタンスを並べる。launcher で `-service` を省くと、起動するコマンドの名前 (`go run ./example/todo` なら `todo`) になる
   - `-chunk` (既定 2s): trace を区切る長さ
   - `-trace-buffer-mib` (既定 256): trace の直近を持つ上限。対象が忙しいほど持てる時間は短い
   - `-dump-interval` (既定 1m): goroutine dump の間隔。dump は全 goroutine を一瞬止める
