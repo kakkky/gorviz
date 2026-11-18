@@ -55,7 +55,7 @@ func New(cfg *config.Config, runtimeClient domain.RuntimeClient) *Agent {
 	uc := usecase.NewUseCase(usecase.Settings{ChunkDuration: cfg.ChunkDuration, LeakCheckEvery: cfg.LeakCheckEvery}, runtimeClient, kvs.NewInMemoryKVS(), recording.NewTraceStore(cfg.TraceBufferBytes), recording.NewLogStore(cfg.MaxLogLines), logparse.NewParser(cfg))
 	return &Agent{
 		cfg:      cfg,
-		hello:    agentrpc.Hello{Name: cfg.Name, Target: cfg.TargetURL},
+		hello:    agentrpc.Hello{Name: cfg.Name, Service: cfg.Service, Target: cfg.TargetURL},
 		record:   worker.NewRecordWorker(cfg, uc),
 		logInput: loginput.NewLogInput(uc),
 		pull:     pull.NewService(uc),

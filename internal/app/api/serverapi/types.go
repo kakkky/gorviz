@@ -7,6 +7,7 @@ import (
 
 type AgentJSON struct {
 	Name      string `json:"name"`
+	Service   string `json:"service,omitempty"`
 	Target    string `json:"target"`
 	Connected bool   `json:"connected"`
 }

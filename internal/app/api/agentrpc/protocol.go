@@ -18,10 +18,12 @@ const (
 )
 
 // Hello は agent がつないだ直後に 1 行の JSON で送る自己紹介。Kind でその接続の向きを伝える
+// Service は対象のアプリの名前 (同じアプリの複数のインスタンスを、画面でまとめて並べるのに使う)。空ならまとめない
 type Hello struct {
-	Name   string   `json:"name"`
-	Target string   `json:"target"`
-	Kind   ConnKind `json:"kind"`
+	Name    string   `json:"name"`
+	Service string   `json:"service,omitempty"`
+	Target  string   `json:"target"`
+	Kind    ConnKind `json:"kind"`
 }
 
 const (

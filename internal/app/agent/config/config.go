@@ -14,6 +14,8 @@ type Config struct {
 	AgentAddr string
 	// Name は agent の名前。server はこの名前で agent を束ね、つなぎ直しても同じものとして扱う
 	Name string
+	// Service は対象のアプリの名前。画面の切り替えで、同じアプリのインスタンス (agent) をまとめて並べる
+	Service string
 	// Refresh は画面 (Live の再生・CLI) を新しくする間隔。対象には触らず、録画済みのものを読むだけ
 	Refresh time.Duration
 	// DumpInterval は goroutine dump を取る間隔。dump は対象の全 G を止める (STW) ので間を空ける
@@ -42,6 +44,7 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.StringVar(&cfg.TargetURL, "target", "http://localhost:6060", "base URL of the target's net/http/pprof server")
 	fs.StringVar(&cfg.AgentAddr, "agent-addr", "localhost:7071", "TCP address where the server waits for agents and agents connect to")
 	fs.StringVar(&cfg.Name, "name", "", "name of the agent (default: the hostname; on Cloud Run the instance ID is appended)")
+	fs.StringVar(&cfg.Service, "service", "", "name of the target application; agents of the same service are listed together in the GUI")
 	fs.DurationVar(&cfg.Refresh, "refresh", 2*time.Second, "refresh interval of the live views (does not touch the target)")
 	fs.DurationVar(&cfg.DumpInterval, "dump-interval", time.Minute, "interval of goroutine dumps (each dump stops the world briefly)")
 	fs.IntVar(&cfg.LeakCheckEvery, "leak-check-every", 5, "run the runtime's GC-based leak check once per this many dumps (0 disables it)")

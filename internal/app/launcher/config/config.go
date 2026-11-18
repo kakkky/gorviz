@@ -4,6 +4,7 @@ package config
 import (
 	"flag"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -60,7 +61,25 @@ it also starts the target and records its stdout and stderr as logs:
 	if len(command) > 0 {
 		agent.LogsFrom = "-"
 	}
+	if agent.Service == "" {
+		agent.Service = serviceOf(command)
+	}
 	return &Config{Server: server, Agent: agent, TargetCommand: command}, nil
+}
+
+// serviceOf は -service がないときの、起動するコマンドから取るアプリの名前。go run ./cmd/app なら app、./bin/app なら app
+func serviceOf(command []string) string {
+	if len(command) == 0 {
+		return ""
+	}
+	if len(command) >= 3 && filepath.Base(command[0]) == "go" && command[1] == "run" {
+		for _, a := range command[2:] {
+			if !strings.HasPrefix(a, "-") {
+				return filepath.Base(strings.TrimSuffix(a, ".go"))
+			}
+		}
+	}
+	return filepath.Base(command[0])
 }
 
 // splitKnown は先頭から自分の知っているフラグ (-name value / -name=value) だけを抜き出し、残りを順番どおり返す
