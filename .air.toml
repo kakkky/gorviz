@@ -4,15 +4,9 @@ tmp_dir = "bin/air"
 
 [build]
   cmd = "templ generate && go build -o ./bin/air/gorviz-launcher ./cmd/launcher"
-  entrypoint = ["./bin/air/gorviz-launcher"]
-  args_bin = [
-    "-addr", "0.0.0.0:7070",
-    "-target", "http://localhost:6060",
-    "-save-dir", "bin/recordings",
-    "-dump-interval", "5s",
-    "-leak-check-every", "2",
-    "--", "go", "run", "./example/todo", "-addr", "0.0.0.0:8080",
-  ]
+  # air は sh -c 越しに起動し、作り直すときの Interrupt を sh にしか送らない。exec で sh を launcher に置き換え、
+  # Interrupt が launcher に届くようにする (届かないと古い launcher が 7070 を持ったまま残り、新しい launcher が起動できない)
+  full_bin = "exec ./bin/air/gorviz-launcher -addr 0.0.0.0:7070 -target http://localhost:6060 -save-dir bin/recordings -dump-interval 5s -leak-check-every 2 -- go run ./example/todo -addr 0.0.0.0:8080"
   include_ext = ["go", "templ", "css", "js"]
   exclude_dir = ["bin", ".git", ".playwright-mcp", "docs", "deploy"]
   # templ generate が書く _templ.go で、もう一度作り直しが走らないようにする
