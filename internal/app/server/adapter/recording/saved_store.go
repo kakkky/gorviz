@@ -2,6 +2,7 @@ package recording
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/kakkky/gorviz/internal/app/api/model"
 	"github.com/kakkky/gorviz/internal/app/server/domain"
@@ -16,7 +17,7 @@ import (
 type TraceParser func(raw []byte, receivedAt time.Time) (model.TraceChunk, error)
 
 // SavedStore は Issue の前後の録画をディスクに保存する。dir/<id>/meta.json と、区切りごとの生の trace (chunk-N.trace) を置く。
-// 生の trace はそのまま `go tool trace` で開ける。起動時に dir にあるものを読み直す
+// 生の trace はそのまま `go tool trace` で開ける。起動時に dir にあるものを読み直し、保持期間 (domain.IssueRetention) を過ぎたものは捨てる
 type SavedStore struct {
 	mu     sync.RWMutex
 	dir    string
@@ -25,7 +26,7 @@ type SavedStore struct {
 	chunks map[string][]model.TraceChunk
 }
 
-func NewSavedStore(dir string, parse TraceParser) (*SavedStore, error) {
+func NewSavedStore(dir string, parse TraceParser, now time.Time) (*SavedStore, error) {
 	s := &SavedStore{dir: dir, parse: parse, meta: map[string]model.SavedRecording{}, chunks: map[string][]model.TraceChunk{}}
 	if dir == "" {
 		return s, nil
@@ -41,14 +42,19 @@ func NewSavedStore(dir string, parse TraceParser) (*SavedStore, error) {
 		if !e.IsDir() {
 			continue
 		}
-		if err := s.load(e.Name()); err != nil {
+		if err := s.load(e.Name(), now); err != nil {
 			return nil, err
 		}
 	}
 	return s, nil
 }
 
-func (s *SavedStore) load(id string) error {
+// expired は Issue の記録と同じ保持期間を過ぎた録画か。Issue が先に消えて、どこからも辿れない録画を残さない
+func expired(rec model.SavedRecording, now time.Time) bool {
+	return rec.To.Before(now.Add(-domain.IssueRetention))
+}
+
+func (s *SavedStore) load(id string, now time.Time) error {
 	b, err := os.ReadFile(filepath.Join(s.dir, id, "meta.json"))
 	if err != nil {
 		return nil
@@ -56,6 +62,10 @@ func (s *SavedStore) load(id string) error {
 	var rec model.SavedRecording
 	if err := json.Unmarshal(b, &rec); err != nil {
 		return model.ErrInternal.Wrap(err, "read "+id+"/meta.json")
+	}
+	// 読み込む前に捨て、期限切れの trace を解析してメモリに載せない
+	if expired(rec, now) {
+		return s.remove(id)
 	}
 	var chunks []model.TraceChunk
 	for i := range rec.Chunks {
@@ -122,6 +132,31 @@ func (s *SavedStore) Chunks(id string) ([]model.TraceChunk, bool) {
 	defer s.mu.RUnlock()
 	c, ok := s.chunks[id]
 	return c, ok
+}
+
+func (s *SavedStore) Prune(now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var errs []error
+	for id, rec := range s.meta {
+		if !expired(rec, now) {
+			continue
+		}
+		delete(s.meta, id)
+		delete(s.chunks, id)
+		errs = append(errs, s.remove(id))
+	}
+	return errors.Join(errs...)
+}
+
+func (s *SavedStore) remove(id string) error {
+	if s.dir == "" {
+		return nil
+	}
+	if err := os.RemoveAll(filepath.Join(s.dir, id)); err != nil {
+		return model.ErrInternal.Wrap(err, "remove an expired recording")
+	}
+	return nil
 }
 
 // all は保存したすべての区切りを古い順に返す。同じ区切りが複数の録画に入っていれば 1 つにする

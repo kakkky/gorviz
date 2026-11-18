@@ -11,6 +11,7 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/agentconn"
+	"github.com/kakkky/gorviz/internal/app/server/adapter/issuestore"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/kvs"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/metricstore"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/recording"
@@ -47,7 +48,7 @@ func newSession(cfg *config.Config, hello agentrpc.Hello) (*agentsession.Session
 	if cfg.SaveDir != "" {
 		saveDir = filepath.Join(cfg.SaveDir, hello.Name)
 	}
-	saved, err := recording.NewSavedStore(saveDir, runtimeparse.NewParser().ParseTrace)
+	saved, err := recording.NewSavedStore(saveDir, runtimeparse.NewParser().ParseTrace, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -59,14 +60,22 @@ func newSession(cfg *config.Config, hello agentrpc.Hello) (*agentsession.Session
 	if err != nil {
 		return nil, err
 	}
+	issuesDir := ""
+	if saveDir != "" {
+		issuesDir = filepath.Join(saveDir, "issues")
+	}
+	issues, err := issuestore.NewStore(issuesDir, time.Now())
+	if err != nil {
+		return nil, err
+	}
 	agent := agentconn.NewClient(cfg.MaxLogLines)
 	sessionCfg := *cfg
 	sessionCfg.TargetURL = hello.Name + " — " + hello.Target
 	uc := usecase.NewUseCase(settingsOf(cfg), agent, agent, kvs.NewInMemoryKVS(),
-		recording.NewCompositeTraceRecording(agent, saved), recording.NewLogStore(cfg.MaxLogLines), saved, metrics, agent)
+		recording.NewCompositeTraceRecording(agent, saved), recording.NewLogStore(cfg.MaxLogLines), saved, metrics, issues, agent)
 	return &agentsession.Session{
 		Handler: handler.Session{
-			Name: hello.Name, Target: hello.Target, Connected: agent.Connected, UseCase: uc,
+			Name: hello.Name, Service: hello.Service, Target: hello.Target, Connected: agent.Connected, UseCase: uc,
 			Handler: httpserver.NewRouteMux(handler.NewHandler(&sessionCfg, uc).Routes()),
 		},
 		Endpoint: agentlistener.Endpoint{Pull: agent.SetConn, Ingest: ingest.NewService(uc)},

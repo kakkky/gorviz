@@ -1,0 +1,117 @@
+package components
+
+import "github.com/kakkky/gorviz/internal/app/server/assets"
+
+// TimeRangeViewModel は時刻の範囲。どの画面でも同じ形 (日付と時刻 – 日付と時刻、長さ) で見せる。
+// 形をそろえる元は handler の timeRange と、再生の見出し (gmp_replay_controller.js の timeRangeHTML)
+type TimeRangeViewModel struct {
+	From   string
+	To     string
+	Length string
+	// LengthTitle は長さに添える説明 (短く切れたときの理由など)
+	LengthTitle string
+}
+
+templ TimeRange(vm TimeRangeViewModel) {
+	<span class="time-range">
+		@clockIcon()
+		@TimeRangeBody(vm)
+	</span>
+}
+
+// TimeRangeBody は範囲の中身 (始まり → 終わり、長さ)。期間を選ぶ部品のボタンにも同じものを入れ、SSE でここだけを書き換える
+templ TimeRangeBody(vm TimeRangeViewModel) {
+	<time>{ vm.From }</time>
+	<span class="sep">→</span>
+	<time>{ vm.To }</time>
+	if vm.Length != "" {
+		<span class="len" title={ vm.LengthTitle }>{ vm.Length }</span>
+	}
+}
+
+// TimeRangePickerViewModel は見る期間を選ぶ部品。ボタンに今見ている範囲を出し、押すと、よく使う期間 (Presets) と始まり・終わりの入力欄が開く。
+// Live なら今に合わせて動く期間で、印を付ける。RangeID があれば、範囲は SSE でそこだけ書き換わる (開いた中身はそのまま)。
+// Text があれば (期間を絞っていないとき) 範囲の代わりにそれを出す
+type TimeRangePickerViewModel struct {
+	Text    string
+	Live    bool
+	Range   TimeRangeViewModel
+	RangeID string
+	Presets []TimeRangePresetViewModel
+	// Action は入力欄の送り先。Keep はそのとき一緒に送る、今の絞り込み (検索語など)
+	Action   string
+	Keep     []KeptParamViewModel
+	Since    string
+	Until    string
+	TimeZone string
+	// InputStep は入力欄の刻み (秒)。空なら 1 秒
+	InputStep string
+}
+
+type TimeRangePresetViewModel struct {
+	Label  string
+	URL    string
+	Active bool
+}
+
+type KeptParamViewModel struct {
+	Name  string
+	Value string
+}
+
+templ TimeRangePicker(vm TimeRangePickerViewModel) {
+	<details class="trp" data-controller={ assets.TimeRangePickerController.Name }>
+		<summary class="trp-button" title="change the time range">
+			@clockIcon()
+			if vm.Live {
+				<span class="trp-live" title="moves with the current time"></span>
+			}
+			if vm.Text != "" {
+				<span class="trp-text">{ vm.Text }</span>
+			} else {
+				<span class="trp-range" id={ vm.RangeID }>
+					@TimeRangeBody(vm.Range)
+				</span>
+			}
+			<span class="trp-caret" aria-hidden="true"></span>
+		</summary>
+		<div class="trp-pop">
+			<div class="trp-presets">
+				for _, p := range vm.Presets {
+					<a href={ templ.SafeURL(p.URL) } class={ templ.KV("active", p.Active) }>{ p.Label }</a>
+				}
+			</div>
+			<form method="get" action={ templ.SafeURL(vm.Action) } class="trp-custom">
+				for _, k := range vm.Keep {
+					<input type="hidden" name={ k.Name } value={ k.Value }/>
+				}
+				<label><span>from</span><input type="datetime-local" name="since" step={ inputStep(vm) } value={ vm.Since } required/></label>
+				<label><span>to</span><input type="datetime-local" name="until" step={ inputStep(vm) } value={ vm.Until } required/></label>
+				<div class="trp-actions">
+					<span class="faint">{ vm.TimeZone }</span>
+					<button type="button" data-action="time-range-picker#close">Cancel</button>
+					<button type="submit" class="primary">Apply</button>
+				</div>
+			</form>
+		</div>
+	</details>
+}
+
+templ clockIcon() {
+	<svg class="clock-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+}
+
+func inputStep(vm TimeRangePickerViewModel) string {
+	if vm.InputStep == "" {
+		return "1"
+	}
+	return vm.InputStep
+}
+
+// ResetZoomButton はグラフを拡大しているときの、選んでいた期間に戻るボタン (Overview・Issues・Issue で共通)。押すと chart-sync が拡大を外す
+templ ResetZoomButton(url string) {
+	<a class="btn reset-zoom" href={ templ.SafeURL(url) } data-chart-reset title="back to the selected range">
+		<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M4.75 7h4.5M10.5 10.5 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+		Reset zoom
+	</a>
+}

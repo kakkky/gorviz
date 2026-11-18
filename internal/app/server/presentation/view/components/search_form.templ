@@ -1,0 +1,38 @@
+package components
+
+// SearchFormViewModel は一覧を絞る検索のカード (Issues・Logs で共通)。言葉の検索と、1 つの選択 (種類・レベルなど) を並べる。
+// Keep は検索し直しても保つ今の絞り込み (期間など)。FrameID があれば、結果はその turbo-frame だけを書き換える
+type SearchFormViewModel struct {
+	Action      string
+	FrameID     string
+	Query       string
+	Placeholder string
+	Select      SearchSelectViewModel
+	Keep        []KeptParamViewModel
+}
+
+// SearchSelectViewModel の All は「絞らない」選択肢の文言 (all kinds など)
+type SearchSelectViewModel struct {
+	Name     string
+	All      string
+	Options  []string
+	Selected string
+}
+
+templ SearchForm(vm SearchFormViewModel) {
+	<section class="panel search-card">
+		<form method="get" action={ templ.SafeURL(vm.Action) } class="search-form" if vm.FrameID != "" { data-turbo-frame={ vm.FrameID } }>
+			for _, k := range vm.Keep {
+				<input type="hidden" name={ k.Name } value={ k.Value }/>
+			}
+			<input type="search" name="q" value={ vm.Query } placeholder={ vm.Placeholder }/>
+			<select name={ vm.Select.Name }>
+				<option value="">{ vm.Select.All }</option>
+				for _, o := range vm.Select.Options {
+					<option value={ o } selected?={ o == vm.Select.Selected }>{ o }</option>
+				}
+			</select>
+			<button type="submit" class="primary">Search</button>
+		</form>
+	</section>
+}

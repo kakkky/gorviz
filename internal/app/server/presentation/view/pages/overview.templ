@@ -4,6 +4,7 @@ import (
 	"github.com/kakkky/hotwire-go/turbo"
 
 	"github.com/kakkky/gorviz/internal/app/server/assets"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
@@ -11,14 +12,7 @@ import (
 type OverviewViewModel struct {
 	TargetURL string
 	StreamURL string
-	Ranges    []RangeLinkViewModel
-}
-
-// RangeLinkViewModel は Overview で選べる期間 1 つ。Active は今見ている期間
-type RangeLinkViewModel struct {
-	Label  string
-	URL    string
-	Active bool
+	Picker    components.TimeRangePickerViewModel
 }
 
 templ Overview(vm OverviewViewModel) {
@@ -26,11 +20,7 @@ templ Overview(vm OverviewViewModel) {
 		@turbo.StreamSSESource(partials.OverviewStreamSourceID, vm.StreamURL)
 		<div class="overview-head">
 			<h2>Overview</h2>
-			<nav class="range" aria-label="time range">
-				for _, r := range vm.Ranges {
-					<a href={ templ.SafeURL(r.URL) } class={ templ.KV("active", r.Active) } aria-current={ ariaCurrent(r.Active) }>{ r.Label }</a>
-				}
-			</nav>
+			@components.TimeRangePicker(vm.Picker)
 		</div>
 		<div data-controller={ assets.ChartSyncController.Name } data-chart-sync-source-value={ partials.OverviewStreamSourceID }>
 			<div id={ partials.OverviewID } class="stack">
@@ -40,9 +30,3 @@ templ Overview(vm OverviewViewModel) {
 	}
 }
 
-func ariaCurrent(active bool) string {
-	if active {
-		return "page"
-	}
-	return "false"
-}

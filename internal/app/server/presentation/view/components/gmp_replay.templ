@@ -6,18 +6,27 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/assets"
 )
 
-// GMPReplayViewModel の InitialJSON の窓 1 つを再生する。LatestURL があれば (Scheduler で最新を見ているとき)、最新を開き直すリンクを出す
+// GMPReplayViewModel の InitialJSON の窓 1 つを再生する。窓の端まで再生すると、録画の続き・前の区間へ移る
 type GMPReplayViewModel struct {
 	DataID      string
-	LatestURL   string
+	// PageGoroutine はこの再生を出している Goroutine 画面の G。追っている G がこれなら、同じ画面へのボタンは出さない
+	PageGoroutine string
+	// FocusHost は追っている G の欄を描く、再生の外の要素の id。空なら再生の中 (P の図の下) に描く
+	FocusHost string
+	// Length は選んだ再生の長さ (time.Duration の文字列)。録画の区切りの端で短く切れたときに、そう書くのに使う
+	Length string
 	InitialJSON string
 	Title       string
+	// Live なら最新の窓を追い続ける (Scheduler で最新を見ているとき)。新しい窓は DataID に SSE で届き、操作すると追うのをやめる。
+	// RangeHost は画面の見出しの、区間を選ぶ部品の範囲の要素の id。追っているあいだ、新しい窓の区間をそこに書く
+	Live      bool
+	RangeHost string
 }
 
 // GMPReplay は再生の操作部と描画先。SSE で中身を差し替えられるのは DataID の要素だけで、
 // 再生中の状態を持つ controller の要素そのものは差し替えない。children は見出しの行の右端に置く (Scheduler の長さのボタンなど)
 templ GMPReplay(vm GMPReplayViewModel) {
-	<section class="panel replay" { stimulus.AttrControllers(assets.GMPReplayController.Name)... }>
+	<section class="panel replay" { stimulus.AttrControllers(assets.GMPReplayController.Name)... } data-gmp-replay-page-goroutine-value={ vm.PageGoroutine } data-gmp-replay-length-value={ vm.Length } data-gmp-replay-focus-host-value={ vm.FocusHost } data-gmp-replay-live-value={ boolAttr(vm.Live) } data-gmp-replay-range-host-value={ vm.RangeHost }>
 		<div class="replay-head">
 			<h2>
 				if vm.Title != "" {
@@ -26,10 +35,7 @@ templ GMPReplay(vm GMPReplayViewModel) {
 					GMP replay
 				}
 			</h2>
-			<span class="period" { stimulus.AttrTargets(assets.GMPReplayController.Name, "period")... }></span>
-			if vm.LatestURL != "" {
-				<a class="latest" href={ templ.SafeURL(vm.LatestURL) } title="open the latest recording">↻ latest</a>
-			}
+			<span class="state-since" { stimulus.AttrTargets(assets.GMPReplayController.Name, "since")... }></span>
 			<div class="replay-head-tools">
 				{ children... }
 			</div>
@@ -42,7 +48,6 @@ templ GMPReplay(vm GMPReplayViewModel) {
 			</div>
 			<input type="range" min="0" step="1000" class="seek" { stimulus.AttrTargets(assets.GMPReplayController.Name, "seek")... } { stimulus.AttrActions("input->" + assets.GMPReplayController.Name + "#seek")... }/>
 			<span class="clock" { stimulus.AttrTargets(assets.GMPReplayController.Name, "clock")... }></span>
-			<label title="skip the events of other goroutines when stepping"><input type="checkbox" disabled { stimulus.AttrTargets(assets.GMPReplayController.Name, "focusOnly")... }/> <span { stimulus.AttrTargets(assets.GMPReplayController.Name, "focusOnlyLabel")... }>step only through the followed G (click a G first)</span></label>
 		</div>
 		<div class="replay-legend">
 			<span><span class="gdot cause-bg-RUNNING"></span> running</span>
@@ -71,4 +76,11 @@ templ GMPReplay(vm GMPReplayViewModel) {
 
 templ GMPReplayData(json string) {
 	@templ.Raw(`<script type="application/json" data-` + assets.GMPReplayController.Name + `-target="window">` + json + `</script>`)
+}
+
+func boolAttr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }

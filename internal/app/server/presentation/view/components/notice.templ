@@ -1,0 +1,11 @@
+package components
+
+// Notice は画面の上に出す知らせの帯。見ている期間の一部にデータがないときなど、画面の見え方に関わることを伝える
+templ Notice() {
+	<div class="notice" role="status">
+		<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M8 7.25v3.75M8 4.9v.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+		<div class="notice-body">
+			{ children... }
+		</div>
+	</div>
+}

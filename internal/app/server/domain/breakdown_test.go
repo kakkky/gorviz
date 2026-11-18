@@ -126,3 +126,45 @@ func TestSchedulerTimeline_PlaceOfCause(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "/app/h.go:10", got.Location, "the place where it entered the primary state, not where it was last")
 }
+
+func TestStateSince(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	running := model.GoroutinePlace{Kind: model.PlaceRunning, Proc: 0, HasProc: true}
+	blocked := model.GoroutinePlace{Kind: model.PlaceWaiting, Reason: "chan send"}
+	first := model.TraceChunk{StartedAt: base, Timeline: model.SchedulerTimeline{Window: time.Second, Events: []model.SchedEvent{
+		{At: 100 * ms, Kind: model.SchedEventGoroutine, Goroutine: 7, Place: running},
+		{At: 300 * ms, Kind: model.SchedEventGoroutine, Goroutine: 7, Place: blocked},
+	}}}
+	// 次の区切りは、先頭に持ち越した状態と途中の状態の書き直しがあるだけで、G は止まったまま
+	second := model.TraceChunk{StartedAt: base.Add(time.Second), Timeline: model.SchedulerTimeline{Window: time.Second, Events: []model.SchedEvent{
+		{At: 0, Kind: model.SchedEventGoroutine, Goroutine: 7, Place: blocked},
+		{At: 400 * ms, Kind: model.SchedEventGoroutine, Goroutine: 7, Place: model.GoroutinePlace{Kind: model.PlaceWaiting, Reason: model.UnknownWaitReason}},
+	}}}
+
+	tests := []struct {
+		name      string
+		chunks    []model.TraceChunk
+		at        time.Time
+		wantSince time.Time
+		wantCause domain.PrimaryCause
+		wantOK    bool
+	}{
+		{name: "success: the state began in an earlier chunk", chunks: []model.TraceChunk{first, second}, at: base.Add(1500 * ms), wantSince: base.Add(300 * ms), wantCause: domain.CauseBlocked, wantOK: true},
+		{name: "success: the state at the time, not a later one", chunks: []model.TraceChunk{first, second}, at: base.Add(200 * ms), wantSince: base.Add(100 * ms), wantCause: domain.CauseRunning, wantOK: true},
+		{name: "error: the state began before the recording", chunks: []model.TraceChunk{second}, at: base.Add(1500 * ms), wantCause: domain.CauseBlocked},
+		{name: "error: the goroutine does not appear by the time", chunks: []model.TraceChunk{first}, at: base.Add(50 * ms)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			since, cause, ok := domain.StateSince(tt.chunks, 7, tt.at)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.wantCause, cause)
+			if tt.wantOK {
+				assert.Equal(t, tt.wantSince, since)
+			}
+		})
+	}
+}

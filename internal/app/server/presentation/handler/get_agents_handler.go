@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/kakkky/gorviz/internal/app/api/serverapi"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"
@@ -32,8 +33,21 @@ func (h *GetAgentsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SelectAgent は agent を選んで Overview に戻る
+// SelectAgent は agent を選び、?back= の画面 (切り替えたときに見ていた画面) に戻る。
+// Goroutine の画面は agent ごとの G なので、別の agent では Overview に戻る。back がこの server の中の道でなければ Overview
 func SelectAgent(rw http.ResponseWriter, r *http.Request) {
 	http.SetCookie(rw, &http.Cookie{Name: AgentCookie, Value: r.PathValue("name"), Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
-	http.Redirect(rw, r, "/", http.StatusSeeOther)
+	http.Redirect(rw, r, backAfterSelect(r.URL.Query().Get("back")), http.StatusSeeOther)
+}
+
+func backAfterSelect(back string) string {
+	u, err := url.Parse(back)
+	if err != nil || !strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || u.Host != "" ||
+		strings.HasPrefix(u.Path, "/goroutines/") || strings.HasPrefix(u.Path, "/agents") {
+		return "/"
+	}
+	q := u.Query()
+	q.Del("agent")
+	u.RawQuery = q.Encode()
+	return u.RequestURI()
 }

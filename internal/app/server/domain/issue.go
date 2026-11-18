@@ -74,6 +74,9 @@ func LeakIssues(leaks []Leak, goroutines []model.Goroutine, dumpAt time.Time) []
 }
 
 // DetectRuntimeIssues は 1 つの録画の区切りから、CPU 待ちと GC の頻発を判定する。どちらも固定の閾値なので FACT
+// ProcessSubject は、プロセス全体で 1 つの Issue (CPU 待ち・GC の頻発) の Subject。いつ起きたかは見つけた時刻で追う
+const ProcessSubject = "process"
+
 func DetectRuntimeIssues(c model.TraceChunk, policy IssuePolicy) []Issue {
 	w := c.Timeline.Window
 	if w <= 0 {
@@ -84,7 +87,7 @@ func DetectRuntimeIssues(c model.TraceChunk, policy IssuePolicy) []Issue {
 	if ratio := float64(totals[CauseCPUWait]) / float64(w); policy.CPUWaitRatio > 0 && ratio >= policy.CPUWaitRatio {
 		out = append(out, Issue{
 			Kind: model.IssueCPUWaitSpike, Certainty: CertaintyFact,
-			Subject: c.StartedAt.Format(time.TimeOnly),
+			Subject: ProcessSubject,
 			Summary: formatRatio(ratio) + " goroutines waiting for a P on average",
 			At:      c.StartedAt.Add(w / 2), From: c.StartedAt,
 		})
@@ -92,7 +95,7 @@ func DetectRuntimeIssues(c model.TraceChunk, policy IssuePolicy) []Issue {
 	if perSec := float64(c.Timeline.GCCycles) / w.Seconds(); policy.GCPerSecond > 0 && perSec >= policy.GCPerSecond {
 		issue := Issue{
 			Kind: model.IssueMemoryPressure, Certainty: CertaintyFact,
-			Subject: c.StartedAt.Format(time.TimeOnly),
+			Subject: ProcessSubject,
 			Summary: formatRatio(perSec) + " GC cycles per second",
 			At:      c.StartedAt.Add(w / 2), From: c.StartedAt,
 		}

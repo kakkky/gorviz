@@ -13,10 +13,11 @@ import (
 type GetGoroutineUsecase struct {
 	traceRecording domain.TraceRecording
 	inMemoryKVS    domain.InMemoryKVS
+	logs           logLocator
 }
 
 func (us *UseCase) NewGetGoroutineUsecase() *GetGoroutineUsecase {
-	return &GetGoroutineUsecase{traceRecording: us.traceRecording, inMemoryKVS: us.inMemoryKVS}
+	return &GetGoroutineUsecase{traceRecording: us.traceRecording, inMemoryKVS: us.inMemoryKVS, logs: logLocator{traceRecording: us.traceRecording, logRecording: us.logRecording}}
 }
 
 // GetGoroutineUsecaseInput は 1 つの G を [From, To] の区間で見る。At はその中の注目する時点 (ログを書いた瞬間など) で、
@@ -53,7 +54,16 @@ type GetGoroutineUsecaseOutput struct {
 	ReplayStartedAt time.Time
 	ReplayFocus     time.Duration
 	HasReplay       bool
-	Leaked          []model.GoroutineID
+	// ReplayLogs は再生の窓に当たるログ
+	ReplayLogs []LogMark
+	Leaked     []model.GoroutineID
+	// StateSince は再生の窓の頭 (再生がなければ At) の時点の状態 (StateSinceCause) に入った時刻。窓の中の状態の変わり目は再生から分かるので、
+	// 窓より前から続いている状態の始まりだけを録画からさかのぼって探す。HasStateSince が false で StateSinceCause があれば、
+	// RecordedFrom (さかのぼれた録画の始まり) より前から続いている。StateSinceCause もなければ、その時点までにこの G は録画に現れていない
+	StateSince      time.Time
+	StateSinceCause domain.PrimaryCause
+	HasStateSince   bool
+	RecordedFrom    time.Time
 }
 
 type GoroutineCauseDuration struct {
@@ -120,7 +130,13 @@ func (us *GetGoroutineUsecase) Exec(_ context.Context, in GetGoroutineUsecaseInp
 		out.Replay.Entries = maps.Clone(out.Replay.Entries)
 		domain.EnrichFromDump(&out.Replay, goroutines)
 		out.ReplayStartedAt, out.ReplayFocus, out.HasReplay = c.StartedAt.Add(from), at-from, true
+		out.ReplayLogs = us.logs.marksBetween(out.ReplayStartedAt, out.ReplayStartedAt.Add(out.Replay.Window))
 	}
+	base := in.At
+	if out.HasReplay {
+		base = out.ReplayStartedAt
+	}
+	out.StateSince, out.StateSinceCause, out.HasStateSince, out.RecordedFrom = us.stateSince(in.Goroutine, base)
 	// 窓より前から待機している G は trace に理由もスタックも載らないので、dump で補う
 	if out.HasDump && out.Dump.StateCategory() == model.GoroutineWaiting {
 		if out.Function == "" {
@@ -168,4 +184,42 @@ func earlierOf(a, b time.Time) time.Time {
 		return a
 	}
 	return b
+}
+
+// stateSinceMaxChunks はさかのぼる区切りの数の上限。録画が長くても画面を開く時間を抑える
+const stateSinceMaxChunks = 1000
+
+// chunkGapProbes は 1 つ前の区切りを探すときに、区切りの始まりから戻ってみる長さ。
+// 対象の pprof から trace を順に取る agent では、取り直しのあいだ (HTTP の往復と解析) だけ区切りの間が空く
+var chunkGapProbes = []time.Duration{time.Nanosecond, 10 * time.Millisecond, 100 * time.Millisecond, 500 * time.Millisecond, time.Second, 3 * time.Second}
+
+// stateSince は at から区切りを 1 つずつさかのぼり、G が今の状態に入った時刻を探す。
+// 録画をまとめて読む (Between) と生の trace ごと運ぶので重い。区切りは At で 1 つずつ読み、答えが出たらやめる。
+// 区切りの間が空いていても数秒までは飛び越え、間をはさんで同じ状態なら続いていたとみなす。
+// recordedFrom はさかのぼれたいちばん古い区切りの始まり
+func (us *GetGoroutineUsecase) stateSince(g model.GoroutineID, at time.Time) (since time.Time, cause domain.PrimaryCause, ok bool, recordedFrom time.Time) {
+	scan := domain.NewStateSinceScan(g, at)
+	c, found := us.traceRecording.At(at)
+	for range stateSinceMaxChunks {
+		if !found {
+			break
+		}
+		recordedFrom = c.StartedAt
+		if scan.Add(c) {
+			break
+		}
+		c, found = us.previousChunk(c)
+	}
+	since, cause, ok = scan.Result()
+	return since, cause, ok, recordedFrom
+}
+
+// previousChunk は c の 1 つ前の区切り。間が空いていれば、少しずつ前に戻って探す
+func (us *GetGoroutineUsecase) previousChunk(c model.TraceChunk) (model.TraceChunk, bool) {
+	for _, back := range chunkGapProbes {
+		if prev, ok := us.traceRecording.At(c.StartedAt.Add(-back)); ok && prev.StartedAt.Before(c.StartedAt) {
+			return prev, true
+		}
+	}
+	return model.TraceChunk{}, false
 }

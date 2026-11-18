@@ -1,16 +1,21 @@
 package pages
 
 import (
+	"github.com/kakkky/hotwire-go/turbo"
+
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
 
 type GoroutineViewModel struct {
 	TargetURL string
 	Error     string
 	Goroutine string
+	// GoroutineID は番号だけ (再生に渡す)
+	GoroutineID string
 	Entry     string
-	Interval  string
+	Interval  components.TimeRangeViewModel
 	At        string
 	Leaked    bool
 	// 診断
@@ -21,21 +26,15 @@ type GoroutineViewModel struct {
 	WaitReason string
 	CreatedBy  string
 	// 根拠
-	Breakdown  []BreakdownRowViewModel
-	Unrecorded string
 	ReplayJSON string
 	NoReplay   string
-	LogsURL    string
+	// StreamURL は最新を追っているときの、新しい窓が届く SSE。LatestURL はこの G を最新で開き直す
+	StreamURL string
+	LatestURL string
+	Length     string
+	Picker     components.TimeRangePickerViewModel
 	// Issues はこの G (リークなら同じ生成元) を含む Issue
-	Issues []string
-}
-
-type BreakdownRowViewModel struct {
-	Cause    string
-	Duration string
-	Percent  string
-	Width    string
-	Primary  bool
+	Issues []components.LinkViewModel
 }
 
 templ Goroutine(vm GoroutineViewModel) {
@@ -43,56 +42,69 @@ templ Goroutine(vm GoroutineViewModel) {
 		if vm.Error != "" {
 			<section class="panel error">{ vm.Error }</section>
 		} else {
-			<section class="panel">
-				<h2>Goroutine <span class="muted mono">{ vm.Interval }</span></h2>
-				<p class="goroutine-title">
-					<strong>{ vm.Goroutine }</strong> { vm.Entry }
-					if vm.Leaked {
-						<span class="badge kind">LEAK</span>
-						@components.CertaintyBadge("FACT")
-					}
-				</p>
-				<h3>Diagnosis</h3>
-				if vm.Primary == "" {
-					<p class="muted">no record of this goroutine in the interval (not in the recorded trace nor in the latest goroutine dump)</p>
-				} else {
-					<p>
-						<span class="badge cause">{ vm.Primary }</span>
-						@components.CertaintyBadge(vm.Certainty)
-					</p>
+			if vm.StreamURL != "" {
+				@turbo.StreamSSESource(partials.ReplayStreamSourceID, vm.StreamURL)
+			}
+			<div class="overview-head">
+				<h2>Goroutine</h2>
+				if vm.StreamURL == "" {
+					<span class="muted">a past moment</span>
+					<a class="btn" href={ templ.SafeURL(vm.LatestURL) }>Latest</a>
 				}
-				<table class="kv">
-					<tr><th>at</th><td class="mono">{ vm.At }</td></tr>
-					<tr><th>stopped in</th><td class="origin">{ vm.Function }</td></tr>
-					<tr><th>location</th><td class="origin" title={ vm.Location }>{ components.ShortPath(vm.Location) }</td></tr>
-					<tr><th>wait reason</th><td>{ vm.WaitReason }</td></tr>
-					<tr><th>created by</th><td class="origin" title={ vm.CreatedBy }>{ components.ShortPath(vm.CreatedBy) }</td></tr>
-				</table>
-				<p><a href={ templ.SafeURL(vm.LogsURL) }>logs around this time</a></p>
-				if len(vm.Issues) > 0 {
-					<p>
-						issues including this goroutine:
-						for _, i := range vm.Issues {
-							<a href="/issues" class="issue-ref">{ i }</a>
+				if vm.ReplayJSON != "" {
+					@components.TimeRangePicker(vm.Picker)
+				}
+			</div>
+			// 再生で別の G を選ぶと、この枠だけをその G の画面に差し替える (gmp-replay の selectOnPage)
+			<turbo-frame id="goroutine-diagnosis" target="_top">
+				<section class="panel goroutine-card" data-goroutine-card>
+					<div class="goroutine-card-head">
+						// 閉じた (再生で G を選んでいない) ときは、この G の見出しの代わりにこれだけを出す
+						<span class="goroutine-none">Goroutine <span class="muted">none selected · pick one in the replay</span></span>
+						<span class="following-label" title="this goroutine is followed in the replay below">following</span>
+						<strong class="mono">{ vm.Goroutine }</strong>
+						<span class="goroutine-entry">{ vm.Entry }</span>
+						if vm.Leaked {
+							<span class="badge kind">LEAK</span>
+							@components.CertaintyBadge("FACT")
 						}
-					</p>
-				}
-			</section>
-			<section class="panel">
-				<h2>Evidence: time by state <span class="muted">unrecorded { vm.Unrecorded }</span></h2>
-				<table class="breakdown">
-					for _, r := range vm.Breakdown {
-						<tr class={ templ.KV("primary", r.Primary) }>
-							<td>{ r.Cause }</td>
-							<td class="bar-cell"><div class={ "bar cause-bg-" + r.Cause } style={ templ.SafeCSS("width:" + r.Width) }></div></td>
-							<td class="num mono">{ r.Duration }</td>
-							<td class="num mono muted">{ r.Percent }</td>
-						</tr>
-					}
-				</table>
-			</section>
+						<div class="actions">
+							for _, i := range vm.Issues {
+								<a class="btn" href={ templ.SafeURL(i.URL) } title="the issue that includes this goroutine">{ i.Label }</a>
+							}
+							<button type="button" class="card-close" data-goroutine-close title="stop following this goroutine" aria-label="close">×</button>
+						</div>
+					</div>
+					<div class="goroutine-card-body">
+						<div class="goroutine-card-col">
+							<h3>Diagnosis <span class="faint">over the interval below</span></h3>
+							if vm.Primary == "" {
+								<p class="muted">no record of this goroutine in the interval (not in the recorded trace nor in the latest goroutine dump)</p>
+							} else {
+								<p>
+									<span class="badge cause">{ vm.Primary }</span>
+									@components.CertaintyBadge(vm.Certainty)
+								</p>
+							}
+							<table class="kv">
+								<tr><th>interval</th><td>@components.TimeRange(vm.Interval)</td></tr>
+								<tr><th>at</th><td class="mono">{ vm.At }</td></tr>
+								<tr><th>stopped in</th><td class="origin">{ vm.Function }</td></tr>
+								<tr><th>location</th><td class="origin" title={ vm.Location }>{ components.ShortPath(vm.Location) }</td></tr>
+								<tr><th>wait reason</th><td>{ vm.WaitReason }</td></tr>
+								<tr><th>created by</th><td class="origin" title={ vm.CreatedBy }>{ components.ShortPath(vm.CreatedBy) }</td></tr>
+							</table>
+						</div>
+						// 再生の中で追っている G の状態の推移と内訳を、診断の隣に描く (gmp-replay の focusHost)
+						<div class="goroutine-card-col">
+							<h3>In the replay <span class="faint">at the replay's current position</span></h3>
+							<div id="goroutine-focus" class="goroutine-focus"></div>
+						</div>
+					</div>
+				</section>
+			</turbo-frame>
 			if vm.ReplayJSON != "" {
-				@components.GMPReplay(components.GMPReplayViewModel{DataID: "goroutine-replay-data", InitialJSON: vm.ReplayJSON, Title: "Evidence: GMP replay"})
+				@components.GMPReplay(components.GMPReplayViewModel{DataID: partials.ReplayDataID, InitialJSON: vm.ReplayJSON, PageGoroutine: vm.GoroutineID, Length: vm.Length, FocusHost: "goroutine-focus", Live: vm.StreamURL != "", RangeHost: partials.ReplayRangeID})
 			} else {
 				<section class="panel muted">{ vm.NoReplay }</section>
 			}

@@ -268,3 +268,75 @@ func LongestMarkAssist(t model.SchedulerTimeline) (model.GoroutineID, time.Durat
 	}
 	return best, first[best], longest > 0
 }
+
+// StateSinceScan は at の時点で g がいた状態に入った時刻と、その状態の主因を、録画の区切りを新しいほうから 1 つずつさかのぼって探す。
+// 録画をまとめて読むと重いので、区切りを 1 つずつ Add し、答えが決まったらやめる。
+// trace は状態が変わらなくても G の状態を書き直すことがある (区切りの先頭に持ち越した状態や、途中の状態の書き出し) ので、
+// 同じ状態 (場所の種類と待機理由) が続く間はさかのぼり、違う状態から変わった最初のイベントの時刻を答えにする。
+// 録画で最初に現れたのが区切りの途中 (持ち越しでない) なら、そこで状態に入った (作られた) とみなす
+type StateSinceScan struct {
+	g       model.GoroutineID
+	at      time.Time
+	current model.GoroutinePlace
+	found   bool
+	carried bool
+	done    bool
+	since   time.Time
+	cause   PrimaryCause
+}
+
+func NewStateSinceScan(g model.GoroutineID, at time.Time) *StateSinceScan {
+	return &StateSinceScan{g: g, at: at}
+}
+
+// Add は前に渡したものより古い区切りを 1 つ読む。答えが決まれば true を返し、それ以上さかのぼらなくてよい
+func (s *StateSinceScan) Add(c model.TraceChunk) bool {
+	if s.done || c.StartedAt.After(s.at) {
+		return s.done
+	}
+	off := c.Offset(s.at)
+	for _, ev := range slices.Backward(c.Timeline.Events) {
+		if ev.At > off || ev.Kind != model.SchedEventGoroutine || ev.Goroutine != s.g {
+			continue
+		}
+		if !s.found {
+			s.current, s.found = ev.Place, true
+			s.cause, _ = causeOfPlace(ev.Place)
+		}
+		if !samePlace(ev.Place, s.current) {
+			s.done = true
+			return true
+		}
+		s.since, s.carried = c.StartedAt.Add(ev.At), ev.At == 0
+	}
+	return false
+}
+
+// Result は状態に入った時刻と、その状態の主因。録画の始まりから同じ状態なら ok は false で cause だけを返し、
+// at までに g が録画に現れていなければ cause も空
+func (s *StateSinceScan) Result() (since time.Time, cause PrimaryCause, ok bool) {
+	if s.done || (s.found && !s.carried) {
+		return s.since, s.cause, true
+	}
+	return time.Time{}, s.cause, false
+}
+
+// StateSince は chunks (古い順) をまとめて StateSinceScan に通す
+func StateSince(chunks []model.TraceChunk, g model.GoroutineID, at time.Time) (since time.Time, cause PrimaryCause, ok bool) {
+	scan := NewStateSinceScan(g, at)
+	for _, c := range slices.Backward(chunks) {
+		if scan.Add(c) {
+			break
+		}
+	}
+	return scan.Result()
+}
+
+// samePlace は 2 つの状態が同じか。書き直しのイベントには待機理由が載らないことがあるので、片方の理由が分からなければ場所の種類だけで比べる
+func samePlace(a, b model.GoroutinePlace) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	known := func(r string) bool { return r != "" && r != model.UnknownWaitReason }
+	return !known(a.Reason) || !known(b.Reason) || a.Reason == b.Reason
+}

@@ -54,13 +54,23 @@ type overviewWindow struct {
 func overviewWindowOf(r *http.Request) overviewWindow {
 	key, span := overviewRange(r)
 	w := overviewWindow{Key: key, Span: span}
+	// 期間を選ぶ部品の入力欄 (since / until) は、拡大と同じに扱う
+	since, okSince, _ := localTimeParam(r, "since")
+	until, okUntil, _ := localTimeParam(r, "until")
+	if okSince && okUntil && until.After(since) {
+		return w.zoomedTo(since, until)
+	}
 	from, errFrom := strconv.ParseInt(r.URL.Query().Get("from"), 10, 64)
 	to, errTo := strconv.ParseInt(r.URL.Query().Get("to"), 10, 64)
 	if errFrom != nil || errTo != nil || to <= from {
 		return w
 	}
-	w.To = time.UnixMilli(to)
-	w.Span = min(max(time.Duration(to-from)*time.Millisecond, overviewMinZoom), overviewRanges[len(overviewRanges)-1].Span)
+	return w.zoomedTo(time.UnixMilli(from), time.UnixMilli(to))
+}
+
+func (w overviewWindow) zoomedTo(from, to time.Time) overviewWindow {
+	w.To = to
+	w.Span = min(max(to.Sub(from), overviewMinZoom), overviewRanges[len(overviewRanges)-1].Span)
 	return w
 }
 
@@ -112,17 +122,17 @@ func overviewStreamURLFor(w overviewWindow) string {
 // GetOverviewStreamHandler は選んだ期間の推移と今の様子を、refresh ごとに SSE で送る
 type GetOverviewStreamHandler struct {
 	getRuntimeSnapshotUsecase *usecase.GetRuntimeSnapshotUsecase
-	listIssuesUsecase         *usecase.ListIssuesUsecase
+	listIssueHistoryUsecase   *usecase.ListIssueHistoryUsecase
 	getMetricsUsecase         *usecase.GetMetricsUsecase
 	interval                  time.Duration
 	// thresholds は Issue の閾値。推移のグラフに線を引く
 	thresholds domain.IssuePolicy
 }
 
-func NewGetOverviewStreamHandler(getRuntimeSnapshotUsecase *usecase.GetRuntimeSnapshotUsecase, listIssuesUsecase *usecase.ListIssuesUsecase, getMetricsUsecase *usecase.GetMetricsUsecase, interval time.Duration, thresholds domain.IssuePolicy) *GetOverviewStreamHandler {
+func NewGetOverviewStreamHandler(getRuntimeSnapshotUsecase *usecase.GetRuntimeSnapshotUsecase, listIssueHistoryUsecase *usecase.ListIssueHistoryUsecase, getMetricsUsecase *usecase.GetMetricsUsecase, interval time.Duration, thresholds domain.IssuePolicy) *GetOverviewStreamHandler {
 	return &GetOverviewStreamHandler{
 		getRuntimeSnapshotUsecase: getRuntimeSnapshotUsecase,
-		listIssuesUsecase:         listIssuesUsecase,
+		listIssueHistoryUsecase:   listIssueHistoryUsecase,
 		getMetricsUsecase:         getMetricsUsecase,
 		interval:                  interval,
 		thresholds:                thresholds,
@@ -161,7 +171,8 @@ func (h *GetOverviewStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Req
 			if out, err := h.getRuntimeSnapshotUsecase.Exec(ctx, usecase.GetRuntimeSnapshotUsecaseInput{}); err == nil {
 				addSnapshot(&vm, out, metrics)
 			}
-			if issues, err := h.listIssuesUsecase.Exec(ctx, usecase.ListIssuesUsecaseInput{Now: now}); err == nil {
+			// Open issues は今も起きている Issue。active とみなす時間の中に見つかったものだけを読む
+			if issues, err := h.listIssueHistoryUsecase.Exec(ctx, usecase.ListIssueHistoryUsecaseInput{Now: now, Span: domain.IssueActiveWindow}); err == nil {
 				addIssues(&vm, issues.Issues, now)
 			}
 			if err := sse.Write(ctx, partials.OverviewStreamUpdate(vm)); err != nil {
@@ -180,14 +191,8 @@ func (h *GetOverviewStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Req
 func toOverviewViewModel(now time.Time, span time.Duration, m usecase.GetMetricsUsecaseOutput, thresholds domain.IssuePolicy) components.OverviewViewModel {
 	f := newChartFrame(m, span)
 	vm := components.OverviewViewModel{
-		At:    now.Format(time.TimeOnly),
-		Range: fmt.Sprintf("%s – %s", f.label(m.From), f.label(m.To)),
-		Step:  formatStep(m.Step),
+		Range: timeRangeOver(m.From, m.To, span),
 		Steps: f.stepsJSON(),
-		LogsURL: "/logs?" + url.Values{
-			"from": {strconv.FormatInt(m.From.UnixNano(), 10)},
-			"to":   {strconv.FormatInt(m.To.UnixNano(), 10)},
-		}.Encode(),
 	}
 	if m.HasSince && m.Since.After(m.From) {
 		vm.DataSince = f.label(m.Since)
@@ -285,9 +290,6 @@ func addSnapshot(vm *components.OverviewViewModel, out usecase.GetRuntimeSnapsho
 	} {
 		vm.States = append(vm.States, components.GoroutineStateViewModel{Label: st.label, Count: s.StateCounts[st.cat], Class: "state-" + st.label})
 	}
-	if s.HasRecording {
-		vm.Replayable = fmt.Sprintf("%s – %s", s.Recording.From.Format(time.TimeOnly), s.Recording.To.Format(time.TimeOnly))
-	}
 	vm.Origins = originRows(s.TopOrigins, m.Origins)
 }
 
@@ -355,17 +357,21 @@ func originNotesJSON(steps int, inRange map[model.GoroutineOrigin][]usecase.Metr
 	return string(b)
 }
 
-func addIssues(vm *components.OverviewViewModel, issues []domain.Issue, now time.Time) {
+func addIssues(vm *components.OverviewViewModel, all []usecase.IssueHistory, now time.Time) {
+	// 区切りの境目に揃えて少し前から読んでいるので、今も起きているものだけに絞る
+	var issues []usecase.IssueHistory
+	for _, i := range all {
+		if i.Active {
+			issues = append(issues, i)
+		}
+	}
 	vm.IssueCount = len(issues)
 	for _, i := range issues[:min(overviewIssueRows, len(issues))] {
-		row := components.OverviewIssueViewModel{Kind: string(i.Kind), Certainty: string(i.Certainty), Subject: i.Subject, Summary: i.Summary, Href: "/issues"}
-		if !i.At.IsZero() {
-			row.Age = formatAge(now.Sub(i.At))
-		}
-		if links := toIssueViewModel(i).Links; len(links) > 0 {
-			row.Href = links[0].URL
-		}
-		vm.Issues = append(vm.Issues, row)
+		o := i.Latest
+		vm.Issues = append(vm.Issues, components.OverviewIssueViewModel{
+			Kind: string(o.Kind), Certainty: string(o.Certainty), Subject: o.Subject, Summary: o.Summary,
+			Age: formatAge(now.Sub(i.LastSeen)), Href: issueURL(o.Fingerprint, overviewDefaultRange),
+		})
 	}
 }
 
@@ -375,7 +381,9 @@ func formatAge(d time.Duration) string {
 		return fmt.Sprintf("%ds ago", int(d.Seconds()))
 	case d < time.Hour:
 		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	default:
+	case d < 48*time.Hour:
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }

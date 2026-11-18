@@ -34,7 +34,8 @@ type SaveRecordingsUsecaseOutput struct {
 	Saved []model.SavedRecording
 }
 
-// Exec は Issue ごとに 1 分に 1 回まで保存する。前後の録画がすでにリングバッファから消えていれば保存しない
+// Exec は Issue ごとに 1 分に 1 回まで保存する。前後の録画がすでにリングバッファから消えていれば保存しない。
+// 保持期間 (domain.IssueRetention) を過ぎた録画は捨てる
 func (us *SaveRecordingsUsecase) Exec(ctx context.Context, in SaveRecordingsUsecaseInput) (SaveRecordingsUsecaseOutput, error) {
 	issues, err := us.listIssues.Exec(ctx, ListIssuesUsecaseInput{Now: in.Now})
 	if err != nil {
@@ -68,7 +69,7 @@ func (us *SaveRecordingsUsecase) Exec(ctx context.Context, in SaveRecordingsUsec
 		}
 		out.Saved = append(out.Saved, rec)
 	}
-	return out, nil
+	return out, us.recordings.Prune(in.Now)
 }
 
 // ListRecordings は保存した録画の一覧

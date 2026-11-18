@@ -5,6 +5,7 @@ import (
 	"github.com/kakkky/hotwire-go/turbo"
 
 	"github.com/kakkky/gorviz/internal/app/server/assets"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 )
 
 // NavItems はナビゲーションに並べる画面。Goroutine は他の画面から降りてくる画面なので置かない
@@ -13,7 +14,6 @@ var NavItems = []struct{ Label, Href string }{
 	{"Issues", "/issues"},
 	{"Logs", "/logs"},
 	{"Scheduler", "/scheduler"},
-	{"Agents", "/agents"},
 }
 
 // Base の active はナビゲーションで強調する画面の Label。
@@ -25,15 +25,17 @@ templ Base(targetURL string, active string) {
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>gorviz</title>
-			<link rel="stylesheet" href="/assets/main.css"/>
+			// 版が変わったら (作り直したら)、Turbo が画面ごと読み直して新しい CSS と JS (import map) を使う
+			<link rel="stylesheet" href={ assets.Versioned("/assets/main.css") } data-turbo-track="reload"/>
 			// 一部の古いブラウザは module の読み込み開始後に出た import map を無視するので、Turbo の module より先に import map を出す
-			@stimulus.ScriptLoad(assets.GMPReplayController.Path, assets.ChartSyncController.Path)
+			@stimulus.ScriptLoad(assets.Versioned(assets.GMPReplayController.Path), assets.Versioned(assets.ChartSyncController.Path), assets.Versioned(assets.RowLinkController.Path), assets.Versioned(assets.KeepScrollController.Path), assets.Versioned(assets.TimeRangePickerController.Path), assets.Versioned(assets.RowDetailController.Path))
 			@turbo.ScriptImport()
 		</head>
 		<body>
 			<header class="app">
 				<h1>gorviz</h1>
-				<span class="target">{ targetURL }</span>
+				// 見ている対象 (service とインスタンス) の切り替え。中身は agent の一覧を持つ入口から読み込む
+				@components.AgentMenuFrame(targetURL)
 				<nav>
 					for _, item := range NavItems {
 						<a href={ templ.SafeURL(item.Href) } class={ templ.KV("active", item.Label == active) }>{ item.Label }</a>

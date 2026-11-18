@@ -32,8 +32,10 @@ type ListLogsUsecaseInput struct {
 
 type ListLogsUsecaseOutput struct {
 	// Lines は新しい順
-	Lines     []ListLogsUsecaseLine
+	Lines []ListLogsUsecaseLine
+	// Histogram は [From, To] を Step ごとに区切った件数 (From / To が零値なら、絞り込んだ行の最初から最後まで)
 	Histogram []ListLogsUsecaseBucket
+	Step      time.Duration
 	Total     int
 }
 
@@ -65,7 +67,8 @@ func (us *ListLogsUsecase) Exec(_ context.Context, in ListLogsUsecaseInput) (Lis
 		matched = append(matched, l)
 	}
 
-	out := ListLogsUsecaseOutput{Total: len(matched), Histogram: histogram(matched)}
+	out := ListLogsUsecaseOutput{Total: len(matched)}
+	out.Histogram, out.Step = histogram(matched, in.From, in.To)
 	for _, l := range slices.Backward(matched) {
 		if len(out.Lines) >= in.Limit {
 			break
@@ -79,28 +82,42 @@ func (us *ListLogsUsecase) Exec(_ context.Context, in ListLogsUsecaseInput) (Lis
 	return out, nil
 }
 
-func histogram(lines []model.LogLine) []ListLogsUsecaseBucket {
-	if len(lines) == 0 {
-		return nil
-	}
-	from, to := lines[0].At, lines[0].At
+// logHistogramSteps は件数の区切りに使う長さ。区切りが logHistogramBuckets 個を越えない、いちばん短いものを選ぶ (Overview と同じく切りのよい長さにする)
+var logHistogramSteps = []time.Duration{
+	time.Second, 5 * time.Second, 10 * time.Second, 30 * time.Second, time.Minute, 5 * time.Minute,
+	15 * time.Minute, 30 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour,
+}
+
+func histogram(lines []model.LogLine, from, to time.Time) ([]ListLogsUsecaseBucket, time.Duration) {
 	for _, l := range lines {
-		if l.At.Before(from) {
+		if from.IsZero() || l.At.Before(from) {
 			from = l.At
 		}
-		if l.At.After(to) {
+		if to.IsZero() || l.At.After(to) {
 			to = l.At
 		}
 	}
-	width := max(to.Sub(from)/logHistogramBuckets+1, time.Second)
-	n := int(to.Sub(from)/width) + 1
+	if from.IsZero() || !to.After(from) {
+		return nil, 0
+	}
+	step := logHistogramSteps[len(logHistogramSteps)-1]
+	for _, s := range logHistogramSteps {
+		if to.Sub(from)/s < logHistogramBuckets {
+			step = s
+			break
+		}
+	}
+	from = from.Truncate(step)
+	n := int(to.Sub(from)/step) + 1
 	buckets := make([]ListLogsUsecaseBucket, n)
 	for i := range buckets {
-		start := from.Add(time.Duration(i) * width)
-		buckets[i] = ListLogsUsecaseBucket{Start: start, End: start.Add(width), Counts: map[model.LogLevel]int{}}
+		start := from.Add(time.Duration(i) * step)
+		buckets[i] = ListLogsUsecaseBucket{Start: start, End: start.Add(step), Counts: map[model.LogLevel]int{}}
 	}
 	for _, l := range lines {
-		buckets[int(l.At.Sub(from)/width)].Counts[l.Level]++
+		if i := int(l.At.Sub(from) / step); i >= 0 && i < n {
+			buckets[i].Counts[l.Level]++
+		}
 	}
-	return buckets
+	return buckets, step
 }

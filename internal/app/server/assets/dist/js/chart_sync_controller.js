@@ -140,6 +140,9 @@ export default class extends Controller {
     const stream = source ? new URL(source.getAttribute("src"), window.location.href) : null
     for (const url of [page, stream]) {
       if (!url) continue
+      // 期間を選ぶ部品の入力欄 (since / until) は拡大より先に読まれるので、拡大・戻すときは外す
+      url.searchParams.delete("since")
+      url.searchParams.delete("until")
       if (zoom) {
         url.searchParams.set("from", String(zoom.from))
         url.searchParams.set("to", String(zoom.to))
@@ -151,9 +154,11 @@ export default class extends Controller {
     // Turbo の戻る・進むが壊れないよう、Turbo が入れた history の state はそのまま使う
     window.history.replaceState(window.history.state, "", page.toString())
     const range = page.searchParams.get("range")
-    for (const a of document.querySelectorAll("nav.range a")) {
+    // 期間を選ぶ部品のよく使う期間と、今に合わせて動く印を、拡大したかどうかに合わせる (範囲そのものは SSE で書き換わる)
+    for (const a of document.querySelectorAll(".trp-presets a")) {
       a.classList.toggle("active", !zoom && new URL(a.href).searchParams.get("range") === range)
     }
+    for (const dot of document.querySelectorAll(".trp-live")) dot.hidden = !!zoom
     if (!source) {
       window.location.assign(page.toString())
       return

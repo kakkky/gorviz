@@ -1,17 +1,23 @@
 package pages
 
 import (
+	"github.com/kakkky/hotwire-go/turbo"
+
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
 
-// SchedulerViewModel の Lengths は選べる再生の長さ。Active が今の長さ。LatestURL は今の長さで最新を開き直すリンク。
+// SchedulerViewModel の Picker は再生する区間を選ぶ部品。LatestURL は今の長さで最新を開き直すリンク。
 // Past が true なら Issue から時刻を指定して開いた区間を、false なら開いたときの最新の区間を再生する
 type SchedulerViewModel struct {
 	TargetURL  string
-	Lengths    []RangeLinkViewModel
+	Picker     components.TimeRangePickerViewModel
+	Length     string
 	LatestURL  string
 	Past       bool
+	// StreamURL は最新を見ているときの、新しい窓が届く SSE。過去の時刻を見ているときは空
+	StreamURL  string
 	ReplayJSON string
 	Error      string
 }
@@ -19,33 +25,26 @@ type SchedulerViewModel struct {
 // Scheduler (見出しは Runtime Scheduler) は録画を選んだ長さだけ GMP の概念図で再生する。G を選ぶと Goroutine に移る
 templ Scheduler(vm SchedulerViewModel) {
 	@layout.Base(vm.TargetURL, "Scheduler") {
+		if vm.StreamURL != "" {
+			@turbo.StreamSSESource(partials.ReplayStreamSourceID, vm.StreamURL)
+		}
+		<div class="overview-head">
+			<h2>Scheduler</h2>
+			@schedulerTools(vm)
+			@components.TimeRangePicker(vm.Picker)
+		</div>
 		if vm.Error != "" {
-			<div class="overview-head">
-				<h2>Scheduler</h2>
-				@schedulerTools(vm)
-			</div>
-			<section class="panel error">{ vm.Error } <a href={ templ.SafeURL(vm.LatestURL) }>reload</a></section>
-		} else if vm.Past {
-			@components.GMPReplay(components.GMPReplayViewModel{DataID: "scheduler-replay-data", InitialJSON: vm.ReplayJSON}) {
-				@schedulerTools(vm)
-			}
+			<section class="panel error">{ vm.Error } <a class="btn" href={ templ.SafeURL(vm.LatestURL) }>Latest</a></section>
 		} else {
-			@components.GMPReplay(components.GMPReplayViewModel{DataID: "scheduler-replay-data", InitialJSON: vm.ReplayJSON, LatestURL: vm.LatestURL}) {
-				@schedulerTools(vm)
-			}
+			@components.GMPReplay(components.GMPReplayViewModel{DataID: partials.ReplayDataID, InitialJSON: vm.ReplayJSON, Length: vm.Length, Live: vm.StreamURL != "", RangeHost: partials.ReplayRangeID})
 		}
 	}
 }
 
-// schedulerTools は過去の時刻を見ているときの印と、再生する長さのボタン
+// schedulerTools は過去の時刻を見ているときの印
 templ schedulerTools(vm SchedulerViewModel) {
 	if vm.Past {
-		<span class="muted">past moment · <a href={ templ.SafeURL(vm.LatestURL) }>back to the latest</a></span>
+		<span class="muted">a past moment</span>
+		<a class="btn" href={ templ.SafeURL(vm.LatestURL) }>Latest</a>
 	}
-	<span class="range-label muted">replay length</span>
-	<nav class="range" aria-label="replay length">
-		for _, l := range vm.Lengths {
-			<a href={ templ.SafeURL(l.URL) } class={ templ.KV("active", l.Active) } aria-current={ ariaCurrent(l.Active) }>{ l.Label }</a>
-		}
-	</nav>
 }

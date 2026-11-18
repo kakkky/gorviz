@@ -38,6 +38,8 @@ type SavedRecordings interface {
 	Has(id string) bool
 	List() []model.SavedRecording
 	Chunks(id string) ([]model.TraceChunk, bool)
+	// Prune は IssueRetention を過ぎた録画を捨てる
+	Prune(now time.Time) error
 }
 
 // AgentInbox は agent が push の接続で送ってきたもの (ログ・dump) の受け取り先。DumpSource・LogSource はここに届いたものを読む
@@ -54,5 +56,18 @@ type MetricStore interface {
 	// Since は持っているいちばん古い区切り
 	Since() (time.Time, bool)
 	// Flush は閉じた区切り (now より前に終わったもの) をまだ書いていなければ書き、保持期間を過ぎたものを捨てる
+	Flush(now time.Time) error
+}
+
+// IssueStore は見つかった Issue (IssueOccurrence) の置き場。保持期間のあいだ残し、同じ Issue の推移を後から数えられるようにする
+type IssueStore interface {
+	Add(occurrences ...IssueOccurrence)
+	// Range は SeenAt が [from, to] に入るものを古い順に返す
+	Range(from, to time.Time) []IssueOccurrence
+	// Last は fingerprint の Issue がいちばん最近見つかった 1 回
+	Last(fingerprint string) (IssueOccurrence, bool)
+	// FirstSeen は fingerprint の Issue を最初に見つけた時刻 (保持しているうちで)
+	FirstSeen(fingerprint string) (time.Time, bool)
+	// Flush はまだ書いていないものを書き、保持期間を過ぎたものを捨てる
 	Flush(now time.Time) error
 }

@@ -14,12 +14,21 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/assets"
 )
 
-// GMPReplayViewModel の InitialJSON の窓 1 つを再生する。LatestURL があれば (Scheduler で最新を見ているとき)、最新を開き直すリンクを出す
+// GMPReplayViewModel の InitialJSON の窓 1 つを再生する。窓の端まで再生すると、録画の続き・前の区間へ移る
 type GMPReplayViewModel struct {
-	DataID      string
-	LatestURL   string
+	DataID string
+	// PageGoroutine はこの再生を出している Goroutine 画面の G。追っている G がこれなら、同じ画面へのボタンは出さない
+	PageGoroutine string
+	// FocusHost は追っている G の欄を描く、再生の外の要素の id。空なら再生の中 (P の図の下) に描く
+	FocusHost string
+	// Length は選んだ再生の長さ (time.Duration の文字列)。録画の区切りの端で短く切れたときに、そう書くのに使う
+	Length      string
 	InitialJSON string
 	Title       string
+	// Live なら最新の窓を追い続ける (Scheduler で最新を見ているとき)。新しい窓は DataID に SSE で届き、操作すると追うのをやめる。
+	// RangeHost は画面の見出しの、区間を選ぶ部品の範囲の要素の id。追っているあいだ、新しい窓の区間をそこに書く
+	Live      bool
+	RangeHost string
 }
 
 // GMPReplay は再生の操作部と描画先。SSE で中身を差し替えられるのは DataID の要素だけで、
@@ -53,58 +62,100 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "><div class=\"replay-head\"><h2>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " data-gmp-replay-page-goroutine-value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var2 string
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.PageGoroutine)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 29, Col: 151}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" data-gmp-replay-length-value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var3 string
+		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.Length)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 29, Col: 194}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" data-gmp-replay-focus-host-value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var4 string
+		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.FocusHost)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 29, Col: 244}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" data-gmp-replay-live-value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var5 string
+		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(boolAttr(vm.Live))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 29, Col: 293}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" data-gmp-replay-range-host-value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var6 string
+		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.RangeHost)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 29, Col: 343}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\"><div class=\"replay-head\"><h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if vm.Title != "" {
-			var templ_7745c5c3_Var2 string
-			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Title)
+			var templ_7745c5c3_Var7 string
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 24, Col: 15}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 33, Col: 15}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "GMP replay")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "GMP replay")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</h2><span class=\"period\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</h2><span class=\"state-since\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, stimulus.AttrTargets(assets.GMPReplayController.Name, "period"))
+		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, stimulus.AttrTargets(assets.GMPReplayController.Name, "since"))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "></span> ")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if vm.LatestURL != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<a class=\"latest\" href=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var3 templ.SafeURL
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(vm.LatestURL))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 31, Col: 56}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" title=\"open the latest recording\">↻ latest</a>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"replay-head-tools\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "></span><div class=\"replay-head-tools\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -112,7 +163,7 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</div></div><div class=\"replay-controls\"><div class=\"transport\" role=\"group\" aria-label=\"replay\"><button type=\"button\" title=\"step back to the previous event\" aria-label=\"previous event\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div></div><div class=\"replay-controls\"><div class=\"transport\" role=\"group\" aria-label=\"replay\"><button type=\"button\" title=\"step back to the previous event\" aria-label=\"previous event\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -120,7 +171,7 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, ">⏮</button> <button type=\"button\" class=\"primary play\" title=\"play\" aria-label=\"play\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, ">⏮</button> <button type=\"button\" class=\"primary play\" title=\"play\" aria-label=\"play\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -132,7 +183,7 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, ">▶</button> <button type=\"button\" title=\"step forward to the next event\" aria-label=\"next event\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, ">▶</button> <button type=\"button\" title=\"step forward to the next event\" aria-label=\"next event\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -140,7 +191,7 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, ">⏭</button></div><input type=\"range\" min=\"0\" step=\"1000\" class=\"seek\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, ">⏭</button></div><input type=\"range\" min=\"0\" step=\"1000\" class=\"seek\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -152,7 +203,7 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "> <span class=\"clock\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "> <span class=\"clock\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -160,23 +211,7 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "></span> <label title=\"skip the events of other goroutines when stepping\"><input type=\"checkbox\" disabled")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, stimulus.AttrTargets(assets.GMPReplayController.Name, "focusOnly"))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "> <span")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, stimulus.AttrTargets(assets.GMPReplayController.Name, "focusOnlyLabel"))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, ">step only through the followed G (click a G first)</span></label></div><div class=\"replay-legend\"><span><span class=\"gdot cause-bg-RUNNING\"></span> running</span> <span><span class=\"gdot cause-bg-CPU_WAIT\"></span> runnable (waiting for a P)</span> <span><span class=\"gdot cause-bg-IO_WAIT\"></span> syscall / I/O wait</span> <span><span class=\"gdot cause-bg-BLOCKED\"></span> blocked (lock, channel)</span> <span><span class=\"gdot cause-bg-SLEEP\"></span> sleep</span> <span><span class=\"gdot cause-bg-GC\"></span> GC</span> <span title=\"goroutines parked inside the runtime, or with no wait reason in the trace\"><span class=\"gdot other\"></span> runtime / unknown</span> <span title=\"the ring marks a leaked goroutine; the fill still shows its state\"><span class=\"gdot is-leaked\"></span> leaked (ring)</span></div><div class=\"gmp-lanes\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "></span></div><div class=\"replay-legend\"><span><span class=\"gdot cause-bg-RUNNING\"></span> running</span> <span><span class=\"gdot cause-bg-CPU_WAIT\"></span> runnable (waiting for a P)</span> <span><span class=\"gdot cause-bg-IO_WAIT\"></span> syscall / I/O wait</span> <span><span class=\"gdot cause-bg-BLOCKED\"></span> blocked (lock, channel)</span> <span><span class=\"gdot cause-bg-SLEEP\"></span> sleep</span> <span><span class=\"gdot cause-bg-GC\"></span> GC</span> <span title=\"goroutines parked inside the runtime, or with no wait reason in the trace\"><span class=\"gdot other\"></span> runtime / unknown</span> <span title=\"the ring marks a leaked goroutine; the fill still shows its state\"><span class=\"gdot is-leaked\"></span> leaked (ring)</span></div><div class=\"gmp-lanes\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -204,12 +239,12 @@ func GMPReplay(vm GMPReplayViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var4 string
-		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.DataID)
+		var templ_7745c5c3_Var8 string
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.DataID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 64, Col: 21}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/components/gmp_replay.templ`, Line: 69, Col: 21}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -247,9 +282,9 @@ func GMPReplayData(json string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var5 == nil {
-			templ_7745c5c3_Var5 = templ.NopComponent
+		templ_7745c5c3_Var9 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var9 == nil {
+			templ_7745c5c3_Var9 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = templ.Raw(`<script type="application/json" data-`+assets.GMPReplayController.Name+`-target="window">`+json+`</script>`).Render(ctx, templ_7745c5c3_Buffer)
@@ -258,6 +293,13 @@ func GMPReplayData(json string) templ.Component {
 		}
 		return nil
 	})
+}
+
+func boolAttr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 var _ = templruntime.GeneratedTemplate

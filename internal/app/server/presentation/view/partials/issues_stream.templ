@@ -1,0 +1,37 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+)
+
+const (
+	IssuesStreamSourceID = "issues-stream-source"
+	IssueListID          = "issue-list"
+	IssuesRangeID        = "issues-range"
+)
+
+templ IssuesStreamUpdate(vm components.IssueListViewModel) {
+	@turbo.StreamUpdate(IssueListID, turbo.AttrMethodMorph()) {
+		@components.IssueList(vm)
+	}
+	@turbo.StreamUpdate(IssuesRangeID) {
+		@components.TimeRangeBody(vm.Range)
+	}
+}
+
+const (
+	IssueStreamSourceID = "issue-stream-source"
+	IssueDetailID       = "issue-detail"
+	IssueRangeID        = "issue-range"
+)
+
+templ IssueStreamUpdate(vm components.IssueDetailViewModel) {
+	@turbo.StreamUpdate(IssueDetailID, turbo.AttrMethodMorph()) {
+		@components.IssueDetail(vm)
+	}
+	@turbo.StreamUpdate(IssueRangeID) {
+		@components.TimeRangeBody(vm.Range)
+	}
+}

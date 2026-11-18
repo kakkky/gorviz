@@ -3,6 +3,7 @@ package pages
 import (
 	"github.com/kakkky/hotwire-go/turbo"
 
+	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
@@ -10,45 +11,36 @@ import (
 
 type LogsViewModel struct {
 	TargetURL string
-	Query     string
-	Level     string
-	Levels    []string
+	// StreamURL は今に合わせて動く期間を見ているときの、一覧が届く SSE。決まった範囲を見ているときは空
+	StreamURL string
+	// Search はレベルと言葉で絞る検索のカード。期間は Picker で選び、検索し直しても保つ
+	Search    components.SearchFormViewModel
 	Logs      components.LogListViewModel
-	// Since と Until は時刻での絞り込み (時刻の入力欄の形)。TimeZone は入力欄の時刻のタイムゾーン
-	Since     string
-	Until     string
-	TimeZone  string
+	Picker    components.TimeRangePickerViewModel
 	TimeError string
 }
 
 templ Logs(vm LogsViewModel) {
 	@layout.Base(vm.TargetURL, "Logs") {
+		if vm.StreamURL != "" {
+			@turbo.StreamSSESource(partials.LogsStreamSourceID, vm.StreamURL)
+		}
+		<div class="overview-head">
+			<h2>Logs</h2>
+			<span class="muted">click a line to see its fields · Goroutine → opens the moment it was written</span>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
 		<div class="logs-page">
-			<section class="panel logs-list">
-				<h2>Logs <span class="muted">click a line to replay the scheduler around it</span></h2>
-				<form method="get" action="/logs" class="log-filter" data-turbo-frame={ partials.LogListFrameID }>
-					<input type="search" name="q" value={ vm.Query } placeholder="search text (e.g. a trace_id from Datadog)"/>
-					<select name="level">
-						<option value="">all levels</option>
-						for _, lv := range vm.Levels {
-							<option value={ lv } selected?={ lv == vm.Level }>{ lv }</option>
-						}
-					</select>
-					<label>from <input type="datetime-local" name="since" step="1" value={ vm.Since }/></label>
-					<label>to <input type="datetime-local" name="until" step="1" value={ vm.Until }/></label>
-					<span class="faint">{ vm.TimeZone }</span>
-					<button type="submit">search</button>
-				</form>
-				if vm.TimeError != "" {
-					<p class="error">{ vm.TimeError }</p>
-				}
-				@turbo.Frame(partials.LogListFrameID) {
-					@components.LogList(vm.Logs)
-				}
-			</section>
-			@turbo.Frame(components.LogReplayFrameID) {
-
+			@components.SearchForm(vm.Search)
+			if vm.TimeError != "" {
+				<section class="panel error">{ vm.TimeError }</section>
 			}
+			// 件数の推移は Overview と同じく、hover で件数を出し、ドラッグで拡大する (chart-sync)
+			<div data-controller={ assets.ChartSyncController.Name } data-chart-sync-source-value={ partials.LogsStreamSourceID }>
+				<div id={ partials.LogListID } class="stack">
+					@components.LogList(vm.Logs)
+				</div>
+			</div>
 		</div>
 	}
 }

@@ -10,20 +10,26 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/server/domain"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
 
+// goroutineReplayHalf は API (MCP の診断) で見る、At の前後の長さ。画面は再生の長さ (?length=) の半分ずつを見る
 const goroutineReplayHalf = 250 * time.Millisecond
 
 type GetGoroutineHandler struct {
-	getGoroutineUsecase *usecase.GetGoroutineUsecase
-	listIssuesUsecase   *usecase.ListIssuesUsecase
-	targetURL           string
+	getGoroutineUsecase       *usecase.GetGoroutineUsecase
+	getSchedulerReplayUsecase *usecase.GetSchedulerReplayUsecase
+	listIssuesUsecase         *usecase.ListIssuesUsecase
+	targetURL                 string
+	defaultLength             time.Duration
 }
 
-func NewGetGoroutineHandler(getGoroutineUsecase *usecase.GetGoroutineUsecase, listIssuesUsecase *usecase.ListIssuesUsecase, targetURL string) *GetGoroutineHandler {
-	return &GetGoroutineHandler{getGoroutineUsecase: getGoroutineUsecase, listIssuesUsecase: listIssuesUsecase, targetURL: targetURL}
+func NewGetGoroutineHandler(getGoroutineUsecase *usecase.GetGoroutineUsecase, getSchedulerReplayUsecase *usecase.GetSchedulerReplayUsecase, listIssuesUsecase *usecase.ListIssuesUsecase, targetURL string, defaultLength time.Duration) *GetGoroutineHandler {
+	return &GetGoroutineHandler{getGoroutineUsecase: getGoroutineUsecase, getSchedulerReplayUsecase: getSchedulerReplayUsecase, listIssuesUsecase: listIssuesUsecase, targetURL: targetURL, defaultLength: defaultLength}
 }
 
 // goroutineURL は Goroutine 画面への URL。時刻は Unix ナノ秒で渡す。from を省くと at の前後を見る
@@ -46,13 +52,37 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	}
 
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	at, atErr := unixNanoParam(r, "at")
-	if err != nil || atErr != nil {
-		vm.Error = "invalid goroutine id or time"
+	w := replayWindowOf(r, h.defaultLength)
+	length := w.Length
+	var skipped time.Duration
+	latest := fmt.Sprintf("/goroutines/%d?", id) + url.Values{"length": {length.String()}}.Encode()
+	live := err == nil && !w.targeted()
+	// 時刻の指定がなければ最新の窓を、再生の続き・前 (after / before) ならその区間を、真ん中で診断する
+	if err == nil && !w.HasAt {
+		win, werr := h.getSchedulerReplayUsecase.Exec(ctx, w.input())
+		// 再生の続きが録画の終わりを越えたら、最新を追う画面に移る (再生していたなら、そのまま再生を続ける)
+		if errors.Is(werr, model.ErrNotFound) && !w.After.IsZero() {
+			to := latest
+			if r.URL.Query().Get("autoplay") != "" {
+				to += "&autoplay=1"
+			}
+			http.Redirect(rw, r, to, http.StatusSeeOther)
+			return
+		}
+		if werr == nil {
+			w.At, w.HasAt = win.StartedAt.Add(win.Timeline.Window/2), true
+			skipped = skippedBefore(w, win.StartedAt)
+		}
+	}
+	at := w.At
+	if err != nil || !w.HasAt {
+		vm.Error = "invalid goroutine id or time, or nothing recorded yet"
 		render()
 		return
 	}
-	in := usecase.GetGoroutineUsecaseInput{Goroutine: model.GoroutineID(id), At: at, From: at.Add(-goroutineReplayHalf), To: at.Add(goroutineReplayHalf), ReplayHalf: goroutineReplayHalf}
+	// 診断する区間も再生と同じく、At を真ん中にした再生の長さ
+	half := length / 2
+	in := usecase.GetGoroutineUsecaseInput{Goroutine: model.GoroutineID(id), At: at, From: at.Add(-half), To: at.Add(half), ReplayHalf: half}
 	// from があるのは所要時間のあるログから来たとき。そのリクエストの区間 [from, at] を見る
 	if from, err := unixNanoParam(r, "from"); err == nil && from.Before(at) {
 		in.From, in.To = from, at
@@ -72,9 +102,9 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	vm.Goroutine = fmt.Sprintf("G%d", out.Goroutine)
+	vm.Goroutine, vm.GoroutineID = fmt.Sprintf("G%d", out.Goroutine), strconv.FormatInt(int64(out.Goroutine), 10)
 	vm.Entry = out.Entry
-	vm.Interval = fmt.Sprintf("%s – %s (%s)", out.From.Local().Format("15:04:05.000"), out.To.Local().Format("15:04:05.000"), out.To.Sub(out.From).Round(time.Millisecond))
+	vm.Interval = timeRange(out.From, out.To)
 	vm.At = out.At.Local().Format("15:04:05.000000")
 	vm.Leaked = out.HasDump && out.Dump.Leaked
 	if out.HasPrimary {
@@ -85,28 +115,17 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	if out.HasDump && out.Dump.CreatedBy != "" {
 		vm.CreatedBy = string(out.Dump.Origin())
 	}
-	vm.Unrecorded = out.Breakdown.Unrecorded.Round(time.Microsecond).String()
-	total := out.To.Sub(out.From)
-	for _, c := range out.Causes {
-		if c.Duration == 0 {
-			continue
-		}
-		ratio := float64(c.Duration) / float64(total)
-		vm.Breakdown = append(vm.Breakdown, pages.BreakdownRowViewModel{
-			Cause:    string(c.Cause),
-			Duration: c.Duration.Round(time.Microsecond).String(),
-			Percent:  fmt.Sprintf("%.0f%%", ratio*100),
-			Width:    fmt.Sprintf("%.1f%%", ratio*100),
-			Primary:  c.Primary,
-		})
+	vm.Length = length.String()
+	vm.LatestURL = latest
+	if live {
+		vm.StreamURL = schedulerStreamURL + "?" + url.Values{"length": {length.String()}}.Encode()
 	}
-	vm.LogsURL = logsURL(out.From.Add(-time.Second), out.To.Add(time.Second))
 	if issues, err := h.listIssuesUsecase.Exec(ctx, usecase.ListIssuesUsecaseInput{Now: time.Now()}); err == nil {
 		for _, i := range issues.Issues {
 			sameGoroutine := i.HasGoroutine && i.Goroutine == out.Goroutine
 			sameOrigin := i.Kind == model.IssueLeak && out.HasDump && i.Subject == string(out.Dump.Origin())
 			if sameGoroutine || sameOrigin {
-				vm.Issues = append(vm.Issues, fmt.Sprintf("%s %s — %s", i.Kind, i.Certainty, i.Summary))
+				vm.Issues = append(vm.Issues, components.LinkViewModel{Label: fmt.Sprintf("Issue: %s — %s", i.Kind, i.Summary), URL: issueURL(domain.IssueFingerprint(i), overviewDefaultRange)})
 			}
 		}
 	}
@@ -117,7 +136,23 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		return
 	}
 	replay := newGMPReplayJSON(out.Replay, out.Leaked, out.ReplayStartedAt)
-	replay.Focus = &gmpReplayFocusJSON{AtNs: int64(out.ReplayFocus), Goroutine: int64(out.Goroutine), Exact: true}
+	replay.SkippedNs = int64(skipped)
+	vm.Picker = replayPicker(r, out.At, true, length, out.ReplayStartedAt, out.ReplayStartedAt.Add(out.Replay.Window))
+	vm.Picker.RangeID, vm.Picker.Live = partials.ReplayRangeID, live
+	replay.Focus = &gmpReplayFocusJSON{AtNs: int64(out.ReplayFocus), Goroutine: int64(out.Goroutine)}
+	if out.StateSinceCause != "" {
+		replay.Before = &gmpReplayBeforeJSON{Goroutine: int64(out.Goroutine), Cause: string(out.StateSinceCause), RecordedFromNs: out.RecordedFrom.UnixNano()}
+		if out.HasStateSince {
+			q := url.Values{"length": {length.String()}}
+			replay.Before.SinceNs = out.StateSince.UnixNano()
+			replay.Before.URL = goroutineURL(out.Goroutine, out.StateSince, time.Time{}) + "&" + q.Encode()
+		}
+	}
+	// Logs から開いたときは、そのログの位置から見せ、この G が書いたかを印にする
+	logID, hasLog := logIDParam(r)
+	if m, ok := addReplayLogs(&replay, out.ReplayLogs, out.ReplayStartedAt, logID, hasLog); ok && m.HasGoroutine() && m.Goroutine == out.Goroutine {
+		replay.Focus = &gmpReplayFocusJSON{AtNs: int64(m.At.Sub(out.ReplayStartedAt)), Goroutine: int64(out.Goroutine)}
+	}
 	if vm.ReplayJSON, err = replay.marshal(); err != nil {
 		slog.ErrorContext(ctx, "encode gmp replay", slog.Any("err", err))
 		vm.ReplayJSON = ""
@@ -126,8 +161,13 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	render()
 }
 
-func logsURL(from, to time.Time) string {
-	return "/logs?" + url.Values{"from": {strconv.FormatInt(from.UnixNano(), 10)}, "to": {strconv.FormatInt(to.UnixNano(), 10)}}.Encode()
+// unixMilliParam は Overview・Logs の期間 (グラフを拡大したときの from / to) の Unix ミリ秒
+func unixMilliParam(r *http.Request, key string) (time.Time, error) {
+	n, err := strconv.ParseInt(r.URL.Query().Get(key), 10, 64)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.UnixMilli(n), nil
 }
 
 func unixNanoParam(r *http.Request, key string) (time.Time, error) {

@@ -13,34 +13,55 @@ import (
 //   - P: [atNs, 1, proc, status (0 = idle, 1 = running), thread (-1 = なし)]
 //   - entries: [goroutine, functions の添字] の組。G ごとの入口の関数
 //   - lanes: P ごとに、G が走った区間 [startNs, endNs, goroutine] を並べたもの。procs と同じ順
+//   - gc: GC が G の時間を取った区間 [startNs, endNs, goroutine]。goroutine が -1 なら全 G を止めた区間 (STW)、それ以外はその G の mark assist
 type gmpReplayJSON struct {
 	WindowNs int64 `json:"windowNs"`
 	// StartedAtNs は窓の時刻 0 に当たる Unix ナノ秒。G をクリックしたとき Goroutine 画面に時刻を渡すのに使う
 	StartedAtNs int64       `json:"startedAtNs"`
 	Procs       []int64     `json:"procs"`
 	Lanes       [][][]int64 `json:"lanes"`
+	GC          [][]int64   `json:"gc"`
 	Reasons     []string    `json:"reasons"`
 	Functions   []string    `json:"functions"`
 	Entries     [][]int64   `json:"entries"`
 	Events      [][]int64   `json:"events"`
 	Leaked      []int64     `json:"leaked"`
 	Truncated   bool        `json:"truncated"`
+	// SkippedNs は再生の続きを開いたとき、前の窓とのあいだの録画のない時間
+	SkippedNs int64 `json:"skippedNs,omitempty"`
 	// Logs と Focus は Explore でログから再生するときだけ入る
 	Logs  []gmpReplayLogJSON  `json:"logs"`
 	Focus *gmpReplayFocusJSON `json:"focus,omitempty"`
+	// Before は Goroutine 画面の G が、窓の頭より前からいた状態の始まり。窓の中の変わり目は再生から分かるので、窓より前だけをサーバでさかのぼる
+	Before *gmpReplayBeforeJSON `json:"before,omitempty"`
 }
 
+// gmpReplayLogJSON の Goroutine は trace の印で確かに分かった、ログを書いた G (分からなければ -1)。
+// ProbablyGoroutine は確かには分からないが、その時刻に走っていた G が 1 つだけだったので推し量った G (なければ -1)
 type gmpReplayLogJSON struct {
-	AtNs      int64  `json:"atNs"`
-	Text      string `json:"text"`
-	Level     string `json:"level"`
-	Goroutine int64  `json:"g"`
+	AtNs              int64  `json:"atNs"`
+	Text              string `json:"text"`
+	Level             string `json:"level"`
+	Goroutine         int64  `json:"g"`
+	ProbablyGoroutine int64  `json:"probablyG"`
+	// Fields と Detail は行を開いたときに見せるもの (Logs と同じ。JSON ならキーと値、そうでなければ取り込んだままの行)
+	Fields [][2]string `json:"fields,omitempty"`
+	Detail string      `json:"detail,omitempty"`
+}
+
+// gmpReplayBeforeJSON の SinceNs は状態に入った時刻 (Unix ナノ秒)、0 なら RecordedFromNs (さかのぼれた録画の始まり) より前から。
+// URL はその瞬間を再生する Goroutine 画面
+type gmpReplayBeforeJSON struct {
+	Goroutine      int64  `json:"g"`
+	Cause          string `json:"cause"`
+	SinceNs        int64  `json:"sinceNs"`
+	RecordedFromNs int64  `json:"recordedFromNs"`
+	URL            string `json:"url,omitempty"`
 }
 
 type gmpReplayFocusJSON struct {
 	AtNs      int64 `json:"atNs"`
 	Goroutine int64 `json:"g"`
-	Exact     bool  `json:"exact"`
 }
 
 var placeCodes = map[model.GoroutinePlaceKind]int64{
@@ -59,6 +80,7 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 		WindowNs:    int64(tl.Window),
 		Procs:       []int64{},
 		Lanes:       [][][]int64{},
+		GC:          [][]int64{},
 		Reasons:     []string{},
 		Functions:   []string{},
 		Entries:     make([][]int64, 0, len(tl.Entries)),
@@ -118,6 +140,13 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 			}
 			r.Events = append(r.Events, []int64{int64(e.At), 1, int64(e.Proc), status, thread})
 		}
+	}
+	for _, gc := range tl.GC {
+		g := int64(-1)
+		if gc.Kind == model.GCMarkAssist {
+			g = int64(gc.Goroutine)
+		}
+		r.GC = append(r.GC, []int64{int64(gc.Start), int64(gc.End), g})
 	}
 	for _, g := range leaked {
 		r.Leaked = append(r.Leaked, int64(g))

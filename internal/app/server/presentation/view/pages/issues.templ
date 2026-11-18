@@ -1,108 +1,36 @@
 package pages
 
 import (
-	"strconv"
+	"github.com/kakkky/hotwire-go/turbo"
 
+	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
 
+// IssuesViewModel は Issues の枠。一覧は StreamURL から SSE で届き、refresh ごとに新しくなる
 type IssuesViewModel struct {
 	TargetURL string
-	At        string
-	Issues    []IssueViewModel
-	// Recordings は Issue をきっかけに server が保存した、前後の録画
-	Recordings []RecordingViewModel
-}
-
-type RecordingViewModel struct {
-	Kind      string
-	Subject   string
-	At        string
-	Span      string
-	Size      string
-	Downloads []IssueLinkViewModel
-}
-
-// IssueViewModel はどの種類の Issue も同じ形で見せる
-type IssueViewModel struct {
-	Kind      string
-	Certainty string
-	Subject   string
-	Summary   string
-	Location  string
-	Trend     components.SparklineViewModel
-	Links     []IssueLinkViewModel
-}
-
-type IssueLinkViewModel struct {
-	Label string
-	URL   string
+	StreamURL string
+	Picker    components.TimeRangePickerViewModel
+	// Search は種類と言葉で絞る検索のカード
+	Search components.SearchFormViewModel
 }
 
 templ Issues(vm IssuesViewModel) {
 	@layout.Base(vm.TargetURL, "Issues") {
-		<section class="panel">
-			<h2>Issues <span class="muted">detected at <span class="mono">{ vm.At }</span> · <a href="/issues">refresh</a></span> <span class="hint" title="FACT: read directly from the runtime's judgement or the recorded trace / dump, or over a fixed threshold. INFERENCE: inferred by gorviz from trends or comparison with the usual rate.">FACT / INFERENCE?</span></h2>
-			if len(vm.Issues) == 0 {
-				<p class="muted">no issues detected</p>
-			} else {
-				<table class="issues">
-					<tr><th>kind</th><th></th><th>subject</th><th>summary</th><th>trend</th><th></th></tr>
-					for _, i := range vm.Issues {
-						<tr>
-							<td><span class="badge kind">{ i.Kind }</span></td>
-							<td>@components.CertaintyBadge(i.Certainty)</td>
-							<td class="origin" title={ i.Subject }>{ components.ShortPath(i.Subject) }</td>
-							<td class="muted">{ i.Summary }</td>
-							<td>
-								if i.Trend.Points != "" {
-									<svg class="sparkline small" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={ i.Trend.Points }></polyline></svg>
-								}
-							</td>
-							<td class="links">
-								for _, l := range i.Links {
-									<a href={ templ.SafeURL(l.URL) }>{ l.Label }</a>
-								}
-							</td>
-						</tr>
-					}
-				</table>
-			}
-		</section>
-		<section class="panel">
-			<h2>Saved recordings <span class="hint" title="the trace around each issue, kept after the agent's ring buffer drops it. Open a chunk with `go tool trace`">?</span></h2>
-			if len(vm.Recordings) == 0 {
-				<p class="muted">nothing saved yet</p>
-			} else {
-				<table class="issues">
-					<tr><th>kind</th><th>subject</th><th>issue at</th><th>recorded</th><th class="num">size</th><th>download</th></tr>
-					for _, r := range vm.Recordings {
-						<tr>
-							<td><span class="badge kind">{ r.Kind }</span></td>
-							<td class="origin" title={ r.Subject }>{ components.ShortPath(r.Subject) }</td>
-							<td class="mono">{ r.At }</td>
-							<td class="mono muted">{ r.Span }</td>
-							<td class="num mono">{ r.Size }</td>
-							<td>
-								<details class="chunks">
-									<summary>
-										{ strconv.Itoa(len(r.Downloads)) }
-										if len(r.Downloads) == 1 {
-											chunk
-										} else {
-											chunks
-										}
-									</summary>
-									for _, d := range r.Downloads {
-										<a href={ templ.SafeURL(d.URL) } download>{ d.Label }</a>
-									}
-								</details>
-							</td>
-						</tr>
-					}
-				</table>
-			}
-		</section>
+		@turbo.StreamSSESource(partials.IssuesStreamSourceID, vm.StreamURL)
+		<div class="overview-head">
+			<h2>Issues</h2>
+			<span class="hint" title="FACT: read directly from the runtime's judgement or the recorded trace / dump, or over a fixed threshold. INFERENCE: inferred by gorviz from trends or comparison with the usual rate.">FACT / INFERENCE?</span>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
+		@components.SearchForm(vm.Search)
+		<div data-controller={ assets.ChartSyncController.Name } data-chart-sync-source-value={ partials.IssuesStreamSourceID }>
+			<div id={ partials.IssueListID } class="stack">
+				<section class="panel"><p class="muted">loading issues...</p></section>
+			</div>
+		</div>
 	}
 }

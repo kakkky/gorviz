@@ -36,7 +36,7 @@ func TestGetGoroutineUsecase_Exec(t *testing.T) {
 		Window: time.Second,
 		Events: []model.SchedEvent{gEv(0, network, "", ""), gEv(400*ms, running, "", "")},
 	}})
-	uc := usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, recording.NewLogStore(100), nil, nil, nil)
+	uc := usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, recording.NewLogStore(100), nil, nil, nil, nil)
 
 	out, err := uc.NewGetGoroutineUsecase().Exec(context.Background(), usecase.GetGoroutineUsecaseInput{
 		Goroutine: 5, From: base.Add(500 * ms), To: base.Add(1600 * ms), At: base.Add(900 * ms), ReplayHalf: 50 * ms,
@@ -59,4 +59,29 @@ func TestGetGoroutineUsecase_Exec(t *testing.T) {
 	assert.Equal(t, "main.handle", out.Entry)
 	assert.True(t, out.HasReplay)
 	assert.Equal(t, 50*ms, out.ReplayFocus)
+}
+
+func TestGetGoroutineUsecase_Exec_StateSinceAcrossAGap(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	running := model.GoroutinePlace{Kind: model.PlaceRunning, Proc: 0, HasProc: true}
+	blocked := model.GoroutinePlace{Kind: model.PlaceWaiting, Reason: "chan send"}
+	traces := &fakeTraces{}
+	// trace を順に取る agent では、区切りのあいだが少し空く
+	traces.Append(model.TraceChunk{StartedAt: base, Timeline: model.SchedulerTimeline{Window: 2 * time.Second, Events: []model.SchedEvent{
+		{At: 100 * ms, Kind: model.SchedEventGoroutine, Goroutine: 7, Place: running},
+		{At: 300 * ms, Kind: model.SchedEventGoroutine, Goroutine: 7, Place: blocked},
+	}}})
+	traces.Append(model.TraceChunk{StartedAt: base.Add(2050 * ms), Timeline: model.SchedulerTimeline{Window: 2 * time.Second, Events: []model.SchedEvent{
+		{At: 0, Kind: model.SchedEventGoroutine, Goroutine: 7, Place: blocked},
+	}}})
+	uc := usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, recording.NewLogStore(10), nil, nil, nil, nil)
+	at := base.Add(3 * time.Second)
+
+	out, err := uc.NewGetGoroutineUsecase().Exec(context.Background(), usecase.GetGoroutineUsecaseInput{Goroutine: 7, At: at, From: at.Add(-250 * ms), To: at.Add(250 * ms), ReplayHalf: 250 * ms})
+	require.NoError(t, err)
+
+	require.True(t, out.HasStateSince, "the walk back jumps over the gap between chunks")
+	assert.Equal(t, base.Add(300*ms), out.StateSince)
 }

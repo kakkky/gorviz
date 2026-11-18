@@ -1,22 +1,22 @@
 package components
 
-import "strconv"
+import (
+	"strconv"
+
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+)
 
 // OverviewViewModel は選んだ期間 (Range) の推移と、今の様子。推移のグラフはすべて同じ横軸 (期間と区切り Step) で描く
 type OverviewViewModel struct {
-	At    string
-	Range string
-	Step  string
+	Range TimeRangeViewModel
 	// Steps は全グラフで共通の横軸 (JSON)。hover と拡大で JS が読む
 	Steps string
 	// ResetURL は拡大しているときの、元の期間に戻るリンク。拡大していなければ空
 	ResetURL string
-	// LogsURL は表示している時間帯のログ
-	LogsURL string
 	// DataSince は期間の途中から集計を始めていたときの、最初の集計の時刻。それより前は no data
 	DataSince string
-	// Replayable は録画が残っていて、GMP 再生や診断ができる区間
-	Replayable string
 
 	IssueCount int
 	Issues     []OverviewIssueViewModel
@@ -114,20 +114,16 @@ type ChartLegendViewModel struct {
 // OverviewSnapshot は全体の様子を 1 画面で見せる。上に今の様子 (Status)、下に期間の推移を Goroutines・Memory & GC・CPU の段に分けて並べ、
 // 問題に気づいたら Issues・Logs・Goroutine へ進む
 templ OverviewSnapshot(vm OverviewViewModel) {
+	if vm.DataSince != "" {
+		@Notice() {
+			<strong>No data before <span class="mono">{ vm.DataSince }</span></strong>
+			<span>gorviz started collecting at that time, so the charts are empty before it.</span>
+		}
+	}
 	<div class="range-info" data-chart-steps={ vm.Steps }>
-		<span>showing <span class="mono">{ vm.Range }</span></span>
 		if vm.ResetURL != "" {
-			<a href={ templ.SafeURL(vm.ResetURL) } data-chart-reset>reset zoom</a>
+			@ResetZoomButton(vm.ResetURL)
 		}
-		<a href={ templ.SafeURL(vm.LogsURL) }>logs in this range →</a>
-		<span class="faint">{ vm.Step } per point · updated <span class="mono">{ vm.At }</span></span>
-		if vm.DataSince != "" {
-			<span class="faint">no data before <span class="mono">{ vm.DataSince }</span></span>
-		}
-		if vm.Replayable != "" {
-			<span class="faint" title="gorviz keeps the execution trace only for this span: GMP replay and goroutine diagnosis work inside it">trace kept for replay <span class="mono">{ vm.Replayable }</span></span>
-		}
-		<span class="faint">hover a chart to compare the same time · drag to zoom</span>
 	</div>
 	@sectionTitle("Status", "now, regardless of the range")
 	<div class="grid-even">
@@ -138,17 +134,17 @@ templ OverviewSnapshot(vm OverviewViewModel) {
 				<div class="label">open issues</div>
 			</a>
 			if len(vm.Issues) > 0 {
-				<table class="overview-issues">
+				<table class="overview-issues" { stimulus.AttrControllers(assets.RowLinkController.Name)... }>
 					for _, i := range vm.Issues {
-						<tr>
+						<tr class="clickable" data-href={ i.Href } title="open this issue">
 							<td><span class="badge kind">{ i.Kind }</span></td>
-							<td class="origin"><a href={ templ.SafeURL(i.Href) } title={ i.Subject }>{ ShortPath(i.Subject) }</a><div class="muted">{ i.Summary }</div></td>
+							<td class="origin"><span title={ i.Subject }>{ ShortPath(i.Subject) }</span><div class="muted">{ i.Summary }</div></td>
 							<td class="num faint">{ i.Age }</td>
 						</tr>
 					}
 				</table>
 				if vm.IssueCount > len(vm.Issues) {
-					<p><a href="/issues">all { strconv.Itoa(vm.IssueCount) } issues →</a></p>
+					<p><a class="btn" href="/issues">All { strconv.Itoa(vm.IssueCount) } issues</a></p>
 				}
 			}
 		</section>

@@ -1,0 +1,126 @@
+package components
+
+import (
+	"strconv"
+
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+)
+
+// IssueListViewModel は Issues の一覧。期間の中に見つかった Issue を、今も起きているものから並べる
+type IssueListViewModel struct {
+	Range  TimeRangeViewModel
+	Issues []IssueRowViewModel
+	// Filtered は文字や種類で絞っているか。0 件のときの言い方を変える
+	Filtered bool
+	// Steps・Chart は期間の推移 (見つかった回数を種類ごとに積み上げた棒)。Kinds は種類ごとの回数と割合、Total はその合計
+	Steps    string
+	Chart    ChartViewModel
+	ResetURL string
+	Kinds    []IssueKindTotalViewModel
+	Total    int
+}
+
+type IssueKindTotalViewModel struct {
+	Kind    string
+	Count   int
+	Percent string
+	Class   string
+}
+
+// IssueRowViewModel の Trend は期間を等分した区切りごとの、見つかった回数の棒の高さ (%)
+type IssueRowViewModel struct {
+	Kind      string
+	Certainty string
+	Subject   string
+	// DetailURL はこの Issue の推移と見つかった回の画面
+	DetailURL string
+	Summary   string
+	Active    bool
+	Count     int
+	Trend     []string
+	FirstSeen string
+	LastSeen  string
+	Links     []LinkViewModel
+}
+
+type LinkViewModel struct {
+	Label string
+	URL   string
+}
+
+// IssueList は期間の推移のカードと、Issue の一覧のカードを並べる
+templ IssueList(vm IssueListViewModel) {
+	<section class="panel">
+		<div class="range-info" data-chart-steps={ vm.Steps }>
+			if vm.ResetURL != "" {
+				@ResetZoomButton(vm.ResetURL)
+			}
+		</div>
+		<div class="issue-trend">
+			<div class="issue-totals">
+				<div class="stat">
+					<div class="value">{ strconv.Itoa(vm.Total) }</div>
+					<div class="label">times seen in range</div>
+				</div>
+				<ul class="kind-shares">
+					for _, k := range vm.Kinds {
+						<li class={ k.Class }>
+							<i></i>
+							<span class="kind">{ k.Kind }</span>
+							<span class="mono">{ strconv.Itoa(k.Count) }</span>
+							<span class="mono muted">{ k.Percent }</span>
+							<span class="share-bar"><span style={ templ.SafeCSS("width:" + k.Percent) }></span></span>
+						</li>
+					}
+				</ul>
+			</div>
+			@chart(vm.Chart, "no issue seen in this range")
+		</div>
+	</section>
+	<section class="panel">
+		<p class="muted issue-count">
+			{ strconv.Itoa(len(vm.Issues)) } issues seen in this range
+		</p>
+		if len(vm.Issues) == 0 {
+			if vm.Filtered {
+				<p class="muted">no issue matches the filter in this range</p>
+			} else {
+				<p class="muted">no issues seen in this range</p>
+			}
+		} else {
+			<table class="issues" { stimulus.AttrControllers(assets.RowLinkController.Name)... }>
+				<tr><th>kind</th><th></th><th>subject</th><th>latest</th><th class="num">seen</th><th>trend in range</th><th>first / last seen</th><th></th></tr>
+				for _, i := range vm.Issues {
+					<tr class={ "clickable", templ.KV("inactive", !i.Active) } data-href={ i.DetailURL } title="open this issue: its trend and occurrences">
+						<td>
+							<span class="badge kind">{ i.Kind }</span>
+							if i.Active {
+								<span class="active-dot" title="seen in the last 2 minutes"></span>
+							}
+						</td>
+						<td>@CertaintyBadge(i.Certainty)
+</td>
+						<td class="origin" title={ i.Subject }>{ ShortPath(i.Subject) }</td>
+						<td class="muted">{ i.Summary }</td>
+						<td class="num mono">{ strconv.Itoa(i.Count) }</td>
+						<td>
+							<span class="trend-bars" title="times seen, from the start of the range to now">
+								for _, h := range i.Trend {
+									<span style={ templ.SafeCSS("height:" + h) }></span>
+								}
+							</span>
+						</td>
+						<td class="mono muted">{ i.FirstSeen } / { i.LastSeen }</td>
+						<td class="links">
+							for _, l := range i.Links {
+								<a class="btn small" href={ templ.SafeURL(l.URL) }>{ l.Label }</a>
+							}
+						</td>
+					</tr>
+				}
+			</table>
+		}
+	</section>
+}
