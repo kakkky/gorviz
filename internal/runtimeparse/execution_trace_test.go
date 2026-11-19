@@ -30,7 +30,7 @@ func TestBuildSchedulerTimeline(t *testing.T) {
 	runtime.GC()
 	trace.Stop()
 
-	chunk, err := buildTraceChunk(&buf, time.Now())
+	chunk, err := buildTraceChunk(&buf, time.Now(), time.Time{})
 	require.NoError(t, err)
 	tl := chunk.Timeline
 
@@ -63,7 +63,7 @@ func TestBuildSchedulerTimeline_GCEnds(t *testing.T) {
 	metrics.Read(samples)
 	runtime.KeepAlive(retained)
 
-	chunk, err := buildTraceChunk(&buf, time.Now())
+	chunk, err := buildTraceChunk(&buf, time.Now(), time.Time{})
 	require.NoError(t, err)
 
 	require.NotEmpty(t, chunk.Timeline.GCEnds)
@@ -73,4 +73,59 @@ func TestBuildSchedulerTimeline_GCEnds(t *testing.T) {
 	gogc, ok := last.EffectiveGOGC()
 	require.True(t, ok)
 	assert.InDelta(t, 100, gogc, 30, "with the default GOGC, the goal is about twice the live heap")
+}
+
+func TestBuildTraceChunk_Stats(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, trace.Start(&buf))
+	var mu sync.Mutex
+	locked := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		mu.Lock()
+		close(locked)
+		time.Sleep(20 * time.Millisecond)
+		mu.Unlock()
+	}()
+	go func() {
+		<-locked
+		mu.Lock()
+		mu.Unlock()
+		close(done)
+	}()
+	<-done
+	runtime.GC()
+	trace.Stop()
+
+	chunk, err := buildTraceChunk(&buf, time.Now(), time.Time{})
+	require.NoError(t, err)
+	s := chunk.Stats
+
+	assert.Equal(t, chunk.Timeline.Window, s.Window)
+	assert.Positive(t, s.Procs)
+	assert.Positive(t, s.SchedLatency.N(), "every goroutine that started running after being runnable is counted")
+	assert.Positive(t, s.STW.N(), "the forced GC stops the world")
+	assert.Positive(t, s.ProcRunning)
+	i := slices.IndexFunc(s.Waits, func(w model.WaitSite) bool { return w.Function == "sync.(*Mutex).Lock" })
+	require.GreaterOrEqual(t, i, 0, "the lock wait is counted by its site")
+	assert.Contains(t, s.Waits[i].Location, "execution_trace_test.go", "the site is the line in the user's code, not inside sync")
+	assert.GreaterOrEqual(t, s.Waits[i].Total, 10*time.Millisecond)
+	assert.True(t, slices.ContainsFunc(chunk.Timeline.Events, func(e model.SchedEvent) bool {
+		return e.WokenBy != 0 && e.WokenByFunction == "sync.(*Mutex).Unlock"
+	}), "the goroutine that unlocked is recorded as the one that woke the waiter")
+}
+
+func TestBuildTraceChunk_StatsCountFrom(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, trace.Start(&buf))
+	time.Sleep(20 * time.Millisecond)
+	trace.Stop()
+
+	all, err := buildTraceChunk(bytes.NewReader(buf.Bytes()), time.Now(), time.Time{})
+	require.NoError(t, err)
+	half, err := buildTraceChunk(bytes.NewReader(buf.Bytes()), time.Now(), all.StartedAt.Add(all.Timeline.Window/2))
+	require.NoError(t, err)
+
+	assert.InDelta(t, float64(all.Timeline.Window/2), float64(half.Stats.Window), float64(time.Millisecond), "the part before countFrom is not counted")
+	assert.Equal(t, all.Timeline.Window, half.Timeline.Window, "the timeline itself is kept whole")
 }

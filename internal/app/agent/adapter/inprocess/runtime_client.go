@@ -57,13 +57,13 @@ func (c *RuntimeClient) FetchTraceChunk(ctx context.Context, duration time.Durat
 	if _, err := c.fr.WriteTo(&buf); err != nil {
 		return model.TraceChunk{}, model.ErrUnavailable.Wrap(err, "snapshot the flight recorder")
 	}
-	chunk, err := c.parser.ParseTrace(buf.Bytes(), time.Now())
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	chunk, err := c.parser.ParseTrace(buf.Bytes(), time.Now(), c.last)
 	if err != nil {
 		return model.TraceChunk{}, err
 	}
 	chunk.Raw = buf.Bytes()
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	if !c.last.IsZero() {
 		chunk = chunk.Since(c.last)
 	}

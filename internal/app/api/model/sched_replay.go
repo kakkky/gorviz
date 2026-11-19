@@ -50,20 +50,25 @@ const (
 
 // SchedEvent は再生の 1 コマ。Kind が goroutine なら Goroutine が Place に移ったこと、
 // proc なら Proc が ProcStatus になったこと (running なら Thread に乗ったこと) を表す。
-// Function / Location はその時点で G がいた関数と位置 (file:line。スケジューラ内部を除く)。
+// Function はその時点で G がいた関数 (スケジューラ内部を除く。sync.(*Mutex).Lock など)、Location はそれを呼んだ利用者のコードの位置 (file:line)。
 // trace にスタックが載るイベント (ブロック・停止・syscall) でだけ埋まる。
-// Created はこのイベントで G が生まれたこと (窓の中で作られた G) を表す
+// Created はこのイベントで G が生まれたこと (窓の中で作られた G) を表す。
+// WokenBy は待機から runnable にしたのが別の G なら、その G (unlock・channel の送信など) と、そのときの関数・位置。
+// runtime (タイマー・ネットワークのポーラー) が起こしたときは 0
 type SchedEvent struct {
-	At         time.Duration
-	Kind       SchedEventKind
-	Goroutine  GoroutineID
-	Place      GoroutinePlace
-	Function   string
-	Location   string
-	Created    bool
-	Proc       ProcID
-	ProcStatus ProcStatus
-	Thread     ThreadID
+	At              time.Duration
+	Kind            SchedEventKind
+	Goroutine       GoroutineID
+	Place           GoroutinePlace
+	Function        string
+	Location        string
+	Created         bool
+	WokenBy         GoroutineID
+	WokenByFunction string
+	WokenByLocation string
+	Proc            ProcID
+	ProcStatus      ProcStatus
+	Thread          ThreadID
 }
 
 // ProcSnapshot の RunningInSyscall は、P を持ったまま M の上でシステムコール中の G が Running にいること

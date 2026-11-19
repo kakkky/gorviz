@@ -60,7 +60,7 @@ func (c *RuntimeClient) FetchTraceChunk(ctx context.Context, duration time.Durat
 	if err != nil {
 		return model.TraceChunk{}, model.ErrUnavailable.Wrap(err, "read execution trace")
 	}
-	chunk, err := c.parser.ParseTrace(data, time.Now())
+	chunk, err := c.parser.ParseTrace(data, time.Now(), time.Time{})
 	if err != nil {
 		return model.TraceChunk{}, err
 	}

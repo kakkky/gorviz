@@ -8,6 +8,15 @@ func IsRuntimeFunction(fn string) bool {
 	return strings.HasPrefix(fn, "runtime.") || strings.HasPrefix(fn, "internal/")
 }
 
+// IsStdlibFunction は標準ライブラリ (と runtime) の関数か。パッケージパスの先頭にドメインがないものを標準ライブラリとみなす。main は除く
+func IsStdlibFunction(fn string) bool {
+	first, _, _ := strings.Cut(fn, "/")
+	if !strings.Contains(fn, "/") {
+		first, _, _ = strings.Cut(fn, ".")
+	}
+	return first != "main" && !strings.Contains(first, ".")
+}
+
 // CurrentFunction はスタック (上が先) のうち、スケジューラ内部を除いた一番上の関数を返す。
 func CurrentFunction(stack []string) string {
 	for _, fn := range stack {

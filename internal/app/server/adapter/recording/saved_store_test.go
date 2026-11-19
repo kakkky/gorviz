@@ -18,7 +18,7 @@ func TestSavedStore_Prune(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	now := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
-	parse := func(raw []byte, receivedAt time.Time) (model.TraceChunk, error) {
+	parse := func(raw []byte, receivedAt, _ time.Time) (model.TraceChunk, error) {
 		return model.TraceChunk{StartedAt: receivedAt}, nil
 	}
 	rec := func(id string, to time.Time) model.SavedRecording {

@@ -9,6 +9,7 @@ type TraceChunk struct {
 	StartedAt time.Time
 	Timeline  SchedulerTimeline
 	LogMarks  []TraceLogMark
+	Stats     TraceStats
 	// Raw は取ったままの trace。`go tool trace` で開けるように書き出したり、保存したりするのに使う
 	Raw []byte
 }

@@ -14,7 +14,7 @@ import (
 )
 
 // TraceParser は保存した生の trace を読み直す (domain.RuntimeParser の ParseTrace)
-type TraceParser func(raw []byte, receivedAt time.Time) (model.TraceChunk, error)
+type TraceParser func(raw []byte, receivedAt, countFrom time.Time) (model.TraceChunk, error)
 
 // SavedStore は Issue の前後の録画をディスクに保存する。dir/<id>/meta.json と、区切りごとの生の trace (chunk-N.trace) を置く。
 // 生の trace はそのまま `go tool trace` で開ける。起動時に dir にあるものを読み直し、保持期間 (domain.IssueRetention) を過ぎたものは捨てる
@@ -73,7 +73,7 @@ func (s *SavedStore) load(id string, now time.Time) error {
 		if err != nil {
 			return model.ErrInternal.Wrap(err, "read a saved trace")
 		}
-		c, err := s.parse(raw, rec.To)
+		c, err := s.parse(raw, rec.To, time.Time{})
 		if err != nil {
 			return err
 		}

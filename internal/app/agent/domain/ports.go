@@ -22,7 +22,7 @@ type RuntimeClient interface {
 // RuntimeParser は pprof の goroutine dump と execution trace を読む。RuntimeClient の実装と、保存した録画を読み直す側が使う
 type RuntimeParser interface {
 	ParseGoroutineDump(r io.Reader) ([]model.Goroutine, error)
-	ParseTrace(raw []byte, receivedAt time.Time) (model.TraceChunk, error)
+	ParseTrace(raw []byte, receivedAt, countFrom time.Time) (model.TraceChunk, error)
 }
 
 type LogParser interface {

@@ -33,7 +33,8 @@ type runningSpan struct {
 // buildTraceChunk は execution trace の状態遷移から「どの G がどの M 上でどの P を使って走ったか」の区間と再生用のイベントを組み立てる。
 // G が Running に入ったときに区間を開き、Running から出たときに閉じる。
 // receivedAt は trace に壁時計の記録がない (Go 1.25 未満) ときに、取り終えた時刻から逆算するのに使う。
-func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error) {
+// countFrom より前は集計 (Stats) に数えない。前の区切りと重なる trace (FlightRecorder から切り出したもの) を二重に数えないため
+func buildTraceChunk(r io.Reader, receivedAt, countFrom time.Time) (model.TraceChunk, error) {
 	tr, err := trace.NewReader(r)
 	if err != nil {
 		return model.TraceChunk{}, model.ErrInternal.Wrap(err, "open execution trace")
@@ -48,6 +49,7 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 		begin   trace.Time
 		last    trace.Time
 		started bool
+		stats   = newStatsCounter()
 		running = map[trace.GoID]runningSpan{}
 		initial []model.SchedEvent
 		lanes   = map[model.ProcID]*model.ProcLane{}
@@ -98,6 +100,7 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 		}
 		if !started {
 			begin, started = ev.Time(), true
+			stats.from = begin
 		}
 		last = ev.Time()
 		if ev.Thread() != trace.NoThread {
@@ -107,6 +110,9 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 		case trace.EventSync:
 			if clock == nil {
 				clock = ev.Sync().ClockSnapshot
+				if clock != nil && !countFrom.IsZero() {
+					stats.from = max(stats.from, clock.Trace+trace.Time(countFrom.Sub(clock.Wall)))
+				}
 			}
 			continue
 		case trace.EventLog:
@@ -144,6 +150,9 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 			case trace.EventRangeEnd:
 				if start, ok := openGC[key]; ok {
 					delete(openGC, key)
+					if key.kind == model.GCStopTheWorld && strings.HasPrefix(key.reason, "GC ") {
+						stats.stw(start, ev.Time())
+					}
 					tl.GC = append(tl.GC, model.GCRange{Kind: key.kind, Goroutine: model.GoroutineID(key.g), Reason: key.reason, Start: start.Sub(begin), End: ev.Time().Sub(begin)})
 				}
 			}
@@ -221,12 +230,25 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 			}
 			var function, location string
 			if from != trace.GoNotExist && len(frames) > 0 {
-				f := currentFrame(frames)
-				function, location = f.Func, fmt.Sprintf("%s:%d", f.File, f.Line)
+				function, location = currentFrame(frames).Func, frameLocation(userFrame(frames))
 			}
-			if place, ok := placeOf(ev, st, from, to, threadOf); ok {
-				place.Cgo = place.Kind == model.PlaceSyscall && isCgoCall(frames)
-				emit(model.SchedEvent{Kind: model.SchedEventGoroutine, Goroutine: model.GoroutineID(g), Place: place, Function: function, Location: location, Created: from == trace.GoNotExist})
+			place, placed := placeOf(ev, st, from, to, threadOf)
+			place.Cgo = place.Kind == model.PlaceSyscall && isCgoCall(frames)
+			start := ev.Time()
+			if fromUndetermined {
+				start = begin
+			}
+			stats.transition(g, from, to, ev.Time(), start, place, function, location, tl.Entries)
+			if placed {
+				e := model.SchedEvent{Kind: model.SchedEventGoroutine, Goroutine: model.GoroutineID(g), Place: place, Function: function, Location: location, Created: from == trace.GoNotExist}
+				// 待機から起こしたのが別の G なら、イベントはその G の上で起き、スタックもその G のもの
+				if from == trace.GoWaiting && to == trace.GoRunnable && ev.Goroutine() != trace.NoGoroutine && ev.Goroutine() != g {
+					e.WokenBy = model.GoroutineID(ev.Goroutine())
+					if wf := stackFrames(ev.Stack()); len(wf) > 0 {
+						e.WokenByFunction, e.WokenByLocation = currentFrame(wf).Func, frameLocation(userFrame(wf))
+					}
+				}
+				emit(e)
 			}
 			if from == trace.GoNotExist && to != trace.GoNotExist {
 				tl.GoroutinesCreated++
@@ -266,6 +288,7 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 		tl.Threads = append(tl.Threads, th)
 	}
 	chunk.Timeline = tl
+	chunk.Stats = stats.finish(begin, last, tl)
 	if clock != nil {
 		chunk.StartedAt = clock.Wall.Add(begin.Sub(clock.Trace))
 	} else {
@@ -285,6 +308,10 @@ func stackFrames(s trace.Stack) []trace.StackFrame {
 		frames = append(frames, f)
 	}
 	return frames
+}
+
+func frameLocation(f trace.StackFrame) string {
+	return fmt.Sprintf("%s:%d", f.File, f.Line)
 }
 
 // currentFrame は model.CurrentFunction と同じ規則で、スケジューラ内部を除いた一番上のフレームを返す
@@ -347,7 +374,7 @@ func placeOf(ev trace.Event, st trace.StateTransition, from, to trace.GoState, t
 	return model.GoroutinePlace{}, false
 }
 
-// ParseTrace は取ったままの trace を読む。server が保存した録画を読み直すのに使う
-func (p *Parser) ParseTrace(raw []byte, receivedAt time.Time) (model.TraceChunk, error) {
-	return buildTraceChunk(bytes.NewReader(raw), receivedAt)
+// ParseTrace は取ったままの trace を読む。countFrom (空なら全部) より前は集計に数えない
+func (p *Parser) ParseTrace(raw []byte, receivedAt, countFrom time.Time) (model.TraceChunk, error) {
+	return buildTraceChunk(bytes.NewReader(raw), receivedAt, countFrom)
 }
