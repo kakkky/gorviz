@@ -40,6 +40,16 @@ type gmpReplayJSON struct {
 	Focus *gmpReplayFocusJSON `json:"focus,omitempty"`
 	// Before は Goroutine 画面の G が、窓の頭より前からいた状態の始まり。窓の中の変わり目は再生から分かるので、窓より前だけをサーバでさかのぼる
 	Before *gmpReplayBeforeJSON `json:"before,omitempty"`
+	// Longest は Goroutine 画面の G が主因の状態を一番長く続けた 1 回。診断の場所と woken by はこの 1 回のこと
+	Longest *gmpReplayStretchJSON `json:"longest,omitempty"`
+}
+
+// gmpReplayStretchJSON の StartNs / EndNs は窓の頭からの時刻
+type gmpReplayStretchJSON struct {
+	Goroutine int64  `json:"g"`
+	Cause     string `json:"cause"`
+	StartNs   int64  `json:"startNs"`
+	EndNs     int64  `json:"endNs"`
 }
 
 // gmpReplayLogJSON の Goroutine は trace の印で確かに分かった、ログを書いた G (分からなければ -1)。

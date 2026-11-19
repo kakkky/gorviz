@@ -85,3 +85,56 @@ func TestGetGoroutineUsecase_Exec_StateSinceAcrossAGap(t *testing.T) {
 	require.True(t, out.HasStateSince, "the walk back jumps over the gap between chunks")
 	assert.Equal(t, base.Add(300*ms), out.StateSince)
 }
+
+func TestGetGoroutineUsecase_Exec_WokenBy(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	gEv := func(at time.Duration, g model.GoroutineID, place model.GoroutinePlace, fn, loc string) model.SchedEvent {
+		return model.SchedEvent{At: at, Kind: model.SchedEventGoroutine, Goroutine: g, Place: place, Function: fn, Location: loc}
+	}
+	running := model.GoroutinePlace{Kind: model.PlaceRunning, HasProc: true}
+	lock := model.GoroutinePlace{Kind: model.PlaceWaiting, Reason: "sync"}
+	sleep := model.GoroutinePlace{Kind: model.PlaceWaiting, Reason: "sleep"}
+	woken := gEv(300*ms, 5, model.GoroutinePlace{Kind: model.PlaceLocalQueue}, "", "")
+	woken.WokenBy, woken.WokenByFunction, woken.WokenByLocation = 9, "sync.(*Mutex).Unlock", "/app/backup.go:80"
+
+	traces := &fakeTraces{}
+	// G5 はロックで待ち始め、区切りをまたいで、ロックを持った G9 (スリープ中) が Unlock したところで起こされる
+	traces.Append(model.TraceChunk{StartedAt: base, Timeline: model.SchedulerTimeline{
+		Window:  time.Second,
+		Entries: map[model.GoroutineID]string{9: "main.(*Backup).Run"},
+		Events: []model.SchedEvent{
+			gEv(0, 9, sleep, "time.Sleep", "/app/backup.go:78"),
+			gEv(600*ms, 5, lock, "sync.(*Mutex).Lock", "/app/store.go:38"),
+		},
+	}})
+	traces.Append(model.TraceChunk{StartedAt: base.Add(time.Second), Timeline: model.SchedulerTimeline{
+		Window: time.Second,
+		Events: []model.SchedEvent{
+			gEv(0, 9, sleep, "", ""),
+			gEv(0, 5, lock, "", ""),
+			gEv(290*ms, 9, running, "", ""),
+			woken,
+			gEv(310*ms, 5, running, "", ""),
+		},
+	}})
+	uc := usecase.NewUseCase(usecase.Settings{}, nil, nil, kvs.NewInMemoryKVS(), traces, recording.NewLogStore(100), nil, nil, nil, nil)
+
+	out, err := uc.NewGetGoroutineUsecase().Exec(context.Background(), usecase.GetGoroutineUsecaseInput{
+		Goroutine: 5, From: base.Add(500 * ms), To: base.Add(1500 * ms), At: base.Add(1400 * ms), ReplayHalf: 50 * ms,
+	})
+	require.NoError(t, err)
+
+	require.True(t, out.HasLongest)
+	l := out.Longest
+	assert.Equal(t, base.Add(600*ms), l.From, "the wait that runs into the next chunk is one stretch")
+	assert.Equal(t, base.Add(1300*ms), l.To)
+	assert.Equal(t, "/app/store.go:38", l.Location)
+	assert.True(t, l.HasWake)
+	assert.Equal(t, model.GoroutineID(9), l.Waker)
+	assert.Equal(t, "/app/backup.go:80", l.WakerLocation)
+	assert.Equal(t, "main.(*Backup).Run", l.WakerEntry)
+	assert.Equal(t, domain.CauseSleep, l.WakerPrimary, "what the goroutine holding the lock was doing meanwhile")
+	assert.Equal(t, "/app/backup.go:78", l.WakerBusyLocation)
+}

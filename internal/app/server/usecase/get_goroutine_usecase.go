@@ -49,6 +49,9 @@ type GetGoroutineUsecaseOutput struct {
 	Function   string
 	Location   string
 	WaitReason string
+	// Longest は区間の中で主因の状態を途切れずに一番長く続けた 1 回。待ちなら誰が起こしたかも添える
+	Longest    GoroutineStretch
+	HasLongest bool
 	// 根拠: At の前後の GMP 再生。録画がなければ HasReplay は false
 	Replay          model.SchedulerTimeline
 	ReplayStartedAt time.Time
@@ -64,6 +67,29 @@ type GetGoroutineUsecaseOutput struct {
 	StateSinceCause domain.PrimaryCause
 	HasStateSince   bool
 	RecordedFrom    time.Time
+}
+
+// GoroutineStretch は G が 1 つの主因の状態を続けた 1 回。Ended が false なら区間の終わりまで続いていた。
+// HasWake は待ち (waiting) から出たときに立つ。Waker が 0 なら、別の G ではなく runtime (タイマー・ネットワークのポーラー) が起こした
+type GoroutineStretch struct {
+	From       time.Time
+	To         time.Time
+	Function   string
+	Location   string
+	WaitReason string
+	Ended      bool
+	HasWake    bool
+	Waker      model.GoroutineID
+	// WakerFunction・WakerLocation は起こしたときに Waker がいた関数と位置 (Unlock・channel の送信など)
+	WakerFunction string
+	WakerLocation string
+	WakerEntry    string
+	// WakerBreakdown はこの G が待っていた間の Waker の内訳。WakerBusy* はそのうち Waker の主因を一番長く続けた 1 回の場所
+	WakerBreakdown    domain.StateBreakdown
+	WakerPrimary      domain.PrimaryCause
+	HasWakerPrimary   bool
+	WakerBusyFunction string
+	WakerBusyLocation string
 }
 
 type GoroutineCauseDuration struct {
@@ -112,6 +138,15 @@ func (us *GetGoroutineUsecase) Exec(_ context.Context, in GetGoroutineUsecaseInp
 	}
 
 	if out.HasPrimary && out.Certainty == domain.CertaintyFact {
+		out.Longest, out.HasLongest = longestStretch(chunks, in.Goroutine, out.Primary, in.From, in.To)
+		if out.HasLongest && out.Longest.HasWake && out.Longest.Waker != 0 {
+			addWaker(&out.Longest, chunks, goroutines)
+		}
+		if out.HasLongest && out.Longest.Function != "" {
+			out.Function, out.Location, out.WaitReason = out.Longest.Function, out.Longest.Location, out.Longest.WaitReason
+		}
+	}
+	if out.HasPrimary && out.Certainty == domain.CertaintyFact && out.Function == "" {
 		// 止まっていた場所は、主因の状態に入ったときの場所。区間の中で最後に入ったものを使う
 		for _, c := range slices.Backward(chunks) {
 			if ev, ok := domain.PlaceOfCause(c.Timeline, in.Goroutine, out.Primary, c.Offset(earlierOf(in.To, c.EndedAt()))); ok {
@@ -150,6 +185,77 @@ func (us *GetGoroutineUsecase) Exec(_ context.Context, in GetGoroutineUsecaseInp
 		out.Function = out.Dump.CurrentFunction
 	}
 	return out, nil
+}
+
+// longestStretch は区間に重なる区切りから、g が cause の状態を途切れずに続けた一番長い 1 回を探す。
+// 区切りの終わりまで続いた状態が次の区切りの頭から続いていれば、1 回としてつなぐ (待ちが解けたのは次の区切りに載る)
+func longestStretch(chunks []model.TraceChunk, g model.GoroutineID, cause domain.PrimaryCause, from, to time.Time) (GoroutineStretch, bool) {
+	type stretch struct {
+		from, to time.Time
+		st       domain.CauseStretch
+		// open は区切りの終わりまで続いていたこと (区切りの外で解けたかもしれない)
+		open bool
+	}
+	var all []stretch
+	for _, c := range chunks {
+		lo, hi := c.Offset(laterOf(from, c.StartedAt)), c.Offset(earlierOf(to, c.EndedAt()))
+		for _, st := range domain.Stretches(c.Timeline, g, cause, lo, hi) {
+			cur := stretch{from: c.StartedAt.Add(st.Start), to: c.StartedAt.Add(st.End), st: st, open: !st.HasLeave && st.End == c.Timeline.Window}
+			if n := len(all); n > 0 && all[n-1].open && st.Start == 0 && cur.from.Sub(all[n-1].to) <= chunkGapProbes[len(chunkGapProbes)-1] {
+				prev := all[n-1]
+				cur.from, cur.st.Enter = prev.from, prev.st.Enter
+				if cur.st.Enter.Function == "" {
+					cur.st.Enter = st.Enter
+				}
+				all[n-1] = cur
+				continue
+			}
+			all = append(all, cur)
+		}
+	}
+	if len(all) == 0 {
+		return GoroutineStretch{}, false
+	}
+	best := all[0]
+	for _, s := range all[1:] {
+		if s.to.Sub(s.from) > best.to.Sub(best.from) {
+			best = s
+		}
+	}
+	out := GoroutineStretch{From: best.from, To: best.to, Function: best.st.Enter.Function, Location: best.st.Enter.Location, Ended: best.st.HasLeave}
+	if best.st.Enter.Place.Kind == model.PlaceWaiting {
+		out.WaitReason = best.st.Enter.Place.Reason
+		if leave := best.st.Leave; best.st.HasLeave && (leave.Place.Kind == model.PlaceLocalQueue || leave.Place.Kind == model.PlaceGlobalQueue) {
+			out.HasWake = true
+			out.Waker, out.WakerFunction, out.WakerLocation = leave.WokenBy, leave.WokenByFunction, leave.WokenByLocation
+		}
+	}
+	return out, true
+}
+
+// addWaker は待っていた間 (s.From〜s.To) に、起こした G が何をしていたかを足す
+func addWaker(s *GoroutineStretch, chunks []model.TraceChunk, goroutines []model.Goroutine) {
+	s.WakerBreakdown = domain.NewStateBreakdown()
+	for _, c := range chunks {
+		if !c.EndedAt().After(s.From) || c.StartedAt.After(s.To) {
+			continue
+		}
+		s.WakerBreakdown.Add(domain.Breakdown(c.Timeline, s.Waker, c.Offset(laterOf(s.From, c.StartedAt)), c.Offset(earlierOf(s.To, c.EndedAt()))))
+		if s.WakerEntry == "" {
+			s.WakerEntry = c.Timeline.Entries[s.Waker]
+		}
+	}
+	for _, g := range goroutines {
+		if g.ID == s.Waker && s.WakerEntry == "" {
+			s.WakerEntry = g.EntryFunction
+		}
+	}
+	s.WakerPrimary, s.HasWakerPrimary = s.WakerBreakdown.Primary()
+	if s.HasWakerPrimary {
+		if busy, ok := longestStretch(chunks, s.Waker, s.WakerPrimary, s.From, s.To); ok {
+			s.WakerBusyFunction, s.WakerBusyLocation = busy.Function, busy.Location
+		}
+	}
 }
 
 // lastKnownPlace は at 以前で最後に分かった、G のいた関数・位置と、その時点で待機中なら待機理由を返す

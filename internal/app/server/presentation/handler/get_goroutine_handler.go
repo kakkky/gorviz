@@ -111,6 +111,9 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		vm.Primary, vm.Certainty = string(out.Primary), string(out.Certainty)
 	}
 	vm.Function, vm.Location, vm.WaitReason = dash(out.Function), dash(out.Location), dash(out.WaitReason)
+	if out.HasLongest {
+		vm.Wake = goroutineWake(out.Longest)
+	}
 	vm.CreatedBy = "-"
 	if out.HasDump && out.Dump.CreatedBy != "" {
 		vm.CreatedBy = string(out.Dump.Origin())
@@ -140,6 +143,13 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 	vm.Picker = replayPicker(r, out.At, true, length, out.ReplayStartedAt, out.ReplayStartedAt.Add(out.Replay.Window))
 	vm.Picker.RangeID, vm.Picker.Live = partials.ReplayRangeID, live
 	replay.Focus = &gmpReplayFocusJSON{AtNs: int64(out.ReplayFocus), Goroutine: int64(out.Goroutine)}
+	// 診断の場所と woken by が指す 1 回を、再生の帯で枠で囲む
+	if out.HasLongest {
+		replay.Longest = &gmpReplayStretchJSON{
+			Goroutine: int64(out.Goroutine), Cause: string(out.Primary),
+			StartNs: int64(max(out.Longest.From.Sub(out.ReplayStartedAt), 0)), EndNs: int64(min(out.Longest.To.Sub(out.ReplayStartedAt), out.Replay.Window)),
+		}
+	}
 	if out.StateSinceCause != "" {
 		replay.Before = &gmpReplayBeforeJSON{Goroutine: int64(out.Goroutine), Cause: string(out.StateSinceCause), RecordedFromNs: out.RecordedFrom.UnixNano()}
 		if out.HasStateSince {
@@ -159,6 +169,32 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		vm.NoReplay = "failed to build the replay"
 	}
 	render()
+}
+
+// goroutineWake は一番長い待ちから誰が起こしたか。待ち (waiting) でなければ nil
+func goroutineWake(s usecase.GoroutineStretch) *pages.GoroutineWakeViewModel {
+	switch {
+	case s.HasWake && s.Waker != 0:
+		w := &pages.GoroutineWakeViewModel{
+			Kind: "goroutine", Goroutine: fmt.Sprintf("G%d", s.Waker), URL: goroutineURL(s.Waker, s.To, s.From),
+			Entry: s.WakerEntry, Function: s.WakerFunction, Location: s.WakerLocation,
+		}
+		if s.HasWakerPrimary {
+			w.BusyCause = string(s.WakerPrimary)
+			busy := s.WakerBreakdown.Durations[s.WakerPrimary]
+			w.BusyFor = domain.FormatShortDuration(busy)
+			if wait := s.To.Sub(s.From); wait > 0 {
+				w.BusyShare = fmt.Sprintf("%d%%", int(float64(busy)/float64(wait)*100+0.5))
+			}
+			w.BusyFunction, w.BusyLocation = s.WakerBusyFunction, s.WakerBusyLocation
+		}
+		return w
+	case s.HasWake:
+		return &pages.GoroutineWakeViewModel{Kind: "runtime"}
+	case !s.Ended && s.WaitReason != "":
+		return &pages.GoroutineWakeViewModel{Kind: "waiting"}
+	}
+	return nil
 }
 
 // unixMilliParam は Overview・Logs の期間 (グラフを拡大したときの from / to) の Unix ミリ秒

@@ -235,6 +235,15 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .goroutine-card-body h3 { margin-top: 12px; }
 .goroutine-card.is-closed .goroutine-card-body { display: none; }
 .goroutine-none { display: none; font-weight: 600; }
+/* woken by: 起こした G と、その G が待っている間に何をしていたか */
+.wake { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; align-items: center; margin: 0; }
+.wake dt { color: var(--faint); font-size: 11px; }
+.wake dd { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.wake .origin { font-family: var(--mono); font-size: 12px; }
+.wake-cause { display: inline-flex; align-items: center; gap: 5px; }
+.wake-cause .cause-name { font: 600 12px var(--mono); }
+a.gchip:hover { text-decoration: none; }
+.gchip.is-static { cursor: default; }
 .goroutine-none .muted { font-weight: 400; margin-left: 8px; font-size: 13px; }
 .goroutine-card.is-closed .goroutine-none { display: inline; }
 .goroutine-card.is-closed .goroutine-card-head > :not(.goroutine-none) { display: none; }
@@ -252,6 +261,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .gmp-strip { position: relative; height: 22px; background: #0b0d11; border-radius: 4px; cursor: crosshair; overflow: hidden; }
 .gmp-strip .seg { position: absolute; top: 3px; bottom: 3px; min-width: 1px; opacity: .9; }
 .gmp-strip .log-mark { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: var(--text); opacity: .7; }
+.gmp-strip .longest { position: absolute; top: 0; bottom: 0; border: 2px solid #fff; border-radius: 3px; pointer-events: none; box-sizing: border-box; }
+.gmp-longest { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.gmp-longest .longest-key { width: 14px; height: 9px; border: 2px solid #fff; border-radius: 2px; box-sizing: border-box; }
 .gmp-strip .cursor { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.15); }
 .gmp-axis { display: flex; justify-content: space-between; margin-top: -6px; font: 10px var(--mono); color: var(--faint); }
 .gmp-breakdown { display: grid; gap: 4px; }

@@ -25,6 +25,8 @@ type GoroutineViewModel struct {
 	Location   string
 	WaitReason string
 	CreatedBy  string
+	// Wake は主因の状態を一番長く続けた 1 回 (再生の帯で枠を付ける区間) の待ちを、誰が起こしたか (待ちでなければ nil)
+	Wake *GoroutineWakeViewModel
 	// 根拠
 	ReplayJSON string
 	NoReplay   string
@@ -35,6 +37,22 @@ type GoroutineViewModel struct {
 	Picker     components.TimeRangePickerViewModel
 	// Issues はこの G (リークなら同じ生成元) を含む Issue
 	Issues []components.LinkViewModel
+}
+
+// GoroutineWakeViewModel の Kind は "goroutine" (別の G が起こした)・"runtime" (タイマー・ネットワークのポーラー)・"waiting" (区間の終わりまで待っていた)。
+// Busy* は待っていた間に、起こした G が何をしていたか (主因・その長さ・場所)
+type GoroutineWakeViewModel struct {
+	Kind         string
+	Goroutine    string
+	URL          string
+	Entry        string
+	Function     string
+	Location     string
+	BusyCause    string
+	BusyFor      string
+	BusyShare    string
+	BusyFunction string
+	BusyLocation string
 }
 
 templ Goroutine(vm GoroutineViewModel) {
@@ -92,6 +110,9 @@ templ Goroutine(vm GoroutineViewModel) {
 								<tr><th>stopped in</th><td class="origin">{ vm.Function }</td></tr>
 								<tr><th>location</th><td class="origin" title={ vm.Location }>{ components.ShortPath(vm.Location) }</td></tr>
 								<tr><th>wait reason</th><td>{ vm.WaitReason }</td></tr>
+								if vm.Wake != nil {
+									<tr><th title="who made this goroutine runnable at the end of the longest wait">woken by</th><td>@goroutineWake(*vm.Wake)</td></tr>
+								}
 								<tr><th>created by</th><td class="origin" title={ vm.CreatedBy }>{ components.ShortPath(vm.CreatedBy) }</td></tr>
 							</table>
 						</div>
@@ -110,4 +131,47 @@ templ Goroutine(vm GoroutineViewModel) {
 			}
 		}
 	}
+}
+
+// goroutineWake は一番長い待ちを解いたのが誰かを、「誰が・どうやって・その間何をしていたか」の順に並べる
+templ goroutineWake(w GoroutineWakeViewModel) {
+	switch w.Kind {
+		case "goroutine":
+			<dl class="wake">
+				<dt>who</dt>
+				<dd>
+					// 再生の G と同じ chip で、色は待っていた間のその G の主因
+					<a class="gchip" href={ templ.SafeURL(w.URL) } title="open this goroutine over the wait"><span class={ "gdot", wakeDotClass(w.BusyCause) }></span>{ w.Goroutine }</a>
+					<span class="origin" title={ w.Entry }>{ components.ShortPath(w.Entry) }</span>
+				</dd>
+				if w.Function != "" {
+					<dt title="what the waking goroutine called to make this one runnable (an unlock, a channel send, ...)">how</dt>
+					<dd><span class="origin" title={ w.Function }>{ components.ShortPath(w.Function) }</span> <span class="origin faint" title={ w.Location }>{ components.ShortPath(w.Location) }</span></dd>
+				}
+				if w.BusyCause != "" {
+					<dt title="what the waking goroutine was doing while this one waited">meanwhile</dt>
+					<dd>
+						<span class="wake-cause"><span class={ "cause-dot", "cause-bg-" + w.BusyCause }></span><span class="cause-name">{ w.BusyCause }</span></span>
+						<span class="mono">{ w.BusyFor }</span> <span class="faint">({ w.BusyShare } of the wait)</span>
+						if w.BusyLocation != "" {
+							<span class="origin faint" title={ w.BusyFunction + " " + w.BusyLocation }>{ components.ShortPath(w.BusyLocation) }</span>
+						}
+					</dd>
+				}
+			</dl>
+		case "runtime":
+			<dl class="wake">
+				<dt>who</dt>
+				<dd><span class="gchip is-static" title="a timer or the network poller"><span class="gdot other"></span>runtime</span></dd>
+			</dl>
+		default:
+			<span title="still waiting at the end of the interval">-</span>
+	}
+}
+
+func wakeDotClass(cause string) string {
+	if cause == "" {
+		return "other"
+	}
+	return "cause-bg-" + cause
 }

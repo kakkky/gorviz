@@ -12,6 +12,35 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
+func TestStretches(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	gEv := func(at time.Duration, place model.GoroutinePlace, fn string) model.SchedEvent {
+		return model.SchedEvent{At: at, Kind: model.SchedEventGoroutine, Goroutine: 1, Place: place, Function: fn}
+	}
+	lock := model.GoroutinePlace{Kind: model.PlaceWaiting, Reason: "sync"}
+	running := model.GoroutinePlace{Kind: model.PlaceRunning, HasProc: true}
+	woken := gEv(30*ms, model.GoroutinePlace{Kind: model.PlaceLocalQueue}, "")
+	woken.WokenBy = 2
+	tl := model.SchedulerTimeline{Window: 100 * ms, Events: []model.SchedEvent{
+		gEv(10*ms, lock, "sync.(*Mutex).Lock"),
+		gEv(20*ms, model.GoroutinePlace{Kind: model.PlaceWaiting, Reason: model.UnknownWaitReason}, ""),
+		woken,
+		gEv(31*ms, running, ""),
+		gEv(60*ms, lock, "sync.(*Mutex).Lock"),
+	}}
+
+	got := domain.Stretches(tl, 1, domain.CauseBlocked, 0, tl.Window)
+
+	require.Len(t, got, 2, "a rewrite of the same state does not split the stretch")
+	assert.Equal(t, 20*ms, got[0].Duration())
+	assert.Equal(t, "sync.(*Mutex).Lock", got[0].Enter.Function)
+	assert.True(t, got[0].HasLeave)
+	assert.Equal(t, model.GoroutineID(2), got[0].Leave.WokenBy)
+	assert.False(t, got[1].HasLeave, "still waiting at the end of the window")
+	assert.Equal(t, 100*ms, got[1].End)
+}
+
 func TestCauseOfWaitSite(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

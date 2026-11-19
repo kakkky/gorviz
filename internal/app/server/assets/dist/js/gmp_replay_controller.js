@@ -240,6 +240,7 @@ export default class extends Controller {
     this.entries = new Map(data.entries.map(([g, fn]) => [g, data.functions[fn]]))
     this.serverFocus = data.focus || null
     this.before = data.before || null
+    this.longest = data.longest || null
     this.focusG = this.serverFocus && this.serverFocus.g >= 0 ? this.serverFocus.g : null
     this.seekTarget.max = data.windowNs
     this.noteTarget.textContent = data.truncated
@@ -778,9 +779,13 @@ export default class extends Controller {
       const tip = `${sg.cause}${sg.reason ? ` (${sg.reason})` : ""} ${ms(sg.end - sg.start)}${sg.fn ? `\n${short(sg.fn)}` : ""}`
       out.push(`<span class="seg cause-bg-${sg.cause}" style="left:${pct(sg.start, w)};width:${pct(sg.end - sg.start, w)}" title="${esc(tip)}"></span>`)
     }
+    // 診断 (場所・woken by) が指す 1 回を枠で囲む
+    const longest = this.longest && this.longest.g === tr.g && this.longest.endNs > this.longest.startNs ? this.longest : null
+    if (longest) out.push(`<span class="longest" style="left:${pct(longest.startNs, w)};width:${pct(longest.endNs - longest.startNs, w)}" title="${esc(`the longest ${longest.cause}: ${ms(longest.endNs - longest.startNs)}`)}"></span>`)
     for (const l of tr.logs) out.push(`<span class="log-mark${l.probably ? " probably" : ""}" style="left:${pct(l.atNs, w)}" title="${esc(`${l.level} ${ms(l.atNs)}  ${l.text}`)}"></span>`)
     out.push(`<span class="cursor" style="left:${pct(this.t, w)}"></span></div>`)
     out.push(`<div class="gmp-axis"><span>0</span><span>${ms(w / 2)}</span><span>${ms(w)}</span></div>`)
+    if (longest) out.push(`<div class="gmp-longest"><span class="longest-key"></span>longest ${longest.cause} <span class="mono">${ms(longest.endNs - longest.startNs)}</span><span class="faint">· the one the diagnosis describes</span></div>`)
 
     out.push(`<div class="gmp-breakdown"><div class="caption">time by state in this ${ms(w)} window</div>`)
     for (const c of CAUSES) {
