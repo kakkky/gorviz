@@ -58,7 +58,9 @@ func TestGetGoroutineUsecase_Exec(t *testing.T) {
 	assert.Equal(t, "network", out.WaitReason)
 	assert.Equal(t, "main.handle", out.Entry)
 	assert.True(t, out.HasReplay)
-	assert.Equal(t, 50*ms, out.ReplayFocus)
+	assert.Equal(t, base.Add(500*ms), out.ReplayStartedAt, "the replay covers the diagnosed interval, not only around At")
+	assert.Equal(t, 400*ms, out.ReplayFocus)
+	assert.Equal(t, 1100*ms, out.Replay.Window, "the two chunks are joined into one replay")
 }
 
 func TestGetGoroutineUsecase_Exec_StateSinceAcrossAGap(t *testing.T) {

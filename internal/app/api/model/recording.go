@@ -124,3 +124,68 @@ func (c *TraceChunk) InheritWaitReasons(prev TraceChunk) {
 func knownWaitReason(r string) bool {
 	return r != "" && r != UnknownWaitReason
 }
+
+// JoinChunks は時刻の順に並んだ区切りから [from, to] に当たる部分を切り出し、1 つの Timeline につなぐ。startedAt はつないだ Timeline の時刻 0。
+// 後ろの区切りの先頭の状態 (t=0 のイベント) は、その区切りの始まりの時刻に置き直す。区切りの間のすき間 (取り直しの HTTP の往復) には何も起きない。
+// M の番号は区切りごとに現れた順に振り直しているので、境目をまたいで同じ番号が同じ OS スレッドとは限らない
+func JoinChunks(chunks []TraceChunk, from, to time.Time) (tl SchedulerTimeline, startedAt time.Time, ok bool) {
+	lanes := map[ProcID]int{}
+	threads := map[ThreadID]bool{}
+	for _, c := range chunks {
+		lo, hi := max(c.Offset(from), 0), min(c.Offset(to), c.Timeline.Window)
+		if hi <= lo {
+			continue
+		}
+		part := c.Timeline.Slice(lo, hi)
+		partStart := c.StartedAt.Add(lo)
+		if !ok {
+			tl, startedAt, ok = SchedulerTimeline{Entries: map[GoroutineID]string{}}, partStart, true
+		}
+		shift := partStart.Sub(startedAt)
+		for _, ev := range part.Events {
+			ev.At += shift
+			tl.Events = append(tl.Events, ev)
+		}
+		for _, r := range part.GC {
+			r.Start, r.End = r.Start+shift, r.End+shift
+			tl.GC = append(tl.GC, r)
+		}
+		for _, h := range part.Heap {
+			h.At += shift
+			tl.Heap = append(tl.Heap, h)
+		}
+		for _, e := range part.GCEnds {
+			e.At += shift
+			tl.GCEnds = append(tl.GCEnds, e)
+		}
+		for _, l := range part.Procs {
+			i, seen := lanes[l.Proc]
+			if !seen {
+				i = len(tl.Procs)
+				lanes[l.Proc] = i
+				tl.Procs = append(tl.Procs, ProcLane{Proc: l.Proc})
+			}
+			for _, s := range l.Spans {
+				s.Start, s.End = s.Start+shift, s.End+shift
+				tl.Procs[i].Spans = append(tl.Procs[i].Spans, s)
+			}
+		}
+		for _, th := range part.Threads {
+			if !threads[th] {
+				threads[th] = true
+				tl.Threads = append(tl.Threads, th)
+			}
+		}
+		for g, e := range part.Entries {
+			if _, has := tl.Entries[g]; !has {
+				tl.Entries[g] = e
+			}
+		}
+		tl.GoroutinesCreated += part.GoroutinesCreated
+		tl.GoroutinesDestroyed += part.GoroutinesDestroyed
+		tl.GCCycles += part.GCCycles
+		tl.EventsTruncated = tl.EventsTruncated || part.EventsTruncated
+		tl.Window = shift + part.Window
+	}
+	return tl, startedAt, ok
+}

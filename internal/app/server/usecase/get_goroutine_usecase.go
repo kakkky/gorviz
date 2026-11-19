@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"maps"
 	"slices"
 	"time"
 
@@ -155,16 +154,18 @@ func (us *GetGoroutineUsecase) Exec(_ context.Context, in GetGoroutineUsecaseInp
 			}
 		}
 	}
-	if c, ok := us.traceRecording.At(in.At); ok {
-		at := c.Offset(in.At)
+	// 再生は At の前後 ReplayHalf ずつに、診断の区間 [From, To] も含める (再生の内訳と診断の区間をそろえる)。
+	// 区切りをまたぐときは前後の区切りをつなぐ
+	replayFrom, replayTo := earlierOf(in.From, in.At.Add(-in.ReplayHalf)), laterOf(in.To, in.At.Add(in.ReplayHalf))
+	replayFrom = laterOf(replayFrom, replayTo.Add(-maxReplaySpan))
+	if tl, start, ok := model.JoinChunks(us.traceRecording.Between(replayFrom, replayTo), replayFrom, replayTo); ok && !in.At.Before(start) && !in.At.After(start.Add(tl.Window)) {
+		at := in.At.Sub(start)
 		if out.Function == "" {
-			out.Function, out.Location, out.WaitReason = lastKnownPlace(c.Timeline, in.Goroutine, at)
+			out.Function, out.Location, out.WaitReason = lastKnownPlace(tl, in.Goroutine, at)
 		}
-		from := max(at-in.ReplayHalf, 0)
-		out.Replay = c.Timeline.Slice(from, at+in.ReplayHalf)
-		out.Replay.Entries = maps.Clone(out.Replay.Entries)
+		out.Replay = tl
 		domain.EnrichFromDump(&out.Replay, goroutines)
-		out.ReplayStartedAt, out.ReplayFocus, out.HasReplay = c.StartedAt.Add(from), at-from, true
+		out.ReplayStartedAt, out.ReplayFocus, out.HasReplay = start, at, true
 		out.ReplayLogs = us.logs.marksBetween(out.ReplayStartedAt, out.ReplayStartedAt.Add(out.Replay.Window))
 	}
 	base := in.At
@@ -291,6 +292,9 @@ func earlierOf(a, b time.Time) time.Time {
 	}
 	return b
 }
+
+// maxReplaySpan は再生につなぐ長さの上限。診断の区間が長くても (時間のかかったリクエスト)、ブラウザに送る再生が重くなりすぎないようにする
+const maxReplaySpan = 10 * time.Second
 
 // stateSinceMaxChunks はさかのぼる区切りの数の上限。録画が長くても画面を開く時間を抑える
 const stateSinceMaxChunks = 1000
