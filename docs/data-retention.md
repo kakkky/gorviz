@@ -1,124 +1,107 @@
-# データの持ち方 (1 か月保持の検討)
+# データの持ち方
 
-server で 1 か月 (31 日) 遡って調べられるようにするための検討。全体の設計は [design.md](design.md)。
+server で 31 日遡って調べられるようにする。保存先は server のローカルディスクだけ (S3 は使わない)。全体の設計は [design.md](design.md)。
 
-状態: 提案。未確定の点は「[未確定](#未確定)」。
+状態: 提案。
 
-## 目次
+## 方針
 
-- [データと使い道](#データと使い道)
-- [今の持ち方](#今の持ち方)
-- [実測](#実測)
-- [提案](#提案)
-- [未確定](#未確定)
+- 古くなるほど細かさを落とす。生の trace は Issue 付近だけ、それ以外は削ぎ落とした形で持つ
+- 利用者が決めるのは `-data-dir` と `-disk-limit` (使ってよい大きさ) だけ。31 日分の小さいものを先に取り置き、残りを細かいものに回す。あふれたら細かいものの古い方から捨てる
+- 保存はサービス単位。インスタンスはファイル名か各行の項目で持つので、再起動・スケールで履歴が切れない
+- server のメモリには直近の分と索引だけを持ち、古いものは画面を開いたときにファイルから読む
 
-## データと使い道
-
-| データ | 取るもの・頻度 | 何に使うか | 使う画面・機能 |
-| --- | --- | --- | --- |
-| execution trace | agent が `-chunk` (既定 2 秒) ごとに区切って取り続ける | 状態別の時間内訳と主因 (`FACT`)、GMP の再生、CPU 待ち・GC・mark assist・ヒープの計測、ログと書いた goroutine の結びつけ (logmark) | Goroutine、Scheduler、Overview の推移、`CPU_WAIT_SPIKE` / `MEMORY_PRESSURE` の検出、`export` |
-| goroutine dump | agent が `-dump-interval` (既定 1 分) ごと | 全 goroutine の生成元 (go 文) と止まっている場所、生成元ごとの数の推移、trace がないときの主因の推測 (`INFERENCE`)、Scheduler の G の入口の関数 | Overview の推移、Goroutine、`LEAK` の検出 (`INFERENCE`) |
-| goroutineleak プロファイル | dump の `-leak-check-every` (既定 5) 回に 1 回 | runtime によるリークの判定 | `LEAK` の検出 (`FACT`) |
-| ログ | アプリの出力をそのまま (logmark の番号付き) | 問題の瞬間を見つける入口、件数・エラーの推移、書いた goroutine と時刻への結びつけ | Logs、Goroutine (その窓で書いたログ)、Overview |
-| Issue | server が数秒ごとにログ・dump・trace から検出 | 問題の一覧と回数の推移、前後の trace を保存するきっかけ | Issues、Overview、CLI `issues`、MCP |
-| メトリクス | server が観測のたびに集計 | goroutine 数・状態・生成元・ヒープ・GC・CPU 待ちの推移 | Overview、Issues の推移 |
-
-## 今の持ち方
-
-| データ | agent (メモリ) | server (メモリ) | server (ディスク、`-save-dir`) |
-| --- | --- | --- | --- |
-| execution trace | リングバッファ `-trace-buffer-mib` (既定 256 MiB)。数十秒〜数分 | - | Issue の前後 (10 秒前〜2 秒後) の生の trace を 31 日 |
-| goroutine dump | 最新の 1 件 | leak 検出用に `-history` (既定 30) 回分 | 生成元・状態ごとの数をメトリクスとして 31 日 |
-| goroutineleak プロファイル | 最新の結果 | - | Issue として 31 日 |
-| ログ | `-max-logs` (既定 5 万行) | `-max-logs` (既定 5 万行) | **なし** |
-| Issue | - | - | 31 日 (`issues/<日付>.jsonl`) |
-| メトリクス | - | - | 10 秒刻みを 26 時間、5 分刻みを 31 日 |
-
-穴:
-
-- ログはメモリにしかないので、遡れるのは直近 5 万行まで
-- 主因を `FACT` で出せるのは、trace が残っている区間 (agent のリングバッファか Issue の前後) だけ。それ以外は 1 か月前どころか数分前でも出せない
-
-## 実測
-
-trace 2 秒分を、形を変えて gzip した大きさ。合成の負荷 (1 リクエスト = 1 goroutine。ロック・TCP の往復・スリープ・計算) を `runtime/trace` で取り、`runtimeparse.ParseTrace` と `domain.Breakdown` に通した。
-
-| 形 | 100 rps | 1000 rps | 5000 rps | 1 か月 (1 インスタンス、100 / 1000 / 5000 rps) |
-| --- | --- | --- | --- | --- |
-| 生の trace | 36 KB | 260 KB | 1.08 MB | 47 GB / 336 GB / 1.4 TB |
-| 再生用イベント (`Procs`・`Events`・`GC`・`Heap`) | 84 KB | 522 KB | 1.24 MB | 生より大きい |
-| goroutine ごとの内訳 (全 G) | 6.3 KB (285 G) | 24.7 KB (1338 G) | 約 180 KB (推定、約 1 万 G) | 8 GB / 32 GB / 約 230 GB |
-| 生成元 × 主因の内訳 | 0.45 KB | 0.45 KB | 0.35 KB | 刻みをまとめて約 10 MB |
-
-- goroutine ごとの内訳は G 1 つあたり約 20 バイト (G の ID・入口の関数・主因ごとの時間・止まっていた場所)
-- 再生用イベントは生の trace より大きいので、残す意味はない。再生には生の trace を読み直す
-- 5000 rps の内訳は、下の打ち切りのせいで実測が少なく出たので推定
-
-見つかった問題:
-
-- 再生用イベントは 5 万件で打ち切る (`internal/runtimeparse/execution_trace.go:19`)。1000 rps で既に打ち切られた
-- `domain.Breakdown` はこの打ち切られた `Events` から内訳を出す (`internal/app/server/domain/breakdown.go:136`)。忙しいアプリでは区切りの後半の内訳が誤ったまま `FACT` になる
-- 内訳は再生用の上限とは別に、読み込む時点で全イベントから出す必要がある
-
-## 提案
-
-1 か月持つのは「ログ行 + 書いた goroutine の内訳」と「生成元 × 主因の内訳」。生の trace は今と同じく Issue の前後だけ。
-
-- ログから goroutine に降りるには、ログを書いた G の内訳があれば足りる。全 G の内訳は 1000 rps で 1 か月 32 GB と重い
-- 全体の傾向は生成元 × 主因の内訳で追える
+## データの流れ
 
 ```mermaid
-sequenceDiagram
-    participant T as 対象アプリ
-    participant A as gorviz-agent (メモリ)
-    participant S as gorviz-server
-    participant D as server のディスク (31 日)
-    participant C as クライアント
-
-    T->>A: ログ行 (logmark の番号付き)
-    A->>S: ログ行を push (今のまま)
-    S->>S: 内訳が届くまで数秒メモリに置く
-
-    loop 2 秒ごと
-        T->>A: trace 1 区切り
-        A->>A: 生の trace をリングバッファへ (今のまま)
-        A->>A: 全イベントから集計<br/>(1) ログを書いた G の内訳 (番号ごと)<br/>(2) 生成元 × 主因の内訳
-        A->>S: (1)(2) を push (数 KB)
-    end
-
-    S->>D: ログ行 + 書いた G の内訳
-    S->>D: 生成元 × 主因をメトリクスへ
-    S->>S: Issue を検出
-    opt Issue があれば
-        S->>A: 前後の生の trace を pull
-        S->>D: Issue と前後の trace (今のまま)
-    end
-
-    C->>S: 1 か月前のログから Goroutine を開く
-    S->>D: ログ行と書いた G の内訳を読む
-    S-->>C: 主因と止まっていた場所 (FACT)
-    alt 生の trace がある (agent に残っている / Issue の前後)
-        S-->>C: Scheduler で再生もできる
-    else ない
-        S-->>C: 内訳だけ (再生なし)
-    end
+flowchart LR
+    T[対象アプリ] -->|trace・ログ・dump| A[agent]
+    A -->|"push: ログ・dump・削ぎ落とした trace (区切りごと)"| S[server]
+    S -->|"pull: Issue 付近の生の trace"| A
+    S --> D[(data-dir)]
 ```
 
-提案後の持ち方:
+- agent は今と同じく生の trace をリングバッファに持つ。区切りごとに下の (1) イベント列と (2) G ごとの内訳を作って push する。agent がするのは集計だけで、判定はしない
+- server は push されたものから推移を集計し、Issue を判定して、ファイルに書く
+- Issue が見つかったら、その前後の生の trace を agent から pull して保存する (今のまま)
 
-| データ | agent (メモリ) | server (メモリ) | server (ディスク、31 日) |
-| --- | --- | --- | --- |
-| 生の trace | リングバッファ 256 MiB (今のまま) | - | Issue の前後 (今のまま) |
-| ログを書いた G の内訳 | 集計したら push して捨てる | 対応するログ行が来るまで | ログ行に添える |
-| 生成元 × 主因の内訳 | 集計したら push して捨てる | - | メトリクス (10 秒刻み 26 時間 / 5 分刻み 31 日) |
-| ログ | 5 万行 (今のまま) | 内訳を待つ数秒分 | `logs/<日付>.jsonl` |
-| dump・Issue・メトリクス | 今のまま | 今のまま | 今のまま |
+## server のファイル
 
-- 集計は軽いので push に乗せる (重いものだけ pull にする今の分け方に沿う)。agent がするのは集計で、判定はしない
-- 保存先は issuestore・metricstore と同じく、S3 などに差し替えられる形にする
+```
+<data-dir>/<service>/
+  metrics/10s/<日付>.jsonl                    推移 (10 秒刻み)
+  metrics/5m/<日付>.jsonl                     推移 (5 分刻み)
+  issues/<日付>.jsonl                         Issue
+  logs/<日付>/<時>.jsonl.zst                  ログ
+  slow/<日付>.jsonl                           遅かった G
+  goroutines/<日付>/<時>-<instance>.bin.zst   (2) 全 G の内訳
+  timeline/<日付>/<時>/<分>-<instance>.bin.zst (1) イベント列
+  recordings/<id>/meta.json, trace.zst        Issue 付近の生の trace
+```
 
-## 未確定
+日付・時刻は UTC。どれもその単位が閉じたら書き足さないので、期限が来たらファイルかディレクトリごと消せる。
 
-- ログを書かなかった G の内訳を残すか。残すなら、区切りごとに BLOCKED などが長い上位 N 件を 26 時間、など (全 G だと 1000 rps で 1 日約 1 GB)
-- 内訳を出すコード (`server/domain/breakdown.go`) を agent からも使える場所 (`runtimeparse` など) に移すか。移すと打ち切りの問題も一緒に直る
-- ログの量。実際のアプリで 1 日に何行出るかは未計測
+## 期間
+
+必ず 31 日持つもの (小さい):
+
+- `metrics/5m`・`issues`・`slow`
+- `logs`。量はアプリしだいなので、`-disk-limit` を超えるときは古い日から捨てる
+
+`-disk-limit` の残りで持つもの (細かい。括弧は目安):
+
+- `metrics/10s`: 26 時間
+- `timeline`: 1 日
+- `goroutines`: 7 日
+- `recordings`: 31 日
+
+画面には、その時刻にどこまでの細かさが残っているか (再生できる / 内訳まで / 推移のみ) を出す。
+
+## データの形
+
+`.jsonl` は 1 行に 1 件。`.bin.zst` は先頭に文字列の辞書 (関数名・`file:line`・待機理由) を置き、各件はそれを番号で指す。数値は varint。
+
+- **推移** (`metrics`): 今の `domain.MetricPoint`。待ち場所 (`Waits`) のキーの文字列が大半を占めるので、ここも辞書にする
+- **Issue** (`issues`): 今の `domain.IssueOccurrence`
+- **ログ** (`logs`): `model.LogLine` に、書いた G の分かることを添える。添えておけば、`goroutines` が消えたあとも、1 か月前のログから主因と止まった場所まで辿れる
+  - `instance`
+  - `goroutine`
+  - `cause` (主因)
+  - `where` (止まった場所)
+- **遅かった G** (`slow`): 分ごとに、待った時間が長い上位 N 件。形は下の G の内訳と同じ
+- **G の内訳** (`goroutines`): G 1 つにつき 1 件
+  - `goroutine`
+  - `entry` (入口の関数)
+  - `from`・`to`
+  - 主因 (RUNNING〜GC の 7 つ) ごとの時間 (µs)
+  - `where` (いちばん長く止まった場所)
+- **イベント列** (`timeline`): G の状態の移り変わり 1 回につき 1 件。P・GC・ヒープのイベントは持たないので、再生は G の動きだけになる
+  - 前のイベントからの時間 (10µs 単位)
+  - G (前のイベントとの差)
+  - 移った先の状態
+  - 待機理由
+  - 止まった場所
+- **生の trace** (`recordings`): FlightRecorder から切り出した区切りの重なりを除いて 1 本につなぎ、zstd で圧縮する。`meta.json` は今の `model.SavedRecording`
+
+## 根拠 (実測)
+
+合成の負荷 (1 リクエスト = 1 goroutine。HTTP の往復・ロック・2ms のスリープ・計算) を 60 秒取り、zstd で圧縮した。1 分あたりの大きさ:
+
+- 100 rps
+  - 生の trace: 1.6 MB
+  - (1) イベント列: 0.44 MB
+  - (2) G の内訳: 0.08 MB
+- 1000 rps
+  - 生の trace: 13.8 MB
+  - (1) イベント列: 4.0 MB
+  - (2) G の内訳: 0.74 MB
+- 5000 rps
+  - 生の trace: 49 MB
+  - (1) イベント列: 19 MB
+  - (2) G の内訳: 3.0 MB
+
+分かったこと:
+
+- 生の trace は圧縮しても 1/1.6〜1/2 にしかならない。1000 rps で 31 日持つと約 600 GB
+- G の内訳は 1 件 6 B ほど。1000 rps で 7 日なら約 7 GB
+- FlightRecorder の区切り (`chunk.Raw`) は前の区切りと重なっていて、つなぐと取り続けた分の 2 倍になる。保存するときは重なりを除く
