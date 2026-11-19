@@ -70,7 +70,7 @@ func skippedBefore(w replayWindow, startedAt time.Time) time.Duration {
 // 入力欄は ms まで選べ、その範囲をそのまま再生する
 func replayPicker(r *http.Request, at time.Time, hasAt bool, length time.Duration, from, to time.Time) components.TimeRangePickerViewModel {
 	vm := components.TimeRangePickerViewModel{
-		Range: replayRange(from, to, length), Action: r.URL.Path, TimeZone: timeZoneLabel(), InputStep: "0.001",
+		Range: timeRange(from, to), Action: r.URL.Path, TimeZone: timeZoneLabel(), InputStep: "0.001",
 		Since: from.Local().Format(localTimeInputLayoutMs), Until: to.Local().Format(localTimeInputLayoutMs),
 	}
 	base := r.URL.Query()
@@ -136,11 +136,4 @@ func addReplayLogs(replay *gmpReplayJSON, marks []usecase.LogMark, startedAt tim
 }
 
 // replayRange は再生の区間。選んだ長さより短いのは録画の区切りの端で切れたときなので、そう書く (gmp_replay_controller.js の drawWindow と同じ)
-func replayRange(from, to time.Time, length time.Duration) components.TimeRangeViewModel {
-	vm := timeRange(from, to)
-	if to.Sub(from) < length*98/100 {
-		vm.Length += " of " + formatLength(length)
-		vm.LengthTitle = "cut short at the edge of a recorded chunk"
-	}
-	return vm
-}
+

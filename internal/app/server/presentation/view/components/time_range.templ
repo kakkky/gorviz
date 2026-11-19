@@ -8,8 +8,6 @@ type TimeRangeViewModel struct {
 	From   string
 	To     string
 	Length string
-	// LengthTitle は長さに添える説明 (短く切れたときの理由など)
-	LengthTitle string
 }
 
 templ TimeRange(vm TimeRangeViewModel) {
@@ -25,7 +23,7 @@ templ TimeRangeBody(vm TimeRangeViewModel) {
 	<span class="sep">→</span>
 	<time>{ vm.To }</time>
 	if vm.Length != "" {
-		<span class="len" title={ vm.LengthTitle }>{ vm.Length }</span>
+		<span class="len">{ vm.Length }</span>
 	}
 }
 

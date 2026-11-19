@@ -713,14 +713,12 @@ export default class extends Controller {
   }
 
   // drawWindow は最新を追っているとき、新しい窓の区間を画面の見出しの部品に書く (それ以外はサーバが描いた区間のまま)。
-  // 形は components.TimeRangeBody と、短く切れたときの書き方は handler の replayRange と同じ
+  // 形は components.TimeRangeBody と同じ
   drawWindow() {
     const host = this.rangeHostValue ? document.getElementById(this.rangeHostValue) : null
     const { startedAtNs: start, windowNs: w } = this.current
     if (!host || !this.liveValue || !(start > 0)) return
-    const chosen = durationNs(this.lengthValue)
-    const cut = chosen > 0 && w < chosen * 0.98
-    host.innerHTML = timeRangeBodyHTML(start, start + w, cut ? `${ms(w)} of ${ms(chosen)}` : ms(w), cut ? "cut short at the edge of a recorded chunk" : "")
+    host.innerHTML = timeRangeBodyHTML(start, start + w, ms(w))
   }
 
 
@@ -1067,21 +1065,14 @@ function overlapOf(merged, start, end) {
 }
 
 // timeRangeBodyHTML は components.TimeRangeBody と同じ形の範囲の中身。再生の区間は 1 分より短いので ms まで出す
-function timeRangeBodyHTML(fromNs, toNs, length, lengthTitle) {
-  return `<time>${dateTime(fromNs)}</time><span class="sep">→</span><time>${dateTime(toNs)}</time><span class="len" title="${esc(lengthTitle)}">${length}</span>`
+function timeRangeBodyHTML(fromNs, toNs, length) {
+  return `<time>${dateTime(fromNs)}</time><span class="sep">→</span><time>${dateTime(toNs)}</time><span class="len">${length}</span>`
 }
 
 function dateTime(ns) {
   const d = new Date(ns / 1e6)
   const pad = (n) => String(n).padStart(2, "0")
   return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${clockTime(ns)}`
-}
-
-// durationNs は Go の time.Duration の文字列 (100ms・1.5s など) をナノ秒にする。読めなければ 0
-function durationNs(s) {
-  const m = /^([\d.]+)(ns|µs|us|ms|s|m)$/.exec(s || "")
-  if (!m) return 0
-  return Number(m[1]) * { ns: 1, "µs": 1e3, us: 1e3, ms: 1e6, s: 1e9, m: 6e10 }[m[2]]
 }
 
 function clockTime(ns) {
