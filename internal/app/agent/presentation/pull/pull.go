@@ -4,13 +4,17 @@ package pull
 import (
 	"context"
 
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
 	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/api/model"
 )
 
-// Service は net/rpc の受け手。メソッド名がそのまま server から呼ぶ名前になる
+// Service は agentrpc.AgentServer の実装
 type Service struct {
+	agentrpc.UnimplementedAgentServer
 	getTraceChunkUsecase    *usecase.GetTraceChunkUsecase
 	listTraceChunksUsecase  *usecase.ListTraceChunksUsecase
 	findLogMarkUsecase      *usecase.FindLogMarkUsecase
@@ -26,61 +30,56 @@ func NewService(uc *usecase.UseCase) *Service {
 	}
 }
 
-func (s *Service) LatestChunk(a agentrpc.ChunkArgs, r *agentrpc.ChunkReply) error {
-	out, err := s.getTraceChunkUsecase.Exec(context.Background(), usecase.GetTraceChunkUsecaseInput{})
-	if err != nil {
-		return err
+func (s *Service) LatestChunk(ctx context.Context, req *agentrpc.LatestChunkRequest) (*agentrpc.ChunkReply, error) {
+	out, err := s.getTraceChunkUsecase.Exec(ctx, usecase.GetTraceChunkUsecaseInput{})
+	if err != nil || !out.OK {
+		return &agentrpc.ChunkReply{}, err
 	}
-	if out.OK && !a.IfNewerThan.IsZero() && !out.Chunk.StartedAt.After(a.IfNewerThan) {
-		r.NotModified = true
-		return nil
+	if since := agentrpc.TimeOf(req.GetIfNewerThan()); !since.IsZero() && !out.Chunk.StartedAt.After(since) {
+		return &agentrpc.ChunkReply{NotModified: true}, nil
 	}
-	r.Chunk, r.OK = strip(out.Chunk, a.WithRaw), out.OK
-	return nil
+	return &agentrpc.ChunkReply{Chunk: withoutRaw(out.Chunk)}, nil
 }
 
-func (s *Service) ChunkAt(a agentrpc.ChunkArgs, r *agentrpc.ChunkReply) error {
-	out, err := s.getTraceChunkUsecase.Exec(context.Background(), usecase.GetTraceChunkUsecaseInput{At: a.At})
-	if err != nil {
-		return err
+func (s *Service) ChunkAt(ctx context.Context, req *agentrpc.ChunkAtRequest) (*agentrpc.ChunkReply, error) {
+	out, err := s.getTraceChunkUsecase.Exec(ctx, usecase.GetTraceChunkUsecaseInput{At: agentrpc.TimeOf(req.GetAt())})
+	if err != nil || !out.OK {
+		return &agentrpc.ChunkReply{}, err
 	}
-	r.Chunk, r.OK = strip(out.Chunk, a.WithRaw), out.OK
-	return nil
+	return &agentrpc.ChunkReply{Chunk: withoutRaw(out.Chunk)}, nil
 }
 
-func (s *Service) ChunksBetween(a agentrpc.BetweenArgs, r *agentrpc.ChunksReply) error {
-	out, err := s.listTraceChunksUsecase.Exec(context.Background(), usecase.ListTraceChunksUsecaseInput{From: a.From, To: a.To})
+func (s *Service) ChunksBetween(req *agentrpc.ChunksBetweenRequest, stream grpc.ServerStreamingServer[agentrpc.TraceChunk]) error {
+	out, err := s.listTraceChunksUsecase.Exec(stream.Context(), usecase.ListTraceChunksUsecaseInput{From: agentrpc.TimeOf(req.GetFrom()), To: agentrpc.TimeOf(req.GetTo())})
 	if err != nil {
 		return err
 	}
 	for _, c := range out.Chunks {
-		r.Chunks = append(r.Chunks, strip(c, a.WithRaw))
+		if err := stream.Send(agentrpc.NewTraceChunk(c)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (s *Service) FindLogMark(a agentrpc.SeqArgs, r *agentrpc.MarkReply) error {
-	out, err := s.findLogMarkUsecase.Exec(context.Background(), usecase.FindLogMarkUsecaseInput{Seq: a.Seq})
-	if err != nil {
-		return err
+func (s *Service) FindLogMark(ctx context.Context, req *agentrpc.FindLogMarkRequest) (*agentrpc.FindLogMarkReply, error) {
+	out, err := s.findLogMarkUsecase.Exec(ctx, usecase.FindLogMarkUsecaseInput{Seq: req.GetSeq()})
+	if err != nil || !out.OK {
+		return &agentrpc.FindLogMarkReply{}, err
 	}
-	r.Chunk, r.Mark, r.OK = strip(out.Chunk, false), out.Mark, out.OK
-	return nil
+	return &agentrpc.FindLogMarkReply{Chunk: withoutRaw(out.Chunk), Mark: agentrpc.NewTraceLogMark(out.Mark)}, nil
 }
 
-func (s *Service) Span(_ agentrpc.Empty, r *agentrpc.SpanReply) error {
-	out, err := s.getRecordingSpanUsecase.Exec(context.Background(), usecase.GetRecordingSpanUsecaseInput{})
-	if err != nil {
-		return err
+func (s *Service) Span(ctx context.Context, _ *emptypb.Empty) (*agentrpc.SpanReply, error) {
+	out, err := s.getRecordingSpanUsecase.Exec(ctx, usecase.GetRecordingSpanUsecaseInput{})
+	if err != nil || !out.OK {
+		return &agentrpc.SpanReply{}, err
 	}
-	r.Span, r.OK = out.Span, out.OK
-	return nil
+	return &agentrpc.SpanReply{Span: agentrpc.NewRecordingSpan(out.Span)}, nil
 }
 
-// strip は生の trace を落とす。Live の表示には要らず、運ぶ量が大きいので、保存するときだけ運ぶ
-func strip(c model.TraceChunk, withRaw bool) model.TraceChunk {
-	if !withRaw {
-		c.Raw = nil
-	}
-	return c
+// withoutRaw は生の trace を落として送る形にする。Live の表示には要らず、運ぶ量が大きいので、保存するとき (ChunksBetween) だけ運ぶ
+func withoutRaw(c model.TraceChunk) *agentrpc.TraceChunk {
+	c.Raw = nil
+	return agentrpc.NewTraceChunk(c)
 }

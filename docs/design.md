@@ -60,7 +60,7 @@ gorviz の方針:
 ### プロセスの依存の向き
 
 - 通信の中心は **server**。他のすべてが server に向かってつなぐ
-- agent → server は agent から外向きの TCP 2 本 (push / pull)。対象の環境に外からの入口を開けない
+- agent → server は agent から外向きの TCP 2 本 (push / pull) で、その上で gRPC を流す。対象の環境に外からの入口を開けない
 - クライアントは server の HTTP API とだけ話し、agent や対象に直接つながない
 - agent の置き方は 2 通り。server から見るとどちらも同じ agent で、違いは agent が対象からどうデータを取るかだけ
 
@@ -139,6 +139,8 @@ agent と server の間の 2 本の接続:
 | pull | agent | server | 重いもの (execution trace) | server が要るときだけ (保存するとき・画面で見るとき) |
 
 trace だけ pull にしているのは、量が多く大半は何も起きていない区間なので、常に送ると転送と保存が割に合わないため。
+
+口の形は `internal/app/api/agentrpc/agent.proto` (`make proto.gen` で Go のコードを作る)。どちらの接続も、張った直後に名乗り (1 行の JSON) を送ってから gRPC を流す。pull の接続は TCP を張る側 (agent) が gRPC のサーバになり、server が agent の `Agent` サービスを呼ぶ。gRPC はこの接続をつなぎ直さないので、切れたら agent が張り直す。keepalive で、止まった相手や途中で黙って切られた接続を見つける。
 
 ```mermaid
 sequenceDiagram

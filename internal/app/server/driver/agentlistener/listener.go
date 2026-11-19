@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/rpc"
+
+	"google.golang.org/grpc"
 
 	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/api/model"
@@ -15,10 +16,10 @@ import (
 
 // Endpoint は agent 1 つ分の受け口
 type Endpoint struct {
-	// Pull は pull の接続を受けたときに、その接続で agent を呼ぶ RPC のクライアントを渡す
-	Pull func(*rpc.Client)
-	// Ingest は push の接続の上で、agent からの呼び出しを受ける net/rpc の受け手
-	Ingest any
+	// Pull は pull の接続を受けたときに、その接続で agent を呼ぶ gRPC のクライアントを渡す
+	Pull func(*grpc.ClientConn)
+	// Ingest は push の接続の上で、agent からの呼び出しを受ける
+	Ingest agentrpc.IngestServer
 }
 
 // Accept は agent からの接続を受ける。accept でその agent の受け口を引き、pull の接続なら Pull に渡し、
@@ -54,26 +55,25 @@ func Accept(ctx context.Context, addr string, accept func(agentrpc.Hello) (Endpo
 			continue
 		}
 		if hello.Kind == agentrpc.ConnPull {
-			ep.Pull(rpc.NewClient(conn))
+			cc, err := agentrpc.NewClientConn(conn)
+			if err != nil {
+				slog.ErrorContext(ctx, "create a client for the agent", slog.String("agent", hello.Name), slog.Any("err", err))
+				conn.Close()
+				continue
+			}
+			ep.Pull(cc)
 			continue
 		}
 		go servePush(ctx, conn, ep.Ingest)
 	}
 }
 
-func servePush(ctx context.Context, conn net.Conn, ingest any) {
-	server := rpc.NewServer()
-	if err := server.RegisterName(agentrpc.IngestServiceName, ingest); err != nil {
-		slog.ErrorContext(ctx, "register the ingest service", slog.Any("err", err))
-		conn.Close()
-		return
-	}
-	stop := context.AfterFunc(ctx, func() { conn.Close() })
-	defer stop()
-	server.ServeConn(conn)
+func servePush(ctx context.Context, conn net.Conn, ingest agentrpc.IngestServer) {
+	defer conn.Close()
+	agentrpc.Serve(ctx, conn, func(s grpc.ServiceRegistrar) { agentrpc.RegisterIngestServer(s, ingest) })
 }
 
-// readHello は 1 行だけ読む。後ろは RPC がそのまま使うので、余分に読み進めない
+// readHello は 1 行だけ読む。後ろは gRPC がそのまま使うので、余分に読み進めない
 func readHello(conn net.Conn) (agentrpc.Hello, error) {
 	var line []byte
 	buf := make([]byte, 1)

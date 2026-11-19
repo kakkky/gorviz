@@ -1,6 +1,7 @@
 TEMPL_VERSION := v0.3.1070
+BUF_VERSION := v1.75.0
 
-.PHONY: build test templ.gen gen example.todo example.library overhead launcher.up
+.PHONY: build test templ.gen proto.gen gen example.todo example.library overhead launcher.up
 
 # gorviz (CLI)・gorviz-launcher・gorviz-agent・gorviz-server・gorviz-mcp を bin/ に作る。gorviz-launcher は server と agent を 1 つのプロセスで動かす
 build:
@@ -16,7 +17,11 @@ test:
 templ.gen:
 	go run github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION) generate
 
-gen: templ.gen
+# agent と server の間の口 (internal/app/api/agentrpc/agent.proto) から gRPC のコードを作る。プラグインの版は buf.gen.yaml で固定している
+proto.gen:
+	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
+
+gen: templ.gen proto.gen
 
 # ローカルで server と agent と観測対象の Todo アプリ (example/todo) をまとめて起動する。対象のログも取り込む。
 # Todo アプリは http://localhost:8080、gorviz は http://localhost:7070

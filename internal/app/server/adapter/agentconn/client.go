@@ -2,22 +2,29 @@
 package agentconn
 
 import (
+	"context"
+	"errors"
+	"io"
 	"log/slog"
-	"net/rpc"
 	"slices"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/api/model"
 )
 
 // Client は server の側で、agent 1 つを domain の口 (TraceRecording・DumpSource・LogSource) として見せる。
-// trace は pull の接続で agent に求め、agent が切れている間は「まだない」と答える。agent がつなぎ直したら SetConn で差し替える。
+// trace は pull の接続で agent に gRPC で求め、agent が切れている間は「まだない」と答える。agent がつなぎ直したら SetConn で差し替える。
 // ログ・dump は push の接続で送られてきたものを手元に持ち、切れている間も最後に受け取ったものを返す
 type Client struct {
 	mu   sync.RWMutex
-	rpc  *rpc.Client
+	cc   *grpc.ClientConn
 	last model.TraceChunk
 
 	pushed sync.Mutex
@@ -52,40 +59,42 @@ func (c *Client) Receive(logs []model.LogLine, dump *model.GoroutineDump) {
 	}
 }
 
-func (c *Client) SetConn(rc *rpc.Client) {
+func (c *Client) SetConn(cc *grpc.ClientConn) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.rpc != nil {
-		c.rpc.Close()
+	if c.cc != nil {
+		c.cc.Close()
 	}
-	c.rpc = rc
+	c.cc = cc
 }
 
 func (c *Client) Connected() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.rpc != nil
+	return c.cc != nil
 }
 
-func (c *Client) call(method string, args, reply any) bool {
+// agent は今の pull の接続で agent を呼ぶクライアントを返す。呼び出しが失敗したら done に渡す
+func (c *Client) agent() (agentrpc.AgentClient, func(method string, err error), bool) {
 	c.mu.RLock()
-	rc := c.rpc
+	cc := c.cc
 	c.mu.RUnlock()
-	if rc == nil {
-		return false
+	if cc == nil {
+		return nil, nil, false
 	}
-	if err := rc.Call(agentrpc.AgentServiceName+"."+method, args, reply); err != nil {
+	done := func(method string, err error) {
 		slog.Debug("call agent", slog.String("method", method), slog.Any("err", err))
-		if err == rpc.ErrShutdown {
+		// 接続が切れると gRPC はつなぎ直さないので、agent がつなぎ直してくる (SetConn) まで「つながっていない」とみなす
+		if status.Code(err) == codes.Unavailable {
 			c.mu.Lock()
-			if c.rpc == rc {
-				c.rpc = nil
+			if c.cc == cc {
+				c.cc.Close()
+				c.cc = nil
 			}
 			c.mu.Unlock()
 		}
-		return false
 	}
-	return true
+	return agentrpc.NewAgentClient(cc), done, true
 }
 
 func (c *Client) LatestDump() (model.GoroutineDump, bool) {
@@ -110,42 +119,91 @@ func (c *Client) Append(model.TraceChunk) {}
 
 // Latest は画面の更新ごとに呼ばれるので、前と同じ区切りなら運ばずに手元のものを返す
 func (c *Client) Latest() (model.TraceChunk, bool) {
+	agent, fail, ok := c.agent()
+	if !ok {
+		return model.TraceChunk{}, false
+	}
 	c.mu.RLock()
 	last := c.last
 	c.mu.RUnlock()
-	var r agentrpc.ChunkReply
-	if !c.call("LatestChunk", agentrpc.ChunkArgs{IfNewerThan: last.StartedAt}, &r) {
+	r, err := agent.LatestChunk(context.Background(), &agentrpc.LatestChunkRequest{IfNewerThan: agentrpc.Timestamp(last.StartedAt)})
+	if err != nil {
+		fail("LatestChunk", err)
 		return model.TraceChunk{}, false
 	}
-	if r.NotModified {
+	if r.GetNotModified() {
 		return last, !last.StartedAt.IsZero()
 	}
-	if r.OK {
-		c.mu.Lock()
-		c.last = r.Chunk
-		c.mu.Unlock()
+	if r.GetChunk() == nil {
+		return model.TraceChunk{}, false
 	}
-	return r.Chunk, r.OK
+	chunk := r.GetChunk().Model()
+	c.mu.Lock()
+	c.last = chunk
+	c.mu.Unlock()
+	return chunk, true
 }
 
 func (c *Client) At(t time.Time) (model.TraceChunk, bool) {
-	var r agentrpc.ChunkReply
-	return r.Chunk, c.call("ChunkAt", agentrpc.ChunkArgs{At: t}, &r) && r.OK
+	agent, fail, ok := c.agent()
+	if !ok {
+		return model.TraceChunk{}, false
+	}
+	r, err := agent.ChunkAt(context.Background(), &agentrpc.ChunkAtRequest{At: agentrpc.Timestamp(t)})
+	if err != nil {
+		fail("ChunkAt", err)
+		return model.TraceChunk{}, false
+	}
+	return r.GetChunk().Model(), r.GetChunk() != nil
 }
 
-// Between は保存にも使うので、生の trace ごと運ぶ
+// Between は保存にも使うので、生の trace ごと運ぶ。途中で失敗したら何も返さない
 func (c *Client) Between(from, to time.Time) []model.TraceChunk {
-	var r agentrpc.ChunksReply
-	c.call("ChunksBetween", agentrpc.BetweenArgs{From: from, To: to, WithRaw: true}, &r)
-	return r.Chunks
+	agent, fail, ok := c.agent()
+	if !ok {
+		return nil
+	}
+	stream, err := agent.ChunksBetween(context.Background(), &agentrpc.ChunksBetweenRequest{From: agentrpc.Timestamp(from), To: agentrpc.Timestamp(to)})
+	if err != nil {
+		fail("ChunksBetween", err)
+		return nil
+	}
+	var out []model.TraceChunk
+	for {
+		chunk, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return out
+		}
+		if err != nil {
+			fail("ChunksBetween", err)
+			return nil
+		}
+		out = append(out, chunk.Model())
+	}
 }
 
 func (c *Client) FindLogMark(seq uint64) (model.TraceChunk, model.TraceLogMark, bool) {
-	var r agentrpc.MarkReply
-	return r.Chunk, r.Mark, c.call("FindLogMark", agentrpc.SeqArgs{Seq: seq}, &r) && r.OK
+	agent, fail, ok := c.agent()
+	if !ok {
+		return model.TraceChunk{}, model.TraceLogMark{}, false
+	}
+	r, err := agent.FindLogMark(context.Background(), &agentrpc.FindLogMarkRequest{Seq: seq})
+	if err != nil {
+		fail("FindLogMark", err)
+		return model.TraceChunk{}, model.TraceLogMark{}, false
+	}
+	return r.GetChunk().Model(), r.GetMark().Model(), r.GetChunk() != nil
 }
 
 func (c *Client) Span() (model.RecordingSpan, bool) {
-	var r agentrpc.SpanReply
-	return r.Span, c.call("Span", agentrpc.Empty{}, &r) && r.OK
+	agent, fail, ok := c.agent()
+	if !ok {
+		return model.RecordingSpan{}, false
+	}
+	r, err := agent.Span(context.Background(), &emptypb.Empty{})
+	if err != nil {
+		fail("Span", err)
+		return model.RecordingSpan{}, false
+	}
+	return r.GetSpan().Model(), r.GetSpan() != nil
 }

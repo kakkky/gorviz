@@ -3,7 +3,6 @@ package push
 
 import (
 	"context"
-	"net/rpc"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
@@ -26,7 +25,7 @@ func NewStream(interval time.Duration, uc *usecase.UseCase) *Stream {
 
 // Run は接続が切れるか ctx が終わるまで送り続ける。
 // どこまで送ったかは接続ごとに持ち直し、つなぎ直したら手元にあるものを最初から送る (server が再起動していても取りこぼさない。重なったログは server が捨てる)
-func (p *Stream) Run(ctx context.Context, rc *rpc.Client) {
+func (p *Stream) Run(ctx context.Context, server agentrpc.IngestClient) {
 	var (
 		lastLog    model.LogLineID
 		lastDumpAt time.Time
@@ -38,20 +37,22 @@ func (p *Stream) Run(ctx context.Context, rc *rpc.Client) {
 		if err != nil {
 			return
 		}
-		args := agentrpc.PushArgs{Logs: logs.Logs}
-		if d, err := p.getLatestDumpUsecase.Exec(ctx, usecase.GetLatestDumpUsecaseInput{}); err == nil && d.OK && d.Dump.At.After(lastDumpAt) {
-			args.Dump = &d.Dump
+		req := &agentrpc.PushRequest{Logs: agentrpc.NewLogLines(logs.Logs)}
+		d, err := p.getLatestDumpUsecase.Exec(ctx, usecase.GetLatestDumpUsecaseInput{})
+		newDump := err == nil && d.OK && d.Dump.At.After(lastDumpAt)
+		if newDump {
+			req.Dump = agentrpc.NewGoroutineDump(d.Dump)
 		}
-		if err := rc.Call(agentrpc.IngestServiceName+".Push", args, &agentrpc.Empty{}); err != nil {
+		if _, err := server.Push(ctx, req); err != nil {
 			return
 		}
-		if n := len(args.Logs); n > 0 {
-			lastLog = args.Logs[n-1].ID
+		if n := len(logs.Logs); n > 0 {
+			lastLog = logs.Logs[n-1].ID
 		}
-		if args.Dump != nil {
-			lastDumpAt = args.Dump.At
+		if newDump {
+			lastDumpAt = d.Dump.At
 		}
-		if len(args.Logs) == pushLogBatch {
+		if len(logs.Logs) == pushLogBatch {
 			continue
 		}
 		select {

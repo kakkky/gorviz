@@ -103,3 +103,45 @@ func TestAgentToServer(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, model.GoroutineID(9), mark.Goroutine)
 }
+
+func TestAgentReconnectsAfterServerRestart(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+
+	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	traces := agentrecording.NewTraceStore(1 << 20)
+	traces.Append(model.TraceChunk{StartedAt: base, Timeline: model.SchedulerTimeline{Window: time.Second}})
+	agentUC := agentusecase.NewUseCase(agentusecase.Settings{}, fakeRuntime{}, agentkvs.NewInMemoryKVS(), traces, agentrecording.NewLogStore(100), nil)
+	_, err = agentUC.NewRecordDumpUsecase().Exec(ctx, agentusecase.RecordDumpUsecaseInput{Now: base})
+	require.NoError(t, err)
+	hello := agentrpc.Hello{Name: "api", Target: "http://app:6060"}
+	go func() { _ = serverconn.Push(ctx, addr, hello, push.NewStream(10*time.Millisecond, agentUC).Run) }()
+	go func() { _ = serverconn.ServePull(ctx, addr, hello, pull.NewService(agentUC)) }()
+
+	startServer := func(ctx context.Context) *agentconn.Client {
+		agent := agentconn.NewClient(100)
+		serverUC := serverusecase.NewUseCase(serverusecase.Settings{}, agent, agent, nil, agent, nil, nil, nil, nil, agent)
+		go func() {
+			_ = agentlistener.Accept(ctx, addr, func(agentrpc.Hello) (agentlistener.Endpoint, bool) {
+				return agentlistener.Endpoint{Pull: agent.SetConn, Ingest: ingest.NewService(serverUC)}, true
+			})
+		}()
+		return agent
+	}
+	firstCtx, stopFirst := context.WithCancel(ctx)
+	first := startServer(firstCtx)
+	require.Eventually(t, first.Connected, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { _, ok := first.LatestDump(); return ok }, 5*time.Second, 10*time.Millisecond)
+
+	stopFirst()
+	first.SetConn(nil)
+	second := startServer(ctx)
+
+	require.Eventually(t, func() bool { _, ok := second.Latest(); return ok }, 10*time.Second, 50*time.Millisecond, "the agent dials the restarted server again and answers pulls")
+	require.Eventually(t, func() bool { _, ok := second.LatestDump(); return ok }, 10*time.Second, 50*time.Millisecond, "the agent pushes to the restarted server again")
+}
