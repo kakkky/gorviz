@@ -1,7 +1,7 @@
 package domain
 
 import (
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"slices"
 	"time"
 )

@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/kakkky/gorviz/internal/app/api/model"
+import "github.com/kakkky/gorviz/internal/app/protocol/model"
 
 type GoroutineStateCounts map[model.GoroutineStateCategory]int
 

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // ListLogsSinceUsecase は取り込んだログのうち After より新しいものを、古い順に Limit 件まで返す。server へ送るのに使う

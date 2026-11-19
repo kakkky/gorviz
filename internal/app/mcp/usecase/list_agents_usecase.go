@@ -3,8 +3,8 @@ package usecase
 import (
 	"context"
 
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
 	"github.com/kakkky/gorviz/internal/app/mcp/domain"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 )
 
 // ListAgentsUsecase は agent の一覧を取る

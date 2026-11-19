@@ -15,8 +15,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // Client は server の側で、agent 1 つを domain の口 (TraceRecording・DumpSource・LogSource) として見せる。

@@ -6,7 +6,7 @@ package logmark
 import (
 	"bytes"
 	"context"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"runtime/trace"
 	"strconv"
 	"sync/atomic"

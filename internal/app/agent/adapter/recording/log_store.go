@@ -4,7 +4,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // LogStore は受け取ったログを古い順に持ち、上限を超えたら古いものから捨てる。

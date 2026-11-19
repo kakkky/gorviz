@@ -8,8 +8,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // Service は agentrpc.AgentServer の実装

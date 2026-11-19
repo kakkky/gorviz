@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // Endpoint は agent 1 つ分の受け口

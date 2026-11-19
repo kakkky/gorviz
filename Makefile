@@ -17,7 +17,7 @@ test:
 templ.gen:
 	go run github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION) generate
 
-# agent と server の間の口 (internal/app/api/agentrpc/agent.proto) から gRPC のコードを作る。プラグインの版は buf.gen.yaml で固定している
+# agent と server の間の口 (internal/app/protocol/agentrpc/agent.proto) から gRPC のコードを作る。プラグインの版は buf.gen.yaml で固定している
 proto.gen:
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
 

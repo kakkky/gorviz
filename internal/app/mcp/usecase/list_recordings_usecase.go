@@ -3,8 +3,8 @@ package usecase
 import (
 	"context"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
 	"github.com/kakkky/gorviz/internal/app/mcp/domain"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // ListRecordingsUsecase は server に保存した録画の一覧を取る

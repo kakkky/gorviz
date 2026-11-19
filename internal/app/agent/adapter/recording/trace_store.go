@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // TraceStore は録画した区切りを古い順に持つリングバッファ。大きさの合計が上限を超えたら古いものから捨てる (最新の 1 つは残す)。

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 const pushLogBatch = 5_000

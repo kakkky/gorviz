@@ -24,7 +24,7 @@ import (
 	"github.com/kakkky/gorviz/internal/app/agent/presentation/push"
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
 	"github.com/kakkky/gorviz/internal/app/agent/worker"
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
 	"github.com/kakkky/gorviz/internal/logmark"
 	"github.com/kakkky/gorviz/internal/runtimeparse"
 )

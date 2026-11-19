@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/kakkky/gorviz/internal/app/api/model"
+import "github.com/kakkky/gorviz/internal/app/protocol/model"
 
 // EnrichFromDump は trace だけでは分からないことを goroutine dump で補う:
 //   - 入口の関数: trace は窓の中で生まれた G の分しか持たないので、dump にいる G は dump の値で上書きする (trace のスタックは深さで切れることがある)

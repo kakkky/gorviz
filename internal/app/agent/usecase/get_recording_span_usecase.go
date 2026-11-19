@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // GetRecordingSpanUsecase は録画が今持てている区間と、その大きさを返す

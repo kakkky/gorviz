@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )

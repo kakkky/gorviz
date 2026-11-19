@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 

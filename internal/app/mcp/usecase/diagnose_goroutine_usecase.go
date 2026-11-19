@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
 	"github.com/kakkky/gorviz/internal/app/mcp/domain"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 )
 
 // DiagnoseGoroutineUsecase は G を At の前後で診断する。From を渡すと [From, At] の区間を見る

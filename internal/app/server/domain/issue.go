@@ -4,7 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"math"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"regexp"
 	"slices"
 	"strconv"

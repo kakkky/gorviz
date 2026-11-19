@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // maxMessageBytes は 1 つのメッセージの上限。gRPC の既定 (4MiB) では、再生用のイベントを打ち切りまで積んだ区切りや、生の trace を載せた区切りが収まらない

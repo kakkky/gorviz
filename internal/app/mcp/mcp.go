@@ -6,10 +6,10 @@ import (
 	"context"
 	"io"
 
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
 	"github.com/kakkky/gorviz/internal/app/mcp/domain"
 	"github.com/kakkky/gorviz/internal/app/mcp/presentation/handler"
 	"github.com/kakkky/gorviz/internal/app/mcp/usecase"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 )
 
 // Serve は r から読み w に返す MCP サーバを回す。ツールで agent を指定しなければ agent を使う。r を読み切るまで返らない

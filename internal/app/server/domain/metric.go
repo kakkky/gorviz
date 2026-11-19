@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // MetricStep は集計の一番細かい区切り。Overview の推移はこれを束ねて描く

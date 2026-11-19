@@ -3,7 +3,7 @@ package runtimeparse
 
 import (
 	"bufio"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"io"
 	"regexp"
 	"strconv"

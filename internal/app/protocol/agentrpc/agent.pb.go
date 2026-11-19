@@ -2370,7 +2370,7 @@ const file_agent_proto_rawDesc = "" +
 	"\aChunkAt\x12\".gorviz.agentrpc.v1.ChunkAtRequest\x1a\x1e.gorviz.agentrpc.v1.ChunkReply\x12[\n" +
 	"\rChunksBetween\x12(.gorviz.agentrpc.v1.ChunksBetweenRequest\x1a\x1e.gorviz.agentrpc.v1.TraceChunk0\x01\x12[\n" +
 	"\vFindLogMark\x12&.gorviz.agentrpc.v1.FindLogMarkRequest\x1a$.gorviz.agentrpc.v1.FindLogMarkReply\x12=\n" +
-	"\x04Span\x12\x16.google.protobuf.Empty\x1a\x1d.gorviz.agentrpc.v1.SpanReplyB4Z2github.com/kakkky/gorviz/internal/app/api/agentrpcb\x06proto3"
+	"\x04Span\x12\x16.google.protobuf.Empty\x1a\x1d.gorviz.agentrpc.v1.SpanReplyB9Z7github.com/kakkky/gorviz/internal/app/protocol/agentrpcb\x06proto3"
 
 var (
 	file_agent_proto_rawDescOnce sync.Once

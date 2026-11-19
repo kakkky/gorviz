@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"

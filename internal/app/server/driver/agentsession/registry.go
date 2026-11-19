@@ -8,7 +8,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/server/driver/agentlistener"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/handler"
 )

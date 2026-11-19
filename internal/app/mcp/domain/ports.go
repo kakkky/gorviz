@@ -5,8 +5,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 )
 
 // Server は server の API を agent 1 つ分に絞って呼ぶ口

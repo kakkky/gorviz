@@ -140,7 +140,7 @@ agent と server の間の 2 本の接続:
 
 trace だけ pull にしているのは、量が多く大半は何も起きていない区間なので、常に送ると転送と保存が割に合わないため。
 
-口の形は `internal/app/api/agentrpc/agent.proto` (`make proto.gen` で Go のコードを作る)。どちらの接続も、張った直後に名乗り (1 行の JSON) を送ってから gRPC を流す。pull の接続は TCP を張る側 (agent) が gRPC のサーバになり、server が agent の `Agent` サービスを呼ぶ。gRPC はこの接続をつなぎ直さないので、切れたら agent が張り直す。keepalive で、止まった相手や途中で黙って切られた接続を見つける。
+口の形は `internal/app/protocol/agentrpc/agent.proto` (`make proto.gen` で Go のコードを作る)。どちらの接続も、張った直後に名乗り (1 行の JSON) を送ってから gRPC を流す。pull の接続は TCP を張る側 (agent) が gRPC のサーバになり、server が agent の `Agent` サービスを呼ぶ。gRPC はこの接続をつなぎ直さないので、切れたら agent が張り直す。keepalive で、止まった相手や途中で黙って切られた接続を見つける。
 
 ```mermaid
 sequenceDiagram
@@ -270,7 +270,7 @@ GUI の画面:
 
 ### クライアント (CLI / MCP)
 
-すべて server の HTTP API のクライアント。型と呼び出しのクライアントはどちらも `internal/app/api/serverapi`。
+すべて server の HTTP API のクライアント。型と呼び出しのクライアントはどちらも `internal/app/protocol/serverapi`。
 
 | コンポーネント | 入口 | 誰向け | やること |
 | --- | --- | --- | --- |

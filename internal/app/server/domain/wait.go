@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // WaitSiteKey は待ち場所を集計する単位。「何の処理をする G が (Entry)、どの行で (Location)、何を呼んで (Function)、何で止まったか (Cause)」

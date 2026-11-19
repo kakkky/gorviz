@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 func roundTrip[T proto.Message](t *testing.T, m T, empty T) T {

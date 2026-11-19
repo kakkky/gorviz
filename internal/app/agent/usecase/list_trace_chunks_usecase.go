@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // ListTraceChunksUsecase は [From, To] に重なる区切りを古い順に返す

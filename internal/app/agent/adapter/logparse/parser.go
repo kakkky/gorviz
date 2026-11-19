@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/agent/config"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 var (

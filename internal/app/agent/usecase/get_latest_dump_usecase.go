@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // GetLatestDumpUsecase は最後に取った goroutine dump を返す。server へ送るのに使う

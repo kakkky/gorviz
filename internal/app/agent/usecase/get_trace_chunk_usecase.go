@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // GetTraceChunkUsecase は録画から区切りを 1 つ返す。At が空なら最新の区切り

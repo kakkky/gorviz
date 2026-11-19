@@ -3,7 +3,7 @@ package usecase_test
 import (
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // fakeTraces は録画を古い順に持つだけの TraceRecording。本番の server は agent から引くか保存したものを読むので、テストではこれで代える

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -12,7 +12,7 @@ import (
 
 	"github.com/kakkky/hotwire-go/turbo"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"

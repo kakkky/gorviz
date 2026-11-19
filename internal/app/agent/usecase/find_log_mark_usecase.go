@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
 // FindLogMarkUsecase は gorviz のロガーの差し込み口が Seq を書いた区切りと、その記録を返す

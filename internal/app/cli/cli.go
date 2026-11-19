@@ -5,10 +5,10 @@ import (
 	"context"
 	"io"
 
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
 	"github.com/kakkky/gorviz/internal/app/cli/adapter/tracefile"
 	"github.com/kakkky/gorviz/internal/app/cli/presentation/command"
 	"github.com/kakkky/gorviz/internal/app/cli/usecase"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 )
 
 func Issues(ctx context.Context, w io.Writer, server, agent string) error {

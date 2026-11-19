@@ -9,7 +9,7 @@ import (
 
 	"github.com/kakkky/scope"
 
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/agentconn"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/issuestore"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/kvs"

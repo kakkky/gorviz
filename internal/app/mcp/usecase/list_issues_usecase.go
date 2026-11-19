@@ -3,8 +3,8 @@ package usecase
 import (
 	"context"
 
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
 	"github.com/kakkky/gorviz/internal/app/mcp/domain"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 )
 
 // ListIssuesUsecase は server が検出した Issue を取る

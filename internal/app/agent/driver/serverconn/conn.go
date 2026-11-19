@@ -11,7 +11,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/kakkky/gorviz/internal/app/api/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
 )
 
 const redialInterval = 2 * time.Second

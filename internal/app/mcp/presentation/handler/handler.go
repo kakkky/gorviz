@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/api/serverapi"
 	"github.com/kakkky/gorviz/internal/app/mcp/usecase"
+	"github.com/kakkky/gorviz/internal/app/protocol/serverapi"
 )
 
 const protocolVersion = "2025-06-18"

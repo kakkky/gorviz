@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	xtrace "golang.org/x/exp/trace"
 
-	"github.com/kakkky/gorviz/internal/app/api/model"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"github.com/kakkky/gorviz/internal/logmark"
 )
 

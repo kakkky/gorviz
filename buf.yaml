@@ -1,3 +1,3 @@
 version: v2
 modules:
-  - path: internal/app/api/agentrpc
+  - path: internal/app/protocol/agentrpc
