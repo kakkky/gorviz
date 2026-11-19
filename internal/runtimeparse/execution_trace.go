@@ -19,8 +19,9 @@ import (
 const maxReplayEvents = 50_000
 
 type gcRangeKey struct {
-	kind model.GCRangeKind
-	g    trace.GoID
+	kind   model.GCRangeKind
+	g      trace.GoID
+	reason string
 }
 
 type runningSpan struct {
@@ -143,7 +144,7 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 			case trace.EventRangeEnd:
 				if start, ok := openGC[key]; ok {
 					delete(openGC, key)
-					tl.GC = append(tl.GC, model.GCRange{Kind: key.kind, Goroutine: model.GoroutineID(key.g), Start: start.Sub(begin), End: ev.Time().Sub(begin)})
+					tl.GC = append(tl.GC, model.GCRange{Kind: key.kind, Goroutine: model.GoroutineID(key.g), Reason: key.reason, Start: start.Sub(begin), End: ev.Time().Sub(begin)})
 				}
 			}
 			continue
@@ -253,7 +254,7 @@ func buildTraceChunk(r io.Reader, receivedAt time.Time) (model.TraceChunk, error
 		closeSpan(g, last)
 	}
 	for key, start := range openGC {
-		tl.GC = append(tl.GC, model.GCRange{Kind: key.kind, Goroutine: model.GoroutineID(key.g), Start: start.Sub(begin), End: last.Sub(begin)})
+		tl.GC = append(tl.GC, model.GCRange{Kind: key.kind, Goroutine: model.GoroutineID(key.g), Reason: key.reason, Start: start.Sub(begin), End: last.Sub(begin)})
 	}
 	slices.SortFunc(tl.GC, func(a, b model.GCRange) int { return cmp.Compare(a.Start, b.Start) })
 	tl.Events = append(initial, tl.Events...)
@@ -296,12 +297,15 @@ func currentFrame(frames []trace.StackFrame) trace.StackFrame {
 	return frames[0]
 }
 
-// gcRangeKeyOf は trace の区間のうち、G の時間を GC に取られたものを見分ける。
+// gcRangeKeyOf は trace の区間のうち、GC の区間を見分ける (STW・mark assist・concurrent mark)。
 // STW は止めた G に紐づいて記録されるが、全 G が止まるので G を問わない区間として扱う
 func gcRangeKeyOf(r trace.Range) (gcRangeKey, bool) {
 	switch {
+	case r.Name == "GC concurrent mark phase":
+		return gcRangeKey{kind: model.GCMark}, true
 	case strings.HasPrefix(r.Name, "stop-the-world"):
-		return gcRangeKey{kind: model.GCStopTheWorld}, true
+		reason := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(r.Name, "stop-the-world"), " ("), ")")
+		return gcRangeKey{kind: model.GCStopTheWorld, reason: reason}, true
 	case r.Name == "GC mark assist" && r.Scope.Kind == trace.ResourceGoroutine:
 		return gcRangeKey{kind: model.GCMarkAssist, g: r.Scope.Goroutine()}, true
 	}

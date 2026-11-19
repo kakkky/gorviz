@@ -31,7 +31,9 @@ func TestSchedulerTimelineBreakdown(t *testing.T) {
 			gEv(90*ms, 1, running),
 		},
 		GC: []model.GCRange{
-			{Kind: model.GCStopTheWorld, Start: 25 * ms, End: 30 * ms},
+			{Kind: model.GCStopTheWorld, Reason: "GC sweep termination", Start: 25 * ms, End: 30 * ms},
+			// GC 以外の STW (gorviz の goroutine dump など) は GC に数えない
+			{Kind: model.GCStopTheWorld, Reason: "goroutine profile", Start: 40 * ms, End: 45 * ms},
 			{Kind: model.GCMarkAssist, Goroutine: 1, Start: 92 * ms, End: 95 * ms},
 			{Kind: model.GCMarkAssist, Goroutine: 2, Start: 50 * ms, End: 70 * ms},
 		},

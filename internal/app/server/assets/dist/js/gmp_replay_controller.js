@@ -535,8 +535,11 @@ export default class extends Controller {
     if (ev[1] === EVENT_G) {
       const [, , g, place, proc, thread, reason, fn] = ev
       // スタックが載らないイベントもあるので、今いる関数は最後に分かったものを持ち越す
-      const current = fn >= 0 ? this.current.functions[fn] : this.gs.get(g)?.fn
-      this.gs.set(g, { place, proc, thread, reason, fn: current, seq: this.seq++ })
+      const prev = this.gs.get(g)
+      const current = fn >= 0 ? this.current.functions[fn] : prev?.fn
+      // since は今の置き場所に入った時刻。trace は置き場所が変わらなくても書き直すので、同じ置き場所なら前の時刻を保つ
+      const samePlace = prev && prev.place === place && prev.proc === proc
+      this.gs.set(g, { place, proc, thread, reason, fn: current, seq: this.seq++, since: samePlace ? prev.since : ev[0] })
       this.changed.add(g)
     } else {
       const [, , p, status, thread] = ev
@@ -583,7 +586,8 @@ export default class extends Controller {
     }
     if (open && open.end > open.start) segments.push(open)
     // サーバの診断 (domain.Breakdown) と同じく、GC が全 G を止めた区間とこの G の mark assist に重なる時間は、元の状態によらず GC に数える
-    const gc = mergeRanges((this.current.gc || []).filter(([, , gg]) => gg === -1 || gg === g))
+    // GC 以外の STW (gorviz の goroutine dump など) は GC に数えない (domain.Breakdown と同じ)
+    const gc = mergeRanges([...this.stwRanges().filter((r) => r.byGC).map((r) => [r.start, r.end]), ...(this.current.gc || []).filter(([, , gg]) => gg === g)])
     const totals = Object.fromEntries(CAUSES.map((c) => [c, 0]))
     for (const s of segments) {
       if (!(s.cause in totals)) continue
@@ -643,13 +647,17 @@ export default class extends Controller {
     const s = this.snapshot()
     const out = []
     // P の図と待ち行列・待機は隣に並べて 1 つの図として見せる。追っている G の欄は Goroutine 画面のカード (focusHost) に描く
+    // STW のあいだは G が走れないので、図を止まった見た目にし、理由を出す。ただし syscall (cgo を含む) の中の M はカーネル (C) の中で進み続けるので、そこだけは止めない
+    const stopped = this.stoppedAt(this.t)
+    out.push(`<section class="gmp-space${stopped ? " is-stopped" : ""}" aria-label="GMP">${this.gmpSpaceHead()}`)
+    if (stopped) out.push(`<div class="gmp-stopped" role="status">goroutines are stopped · stop-the-world (${esc(stopped.reason || "unknown")}) · ${ms(stopped.end - stopped.start)}</div>`)
     out.push(`<div class="gmp-board"><div class="gmp-main">`)
     this.drawProcs(out, s)
     this.drawGlobalQueue(out, s)
     this.drawHandedOff(out, s)
     out.push(`</div>`)
     this.drawParked(out, s)
-    out.push(`</div>`)
+    out.push(`</div></section>`)
     // 描き直しても、右の列とグローバルキューのスクロール位置は保つ (1 歩進めるたびに見ている所が先頭へ戻らないように)
     const scrolls = [...this.stageTarget.querySelectorAll("[data-keep-scroll-pos]")].map((el) => [el.dataset.keepScrollPos, el.scrollTop, el.scrollLeft])
     this.stageTarget.innerHTML = out.join("")
@@ -723,6 +731,11 @@ export default class extends Controller {
     const out = [`<div class="caption"><strong>CPU slots (P) over time</strong></div><div class="lanes-grid">`]
     const ticks = axisTicks(w)
     const tickLines = ticks.filter((t) => t > 0 && t < w).map((t) => `<span class="tick" style="left:${pct(t, w)}"></span>`).join("")
+    // GC の段: concurrent mark の区間 (薄い) と、全 G を止めた区間 (STW、濃い)。STW は P の段にも重ねる
+    const stwBands = this.stwRanges().map((r) => `<span class="stw${r.byGC ? "" : " other"}" style="left:${pct(r.start, w)};width:${pct(r.end - r.start, w)}" title="${esc(`stop-the-world (${r.reason || "unknown"}) ${ms(r.end - r.start)}`)}"></span>`).join("")
+    out.push(`<span class="pname gc">GC</span><div class="lane-track gc-track">${tickLines}`)
+    for (const [s, e] of this.current.gcMark || []) out.push(`<span class="gc-mark" style="left:${pct(s, w)};width:${pct(e - s, w)}" title="GC concurrent mark ${ms(e - s)}: part of the Ps run GC work, and allocating goroutines help with mark assist"></span>`)
+    out.push(`${stwBands}<span class="cursor" data-cursor></span></div><span class="util"></span>`)
     procs.forEach((p, i) => {
       const spans = lanes?.[i] || []
       let busy = 0
@@ -732,7 +745,7 @@ export default class extends Controller {
         const focus = g === this.focusG ? " is-focus" : ""
         out.push(`<span class="seg${focus}" style="left:${pct(start, w)};width:${pct(end - start, w)}" title="${esc(`G${g} ${this.label(g)}\n${ms(end - start)}`)}"></span>`)
       }
-      out.push(`<span class="cursor" data-cursor></span></div><span class="util" title="share of the window this P was running a goroutine">${w ? Math.round((busy / w) * 100) : 0}%</span>`)
+      out.push(`${stwBands}<span class="cursor" data-cursor></span></div><span class="util" title="share of the window this P was running a goroutine">${w ? Math.round((busy / w) * 100) : 0}%</span>`)
     })
     out.push(`<span></span><div class="lanes-axis">${ticks.map((t) => `<span class="${t > w * 0.9 ? "end" : ""}" style="left:${pct(t, w)}">${t === 0 ? "0" : ms(t)}</span>`).join("")}</div><span class="util">busy</span>`)
     out.push(`</div>`)
@@ -830,11 +843,41 @@ export default class extends Controller {
       out.push(`<div class="proc-run">`)
       if (p.running) out.push(this.chip(p.running.g, p.running.kind, true))
       out.push(`</div><div class="proc-lrq">`)
-      p.lrq.slice(0, LRQ_MAX).forEach((g) => out.push(this.chip(g, "runnable")))
+      p.lrq.slice(0, LRQ_MAX).forEach((g) => out.push(this.chip(g, "runnable", false, null, this.waitLabel(g))))
       if (p.lrq.length > LRQ_MAX) out.push(`<span class="more">+${p.lrq.length - LRQ_MAX}</span>`)
       out.push(`</div></div>`)
     }
     out.push(`</div>`)
+  }
+
+  // gmpSpaceHead は GMP の図の見出し。何の図か (P・M・G) と、今の時点で GC が動いているか
+  gmpSpaceHead() {
+    const at = this.t
+    const stopped = this.stoppedAt(at)
+    let gc = ""
+    if (stopped) gc = `<span class="gc-state stw${stopped.byGC ? "" : " other"}" title="every goroutine is stopped">stop-the-world · ${esc(stopped.reason || "unknown")}</span>`
+    else if ((this.current.gcMark || []).some(([s, e]) => s <= at && at < e)) gc = `<span class="gc-state mark" title="part of the Ps run GC work, and allocating goroutines help with mark assist">GC mark</span>`
+    return `<div class="gmp-space-head"><strong>GMP</strong><span class="faint">where each goroutine (G) is: on a CPU slot (P), in a run queue, on an OS thread (M) in a syscall, or parked</span>${gc}<span class="mono gmp-space-at">${(at / 1e6).toFixed(3)}ms</span></div>`
+  }
+
+  // stwRanges は全 G を止めた区間と、その理由。GC が起こしたもの (byGC) と、それ以外 (goroutine dump・ReadMemStats など) を分ける
+  stwRanges() {
+    const reasons = this.current.stwReasons || []
+    return (this.current.gc || []).filter(([, , g]) => g === -1).map(([start, end, , i]) => {
+      const reason = reasons[i] || ""
+      return { start, end, reason, byGC: reason.startsWith("GC ") }
+    })
+  }
+
+  // stoppedAt は at が STW の中なら、その区間
+  stoppedAt(at) {
+    return this.stwRanges().find((r) => r.start <= at && at < r.end) || null
+  }
+
+  // waitLabel は run queue で待っている G が、キューに入ってから待っている時間
+  waitLabel(g) {
+    const s = this.gs.get(g)
+    return s && s.since !== undefined ? ms(Math.max(0, this.t - s.since)) : ""
   }
 
   // drawGlobalQueue は全 P が取りに来るグローバルキュー。P の図のすぐ下に、並んだ順 (先頭が左上) に置く。
@@ -844,7 +887,7 @@ export default class extends Controller {
     out.push(`<h4>global run queue <span>${s.grq.length}</span><small>shared by all P · head first</small></h4>`)
     out.push(`<div class="grq-row" data-keep-scroll-pos="grq">`)
     // 1 件ずつ、syscall の M の組と同じ角丸の四角にし、並んでいる順番 (先頭が 1) を添える
-    s.grq.slice(0, GRQ_MAX).forEach((g, i) => out.push(`<span class="slot-chip" title="position ${i + 1} in the global run queue"><span class="slot-label">${i + 1}</span>${this.chip(g, "runnable", true)}</span>`))
+    s.grq.slice(0, GRQ_MAX).forEach((g, i) => out.push(`<span class="slot-chip" title="position ${i + 1} in the global run queue"><span class="slot-label">${i + 1}</span>${this.chip(g, "runnable", true, null, this.waitLabel(g))}</span>`))
     if (s.grq.length > GRQ_MAX) out.push(`<span class="more">+${s.grq.length - GRQ_MAX}</span>`)
     out.push(`</div></div>`)
   }
@@ -853,7 +896,8 @@ export default class extends Controller {
   drawHandedOff(out, s) {
     // runtime にこういう置き場 (キュー) はない。G は自分の M に付いたままカーネルの中にいて、P だけが外されて別の M に渡っている。
     // キューと取り違えないよう、M と G の組のチップで描く。グローバルキューと同じく高さを固定し、あふれた分は枠の中でスクロールさせる
-    out.push(`<div class="gmp-row-area" title="not a queue: each goroutine stays on its M (OS thread) inside the kernel, and its P was handed to another M"><h4>M in syscall, P released <span>${s.handedOff.length}</span></h4><div class="m-rows" data-keep-scroll-pos="handed-off">`)
+    const stopped = this.stoppedAt(this.t)
+    out.push(`<div class="gmp-row-area handed-off" title="not a queue: each goroutine stays on its M (OS thread) inside the kernel, and its P was handed to another M"><h4>M in syscall, P released <span>${s.handedOff.length}</span>${stopped ? `<small class="keeps-running">still running in the kernel (or C for cgo) during stop-the-world · waits for a P when it returns</small>` : ""}</h4><div class="m-rows" data-keep-scroll-pos="handed-off">`)
     s.handedOff.forEach((h) => out.push(`<span class="slot-chip"><span class="slot-label">${h.thread >= 0 ? `M${h.thread}` : "M?"}</span><span class="arrow">→</span>${this.chip(h.g, "syscall", true)}</span>`))
     out.push(`</div></div>`)
   }
@@ -936,14 +980,15 @@ export default class extends Controller {
 
   // chip は G 1 つ。丸の色は状態 (内訳の帯と同じ色)。クリックするとその G を追う
   // chip は G 1 つのチップ。dot を渡すと丸の色をそれにする (parked の G は、待っている理由の色)
-  chip(g, kind, wide = false, dot = null) {
+  // wait を渡すと、待っている時間を添える (run queue の G)
+  chip(g, kind, wide = false, dot = null, wait = "") {
     const fn = this.entries.get(g)
     const cls = ["gchip"]
     if (g === this.focusG) cls.push("is-focus")
     if (this.changed.has(g)) cls.push("flash")
     const now = this.gs.get(g)?.fn
     const tip = `G${g}${this.isLeaked(g) ? " (leaked)" : ""}\nentry: ${fn || "?"}${now ? `\nnow at: ${now}` : ""}\nclick to diagnose this goroutine`
-    const text = wide ? `G${g}<small>${esc(this.label(g))}</small>` : `G${g}`
+    const text = (wide ? `G${g}<small>${esc(this.label(g))}</small>` : `G${g}`) + (wait ? `<small class="wait" title="waiting in the run queue for ${wait}">${wait}</small>` : "")
     return `<button type="button" class="${cls.join(" ")}" data-g="${g}" title="${esc(tip)}"><span class="${dot || `gdot cause-bg-${KIND_CAUSES[kind]}`}${this.isLeaked(g) ? " is-leaked" : ""}"></span>${text}</button>`
   }
 }

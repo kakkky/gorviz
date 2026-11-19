@@ -501,3 +501,23 @@ a.agent-switch.empty { color: var(--muted); }
 .agent-item:hover { background: rgba(255, 255, 255, .05); text-decoration: none; }
 .agent-item.current { background: rgba(255, 255, 255, .06); outline: 1px solid var(--focus-ring); }
 .agent-item .faint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* GMP の図は、再生のカードの中でも別の空間として枠で囲む */
+.gmp-space { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+.gmp-space-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 10px; font-size: 12px; }
+.gmp-space-head strong { font-size: 13px; letter-spacing: .04em; }
+.gmp-space-head .gmp-space-at { margin-left: auto; color: var(--muted); }
+.gc-state { padding: 1px 8px; border-radius: 999px; font: 600 11px var(--sans); }
+.gc-state.mark { background: rgba(245, 196, 81, .14); color: var(--warn); }
+.gc-state.stw { background: var(--warn); color: #0b0d11; }
+.lanes-grid .pname.gc { color: var(--warn); }
+.lane-track.gc-track { background: transparent; }
+.lane-track .gc-mark { position: absolute; top: 2px; bottom: 2px; background: rgba(245, 196, 81, .28); border-radius: 2px; }
+.lane-track .stw { position: absolute; top: 0; bottom: 0; min-width: 2px; background: var(--warn); opacity: .55; }
+.gchip small.wait { margin-left: 5px; color: var(--cpu-wait, #5ec8f2); font-size: 10px; }
+.lane-track .stw.other { background: var(--muted); }
+.gc-state.stw.other { background: var(--muted); }
+/* STW のあいだは全 G が止まっているので、図を薄く灰色にし、理由の帯を重ねる */
+.gmp-space { position: relative; }
+.gmp-space.is-stopped :is(.gmp-procs, .gmp-grq, .gmp-side, .gmp-focus) { opacity: .4; filter: grayscale(1); }
+.gmp-row-area .keeps-running { margin-left: 10px; font: 400 11px var(--sans); text-transform: none; letter-spacing: 0; color: var(--g-syscall); }
+.gmp-stopped { margin: 0 0 10px; padding: 8px 14px; border: 1px solid var(--warn); border-radius: 8px; background: rgba(245, 196, 81, .08); color: var(--warn); font: 600 13px var(--sans); }

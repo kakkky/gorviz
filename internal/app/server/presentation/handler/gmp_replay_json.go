@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
@@ -13,7 +14,8 @@ import (
 //   - P: [atNs, 1, proc, status (0 = idle, 1 = running), thread (-1 = なし)]
 //   - entries: [goroutine, functions の添字] の組。G ごとの入口の関数
 //   - lanes: P ごとに、G が走った区間 [startNs, endNs, goroutine] を並べたもの。procs と同じ順
-//   - gc: GC が G の時間を取った区間 [startNs, endNs, goroutine]。goroutine が -1 なら全 G を止めた区間 (STW)、それ以外はその G の mark assist
+//   - gc: G の時間を取った区間 [startNs, endNs, goroutine]。goroutine が -1 なら全 G を止めた区間 (STW) で、4 つ目に stwReasons の番号が付く。
+//     それ以外はその G の mark assist
 type gmpReplayJSON struct {
 	WindowNs int64 `json:"windowNs"`
 	// StartedAtNs は窓の時刻 0 に当たる Unix ナノ秒。G をクリックしたとき Goroutine 画面に時刻を渡すのに使う
@@ -21,12 +23,16 @@ type gmpReplayJSON struct {
 	Procs       []int64     `json:"procs"`
 	Lanes       [][][]int64 `json:"lanes"`
 	GC          [][]int64   `json:"gc"`
-	Reasons     []string    `json:"reasons"`
-	Functions   []string    `json:"functions"`
-	Entries     [][]int64   `json:"entries"`
-	Events      [][]int64   `json:"events"`
-	Leaked      []int64     `json:"leaked"`
-	Truncated   bool        `json:"truncated"`
+	// GCMark は GC の concurrent mark が進んでいた区間 [startNs, endNs]
+	GCMark [][]int64 `json:"gcMark"`
+	// STWReasons は STW の理由 ("GC sweep termination"・"goroutine profile" など)
+	STWReasons []string  `json:"stwReasons"`
+	Reasons    []string  `json:"reasons"`
+	Functions  []string  `json:"functions"`
+	Entries    [][]int64 `json:"entries"`
+	Events     [][]int64 `json:"events"`
+	Leaked     []int64   `json:"leaked"`
+	Truncated  bool      `json:"truncated"`
 	// SkippedNs は再生の続きを開いたとき、前の窓とのあいだの録画のない時間
 	SkippedNs int64 `json:"skippedNs,omitempty"`
 	// Logs と Focus は Explore でログから再生するときだけ入る
@@ -81,6 +87,8 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 		Procs:       []int64{},
 		Lanes:       [][][]int64{},
 		GC:          [][]int64{},
+		GCMark:      [][]int64{},
+		STWReasons:  []string{},
 		Reasons:     []string{},
 		Functions:   []string{},
 		Entries:     make([][]int64, 0, len(tl.Entries)),
@@ -142,11 +150,24 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 		}
 	}
 	for _, gc := range tl.GC {
+		if gc.Kind == model.GCMark {
+			r.GCMark = append(r.GCMark, []int64{int64(gc.Start), int64(gc.End)})
+			continue
+		}
 		g := int64(-1)
 		if gc.Kind == model.GCMarkAssist {
 			g = int64(gc.Goroutine)
 		}
-		r.GC = append(r.GC, []int64{int64(gc.Start), int64(gc.End), g})
+		entry := []int64{int64(gc.Start), int64(gc.End), g}
+		if gc.Kind == model.GCStopTheWorld {
+			i := slices.Index(r.STWReasons, gc.Reason)
+			if i < 0 {
+				i = len(r.STWReasons)
+				r.STWReasons = append(r.STWReasons, gc.Reason)
+			}
+			entry = append(entry, int64(i))
+		}
+		r.GC = append(r.GC, entry)
 	}
 	for _, g := range leaked {
 		r.Leaked = append(r.Leaked, int64(g))

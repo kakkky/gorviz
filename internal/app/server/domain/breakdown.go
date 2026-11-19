@@ -145,7 +145,7 @@ func Breakdown(t model.SchedulerTimeline, g model.GoroutineID, from, to time.Dur
 
 	var gc []causeSegment
 	for _, r := range t.GC {
-		if r.Kind == model.GCStopTheWorld || r.Goroutine == g {
+		if (r.Kind == model.GCStopTheWorld && r.ByGC()) || (r.Kind == model.GCMarkAssist && r.Goroutine == g) {
 			gc = append(gc, causeSegment{CauseGC, r.Start, r.End})
 		}
 	}
