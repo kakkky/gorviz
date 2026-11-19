@@ -110,6 +110,15 @@ tbody tr:hover td { background: rgba(255, 255, 255, .02); }
 .badge.fact { background: rgba(107, 216, 143, .14); color: var(--ok); }
 .badge.inference { background: rgba(245, 196, 81, .15); color: var(--warn); }
 .badge.cause { background: rgba(94, 200, 242, .15); color: var(--accent); }
+/* 主因のバッジは、内訳の棒・再生の点 (cause-bg-*) と同じ色にする */
+.badge.cause-RUNNING { --c: var(--g-running); }
+.badge.cause-CPU_WAIT { --c: var(--g-runnable); }
+.badge.cause-BLOCKED { --c: var(--danger); }
+.badge.cause-IO_WAIT { --c: var(--g-syscall); }
+.badge.cause-SLEEP { --c: #9aa2b4; }
+.badge.cause-GC { --c: var(--warn); }
+.badge.cause-CGO { --c: #e0a3ff; }
+.badge.cause[class*="cause-"] { background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); }
 
 
 .grid-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }

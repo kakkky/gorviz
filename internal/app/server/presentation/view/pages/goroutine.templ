@@ -100,7 +100,7 @@ templ Goroutine(vm GoroutineViewModel) {
 								<p class="muted">no record of this goroutine in the interval (not in the recorded trace nor in the latest goroutine dump)</p>
 							} else {
 								<p>
-									<span class="badge cause">{ vm.Primary }</span>
+									<span class={ "badge", "cause", "cause-" + vm.Primary }>{ vm.Primary }</span>
 									@components.CertaintyBadge(vm.Certainty)
 								</p>
 							}
