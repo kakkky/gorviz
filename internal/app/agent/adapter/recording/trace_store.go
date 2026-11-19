@@ -23,6 +23,11 @@ func NewTraceStore(maxBytes int64) *TraceStore {
 func (s *TraceStore) Append(chunk model.TraceChunk) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var prev model.TraceChunk
+	if n := len(s.chunks); n > 0 {
+		prev = s.chunks[n-1]
+	}
+	chunk.InheritWaitReasons(prev)
 	s.chunks = append(s.chunks, chunk)
 	s.bytes += chunk.SizeBytes()
 	for len(s.chunks) > 1 && s.bytes > s.maxBytes {

@@ -78,6 +78,12 @@ func (s *SavedStore) load(id string, now time.Time) error {
 			return err
 		}
 		c.Raw = raw
+		// 保存したときは agent が前の区切りから待機理由を引き継いでいたので、読み直すときも順に引き継ぐ
+		var prev model.TraceChunk
+		if len(chunks) > 0 {
+			prev = chunks[len(chunks)-1]
+		}
+		c.InheritWaitReasons(prev)
 		chunks = append(chunks, c)
 	}
 	s.meta[id], s.chunks[id] = rec, chunks

@@ -87,3 +87,40 @@ func (c TraceChunk) Since(t time.Time) TraceChunk {
 	}
 	return out
 }
+
+// inheritGap は InheritWaitReasons で、前の区切りの状態を引き継ぐ区切りの間のすき間の上限
+const inheritGap = 3 * time.Second
+
+// InheritWaitReasons は待機理由もスタックも載らなかった待ちのイベントを、同じ G の直前の待ちから補う。
+// runtime は窓より前から続いている待ち (区切りの先頭に持ち越した状態や途中の書き出し) の理由を書かない (unknown) ので、
+// 区切りを順に貯める側が前の区切り prev の最後の状態を引き継ぐ。prev が空か、間が inheritGap より空いていれば区切りの中だけで補う。
+// 区切りの間のすき間で G が別の待ちに移っていても区別できないので、待ちが続いていれば同じ待ちとみなす
+func (c *TraceChunk) InheritWaitReasons(prev TraceChunk) {
+	last := map[GoroutineID]SchedEvent{}
+	if len(prev.Timeline.Events) > 0 && c.StartedAt.Sub(prev.EndedAt()) <= inheritGap {
+		for _, ev := range prev.Timeline.Events {
+			if ev.Kind == SchedEventGoroutine {
+				last[ev.Goroutine] = ev
+			}
+		}
+	}
+	for i := range c.Timeline.Events {
+		ev := &c.Timeline.Events[i]
+		if ev.Kind != SchedEventGoroutine {
+			continue
+		}
+		if before, ok := last[ev.Goroutine]; ok && ev.Place.Kind == PlaceWaiting && before.Place.Kind == PlaceWaiting {
+			if !knownWaitReason(ev.Place.Reason) && knownWaitReason(before.Place.Reason) {
+				ev.Place.Reason = before.Place.Reason
+			}
+			if ev.Function == "" {
+				ev.Function, ev.Location = before.Function, before.Location
+			}
+		}
+		last[ev.Goroutine] = *ev
+	}
+}
+
+func knownWaitReason(r string) bool {
+	return r != "" && r != UnknownWaitReason
+}
