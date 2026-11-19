@@ -2,6 +2,8 @@ package domain
 
 import (
 	"cmp"
+	"fmt"
+	"math"
 	"github.com/kakkky/gorviz/internal/app/api/model"
 	"regexp"
 	"slices"
@@ -83,14 +85,20 @@ func DetectRuntimeIssues(c model.TraceChunk, policy IssuePolicy) []Issue {
 		return nil
 	}
 	var out []Issue
-	totals := TotalByCause(c.Timeline)
-	if ratio := float64(totals[CauseCPUWait]) / float64(w); policy.CPUWaitRatio > 0 && ratio >= policy.CPUWaitRatio {
-		out = append(out, Issue{
-			Kind: model.IssueCPUWaitSpike, Certainty: CertaintyFact,
-			Subject: ProcessSubject,
-			Summary: formatRatio(ratio) + " goroutines waiting for a P on average",
-			At:      c.StartedAt.Add(w / 2), From: c.StartedAt,
-		})
+	// P を待っていた量は再生用イベントの打ち切りに左右されない集計 (Stats) から測る
+	if s := c.Stats; s.Window > 0 && policy.CPUWaitRatio > 0 {
+		if ratio := float64(s.Runnable) / float64(s.Window); ratio >= policy.CPUWaitRatio {
+			issue := Issue{
+				Kind: model.IssueCPUWaitSpike, Certainty: CertaintyFact,
+				Subject: ProcessSubject,
+				Summary: formatRatio(ratio) + " goroutines waiting for a P on average",
+				At:      c.StartedAt.Add(w / 2), From: c.StartedAt,
+			}
+			if p99, ok := s.SchedLatency.Quantile(0.99); ok {
+				issue.Summary += ", p99 wait to run " + FormatShortDuration(p99)
+			}
+			out = append(out, issue)
+		}
 	}
 	if perSec := float64(c.Timeline.GCCycles) / w.Seconds(); policy.GCPerSecond > 0 && perSec >= policy.GCPerSecond {
 		issue := Issue{
@@ -98,6 +106,9 @@ func DetectRuntimeIssues(c model.TraceChunk, policy IssuePolicy) []Issue {
 			Subject: ProcessSubject,
 			Summary: formatRatio(perSec) + " GC cycles per second",
 			At:      c.StartedAt.Add(w / 2), From: c.StartedAt,
+		}
+		if share := c.Stats.GCMaxShare; share > 0 {
+			issue.Summary += fmt.Sprintf(", up to %d%% of the CPU taken by GC in %s", int(share*100+0.5), FormatShortDuration(model.MMUWindow))
 		}
 		if g, at, ok := LongestMarkAssist(c.Timeline); ok {
 			issue.Goroutine, issue.HasGoroutine, issue.At = g, true, c.StartedAt.Add(at)
@@ -129,6 +140,26 @@ func plural(n int, unit string) string {
 		return "1 " + unit
 	}
 	return strconv.Itoa(n) + " " + unit + "s"
+}
+
+// FormatShortDuration は短い時間を "38ms"・"250µs"・"1.2s" のように有効数字 2 桁で書く (990ms は 990ms のまま、指数にしない)
+func FormatShortDuration(d time.Duration) string {
+	switch {
+	case d >= time.Second:
+		return twoDigits(d.Seconds()) + "s"
+	case d >= time.Millisecond:
+		return twoDigits(float64(d)/float64(time.Millisecond)) + "ms"
+	default:
+		return twoDigits(float64(d)/float64(time.Microsecond)) + "µs"
+	}
+}
+
+func twoDigits(v float64) string {
+	if v <= 0 {
+		return "0"
+	}
+	unit := math.Pow(10, math.Floor(math.Log10(v))-1)
+	return strconv.FormatFloat(math.Round(v/unit)*unit, 'f', max(-int(math.Floor(math.Log10(unit))), 0), 64)
 }
 
 func formatRatio(v float64) string {

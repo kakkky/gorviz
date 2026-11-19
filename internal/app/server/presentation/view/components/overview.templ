@@ -35,6 +35,13 @@ type OverviewViewModel struct {
 	GC          ChartViewModel
 	Heap        ChartViewModel
 	MarkAssist  ChartViewModel
+	// SchedLatency は runnable になってから走り出すまでの時間、ProcUsage は P の時間の使い道、STW と MMU は GC がアプリを止めた長さと残した CPU
+	SchedLatency ChartViewModel
+	ProcUsage    ChartViewModel
+	STW          ChartViewModel
+	MMU          ChartViewModel
+	// Waits は期間中に G が長く待っていた場所 (多い順)
+	Waits []WaitRowViewModel
 	// EffectiveGOGC は期間の中で最後に終わった GC の goal / live heap から逆算した GOGC。GC がなければ空
 	EffectiveGOGC string
 }
@@ -46,6 +53,20 @@ type OverviewIssueViewModel struct {
 	Summary   string
 	Age       string
 	Href      string
+}
+
+// WaitRowViewModel の Avg はそこで同時に待っていた G の数の平均、Bar はその一番多い行に対する割合 (%)。
+// Count は期間中に待ちに入った回数、Max は 1 回の待ちの最大
+type WaitRowViewModel struct {
+	Cause    string
+	Reason   string
+	Avg      string
+	Bar      string
+	Count    string
+	Max      string
+	Location string
+	Function string
+	Entry    string
 }
 
 type GoroutineStateViewModel struct {
@@ -198,6 +219,26 @@ templ OverviewSnapshot(vm OverviewViewModel) {
 			</table>
 		</section>
 	</div>
+	<section class="panel">
+		<h2 title="from the trace: how long goroutines stayed waiting or in a system call, by the line that called the blocking function. it counts every goroutine, so 10 goroutines waiting 1s each add up to 10s">Where goroutines waited <span class="muted">goroutines waiting there at a time, on average</span></h2>
+		if len(vm.Waits) == 0 {
+			<p class="muted">no trace in this range</p>
+		} else {
+			<table class="waits">
+				<tr><th>cause</th><th class="num">waiting</th><th class="num" title="waits that began in the range">waits</th><th class="num" title="the longest single wait seen (a wait longer than a recorded chunk is cut at the chunk)">longest</th><th>where</th><th>goroutine</th></tr>
+				for _, w := range vm.Waits {
+					<tr>
+						<td title={ w.Reason }><span class="wait-cause"><span class={ "cause-dot", "cause-bg-" + w.Cause }></span><span class="cause-name">{ w.Cause }</span></span></td>
+						<td class="num mono wait-avg"><span class="wait-bar" style={ templ.SafeCSS("width:" + w.Bar) }></span><span>{ w.Avg }</span></td>
+						<td class="num mono">{ w.Count }</td>
+						<td class="num mono">{ w.Max }</td>
+						<td class="origin" title={ w.Function + " " + w.Location }>{ ShortPath(w.Location) }<div class="faint">{ ShortPath(w.Function) }</div></td>
+						<td class="origin" title={ w.Entry }>{ ShortPath(w.Entry) }</td>
+					</tr>
+				}
+			</table>
+		}
+	</section>
 	@sectionTitle("Memory & GC", "whether the heap keeps growing and how much time the GC takes")
 	<div class="grid-3">
 		<section class="panel">
@@ -218,11 +259,31 @@ templ OverviewSnapshot(vm OverviewViewModel) {
 			@chart(vm.MarkAssist, "no trace in this range")
 		</section>
 	</div>
+	<div class="grid-even">
+		<section class="panel">
+			<h2 title="how long each stop-the-world of the GC paused every goroutine. long pauses add straight to the latency of every request in flight">GC pauses <span class="muted">ms per stop-the-world</span></h2>
+			@chart(vm.STW, "no GC pause in this range")
+		</section>
+		<section class="panel">
+			<h2 title="minimum mutator utilization: in the worst 10ms of each point, the share of the CPU left to the application while the GC ran (workers, assists and pauses). 100% = the GC never got in the way">CPU left by the GC <span class="muted">worst 10ms, %</span></h2>
+			@chart(vm.MMU, "no trace in this range")
+		</section>
+	</div>
 	@sectionTitle("CPU", "whether there are enough P for the goroutines ready to run")
-	<section class="panel">
-		<h2 title="how many goroutines were ready to run but waiting for a P (CPU), averaged over time: 0.5 = one goroutine was waiting half of the time. rising with the latency = CPU is short">Waiting for P <span class="muted">goroutines waiting at a time, on average</span></h2>
-		@chart(vm.CPUWaiting, "no trace in this range")
-	</section>
+	<div class="grid-3">
+		<section class="panel">
+			<h2 title="how many goroutines were ready to run but waiting for a P (CPU), averaged over time: 0.5 = one goroutine was waiting half of the time. rising with the latency = CPU is short">Waiting for P <span class="muted">goroutines at a time</span></h2>
+			@chart(vm.CPUWaiting, "no trace in this range")
+		</section>
+		<section class="panel">
+			<h2 title="how long a goroutine that became ready to run waited until it got a P. this delay adds to the latency of a request each time its goroutine is woken">Wait to run <span class="muted">ms until a P</span></h2>
+			@chart(vm.SchedLatency, "no trace in this range")
+		</section>
+		<section class="panel">
+			<h2 title="what the P (CPU slots) spent their time on: running goroutines, GC (workers and pauses), or nothing. high running with waiting for P = short of CPU; idle with waiting for P = the waits come in bursts">P usage <span class="muted">% of all P</span></h2>
+			@chart(vm.ProcUsage, "no trace in this range")
+		</section>
+	</div>
 }
 
 templ sectionTitle(title, desc string) {

@@ -373,5 +373,5 @@ func addLogTrend(vm *components.LogListViewModel, out usecase.ListLogsUsecaseOut
 		series = append(series, cs)
 	}
 	vm.Steps = f.stepsJSON()
-	vm.Chart = f.stackedBarChart(series)
+	vm.Chart = f.stackedBarChart(series, formatCount)
 }

@@ -89,6 +89,8 @@ type RuntimeLoad struct {
 	MarkAssistPerSecond float64
 	// GCEnds は区切りの中で終わった GC ごとの live heap と heap goal
 	GCEnds []model.GCEnd
+	// Stats は区切りの全イベントから数えた集計 (待ち場所・走り出すまでの時間・GC・P の使い方)
+	Stats model.TraceStats
 }
 
 func runtimeLoadOf(c model.TraceChunk) RuntimeLoad {
@@ -98,7 +100,7 @@ func runtimeLoadOf(c model.TraceChunk) RuntimeLoad {
 	}
 	load := RuntimeLoad{
 		GCPerSecond: float64(c.Timeline.GCCycles) / w.Seconds(),
-		CPUWaiting:  float64(domain.TotalByCause(c.Timeline)[domain.CauseCPUWait]) / float64(w),
+		Stats:       c.Stats,
 		GCEnds:      c.Timeline.GCEnds,
 	}
 	var assist time.Duration
@@ -108,6 +110,9 @@ func runtimeLoadOf(c model.TraceChunk) RuntimeLoad {
 		}
 	}
 	load.MarkAssistPerSecond = assist.Seconds() / w.Seconds()
+	if c.Stats.Window > 0 {
+		load.CPUWaiting = float64(c.Stats.Runnable) / float64(c.Stats.Window)
+	}
 	if n := len(c.Timeline.Heap); n > 0 {
 		load.HeapObjectsBytes, load.HeapGoalBytes = c.Timeline.Heap[n-1].ObjectsBytes, c.Timeline.Heap[n-1].GoalBytes
 	}
@@ -199,6 +204,7 @@ func (us *RecordRuntimeSnapshotUsecase) recordMetrics(now time.Time, snapshot Ru
 		p.GCPerSecond.Observe(load.GCPerSecond)
 		p.CPUWaiting.Observe(load.CPUWaiting)
 		p.MarkAssist.Observe(load.MarkAssistPerSecond)
+		p.ObserveTrace(load.Stats)
 		for _, e := range load.GCEnds {
 			p.LiveHeap.Observe(float64(e.LiveHeapBytes))
 			if gogc, ok := e.EffectiveGOGC(); ok {

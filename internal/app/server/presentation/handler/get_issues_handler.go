@@ -210,6 +210,6 @@ func addIssueTrend(vm *components.IssueListViewModel, out usecase.ListIssueHisto
 		}
 	}
 	vm.Steps = f.stepsJSON()
-	vm.Chart = f.stackedBarChart(series)
+	vm.Chart = f.stackedBarChart(series, formatCount)
 	vm.Total = total
 }

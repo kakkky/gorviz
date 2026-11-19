@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kakkky/gorviz/internal/app/api/model"
 	"github.com/kakkky/gorviz/internal/app/server/domain"
@@ -16,22 +17,6 @@ func TestMessageShape(t *testing.T) {
 		domain.MessageShape("job 42 failed for user 3f2b1c9e-1a2b-4c3d-8e9f-0123456789ab at 0xc000123"),
 		domain.MessageShape("job 7 failed for user 00000000-0000-4000-8000-000000000000 at 0xdeadbeef"),
 		"numbers and ids are masked so that the same kind of error has the same shape")
-}
-
-func TestSchedulerTimeline_TotalByCause(t *testing.T) {
-	t.Parallel()
-	ms := time.Millisecond
-	gEv := func(at time.Duration, g model.GoroutineID, kind model.GoroutinePlaceKind) model.SchedEvent {
-		return model.SchedEvent{At: at, Kind: model.SchedEventGoroutine, Goroutine: g, Place: model.GoroutinePlace{Kind: kind}}
-	}
-	tl := model.SchedulerTimeline{Window: 10 * ms, Events: []model.SchedEvent{
-		gEv(0, 1, model.PlaceGlobalQueue), gEv(0, 2, model.PlaceGlobalQueue), gEv(4*ms, 1, model.PlaceRunning),
-	}}
-
-	got := domain.TotalByCause(tl)
-
-	assert.Equal(t, 4*ms+10*ms, got[domain.CauseCPUWait])
-	assert.Equal(t, 6*ms, got[domain.CauseRunning])
 }
 
 func TestDetectRuntimeIssues(t *testing.T) {
@@ -64,5 +49,35 @@ func TestDetectRuntimeIssues(t *testing.T) {
 			}
 			assert.Equal(t, tt.want, got)
 		})
+	}
+}
+
+func TestDetectRuntimeIssues_CPUWait(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	stats := model.TraceStats{Window: time.Second, Runnable: 1500 * time.Millisecond}
+	for range 100 {
+		stats.SchedLatency.Observe(30 * time.Millisecond)
+	}
+	chunk := model.TraceChunk{StartedAt: start, Timeline: model.SchedulerTimeline{Window: time.Second}, Stats: stats}
+
+	issues := domain.DetectRuntimeIssues(chunk, domain.IssuePolicy{CPUWaitRatio: 1})
+
+	require.Len(t, issues, 1)
+	assert.Equal(t, model.IssueCPUWaitSpike, issues[0].Kind)
+	assert.Equal(t, "1.5 goroutines waiting for a P on average, p99 wait to run 30ms", issues[0].Summary, "measured from the counts over all events, with the delay it caused")
+}
+
+func TestFormatShortDuration(t *testing.T) {
+	t.Parallel()
+	for d, want := range map[time.Duration]string{
+		990 * time.Millisecond:   "990ms",
+		38600 * time.Microsecond: "39ms",
+		1234 * time.Millisecond:  "1.2s",
+		250 * time.Microsecond:   "250µs",
+		1500 * time.Nanosecond:   "1.5µs",
+		0:                        "0µs",
+	} {
+		assert.Equal(t, want, domain.FormatShortDuration(d), d.String())
 	}
 }

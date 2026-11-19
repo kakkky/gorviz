@@ -207,8 +207,8 @@ func (f chartFrame) lineChart(series []chartSeries, format func(float64) string,
 	return vm
 }
 
-// stackedBarChart は区切りごとの件数を、系列を下から順に積み上げた棒で描く。棒の間と段の間に隙間をあける
-func (f chartFrame) stackedBarChart(series []chartSeries) components.ChartViewModel {
+// stackedBarChart は区切りごとの量を、系列を下から順に積み上げた棒で描く。棒の間と段の間に隙間をあける。format は目盛りと hover の値の書き方
+func (f chartFrame) stackedBarChart(series []chartSeries, format func(float64) string) components.ChartViewModel {
 	peak := 0.0
 	for i := range f.steps {
 		total := 0.0
@@ -219,7 +219,7 @@ func (f chartFrame) stackedBarChart(series []chartSeries) components.ChartViewMo
 	}
 	// 棒は長さで量を比べるので、縦軸は 0 から
 	scale := niceRange(0, peak, 1)
-	vm := f.base(scale, formatCount)
+	vm := f.base(scale, format)
 	vm.Kind = "bar"
 	slot := chartWidth / float64(len(f.steps))
 	gap := min(2, slot/4)
@@ -254,7 +254,7 @@ func (f chartFrame) stackedBarChart(series []chartSeries) components.ChartViewMo
 				below += v
 				y := scale.y(below)
 				ro := &readouts[len(series)-1-k]
-				ro.Text[i], ro.Y[i] = formatCount(v), &y
+				ro.Text[i], ro.Y[i] = format(v), &y
 			}
 		}
 	}

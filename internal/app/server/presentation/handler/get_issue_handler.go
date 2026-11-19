@@ -117,7 +117,7 @@ func toIssueDetailViewModel(out usecase.GetIssueHistoryUsecaseOutput, span time.
 	}
 	vm.Range = timeRangeOver(out.From, out.To, span)
 	vm.Steps = f.stepsJSON()
-	vm.Chart = f.stackedBarChart([]chartSeries{seen})
+	vm.Chart = f.stackedBarChart([]chartSeries{seen}, formatCount)
 	for _, o := range out.Occurrences {
 		vm.Occurrences = append(vm.Occurrences, components.IssueOccurrenceRowViewModel{
 			Time: o.SeenAt.Local().Format("01/02 15:04:05"), Age: formatAge(now.Sub(o.SeenAt)), Summary: o.Summary,

@@ -216,7 +216,7 @@ func toOverviewViewModel(now time.Time, span time.Duration, m usecase.GetMetrics
 		}
 		goroutines = append(goroutines, cs)
 	}
-	vm.Goroutines = f.stackedBarChart(goroutines)
+	vm.Goroutines = f.stackedBarChart(goroutines, formatCount)
 	vm.Goroutines.Notes = originNotesJSON(len(m.Steps), m.Origins)
 
 	small := func(v float64) string { return strconv.FormatFloat(v, 'g', 2, 64) }
@@ -237,7 +237,60 @@ func toOverviewViewModel(now time.Time, span time.Duration, m usecase.GetMetrics
 	vm.MarkAssist = f.lineChart([]chartSeries{
 		{label: "mark assist", class: overviewSeriesClass + "1", values: scale(pick(m, func(s usecase.MetricStepSummary) usecase.MetricSample { return s.MarkAssist }), 1000)},
 	}, small, 0, 1)
+
+	// ms と % の推移は値の幅が小さいことが多いので、目盛りが同じ数字に丸まらないよう 3 桁で書く
+	fine := func(v float64) string { return strconv.FormatFloat(v, 'g', 3, 64) }
+	ms := func(get func(usecase.MetricStepSummary) usecase.MetricSample) []usecase.MetricSample {
+		return scale(pick(m, get), 1000)
+	}
+	percent := func(get func(usecase.MetricStepSummary) usecase.MetricSample) []usecase.MetricSample {
+		return scale(pick(m, get), 100)
+	}
+	vm.SchedLatency = f.lineChart([]chartSeries{
+		{label: "p50", class: overviewSeriesClass + "1", values: ms(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.SchedLatencyP50 })},
+		{label: "p99", class: overviewSeriesClass + "2", values: ms(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.SchedLatencyP99 })},
+		{label: "max", class: overviewSeriesClass + "3", values: ms(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.SchedLatencyMax })},
+	}, fine, 0, 1)
+	// P の時間の内訳は足すと 100% になるので、積み上げた棒で分け方を見せる。空いていた分を一番上に積む
+	vm.ProcUsage = f.stackedBarChart([]chartSeries{
+		{label: "running", class: "state-running", values: percent(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.ProcRunning })},
+		{label: "GC", class: "share-gc", values: percent(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.ProcGC })},
+		{label: "idle", class: "share-idle", values: percent(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.ProcIdle })},
+	}, formatPercent)
+	vm.STW = f.lineChart([]chartSeries{
+		{label: "p99", class: overviewSeriesClass + "1", values: ms(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.STWP99 })},
+		{label: "max", class: overviewSeriesClass + "2", values: ms(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.STWMax })},
+	}, fine, 0, 1)
+	vm.MMU = f.lineChart([]chartSeries{
+		{label: "CPU left", class: overviewSeriesClass + "1", values: percent(func(s usecase.MetricStepSummary) usecase.MetricSample { return s.MMU })},
+	}, formatPercent, 0, 1)
+	vm.Waits = waitRows(m.Waits, m.Traced)
 	return vm
+}
+
+func formatPercent(v float64) string {
+	return strconv.FormatFloat(v, 'g', 3, 64) + "%"
+}
+
+// waitRows は期間中の待ち場所を、同時に待っていた G の数の平均で並べる。棒の長さは一番多い行に対する割合
+func waitRows(waits []usecase.MetricWait, traced time.Duration) []components.WaitRowViewModel {
+	if traced <= 0 || len(waits) == 0 {
+		return nil
+	}
+	top := waits[0].Total.Seconds
+	rows := make([]components.WaitRowViewModel, 0, len(waits))
+	for _, w := range waits {
+		avg := w.Total.Seconds / traced.Seconds()
+		rows = append(rows, components.WaitRowViewModel{
+			Cause: string(w.Site.Cause), Reason: w.Total.Reason,
+			Avg:      strconv.FormatFloat(avg, 'g', 2, 64),
+			Bar:      fmt.Sprintf("%.1f%%", w.Total.Seconds/top*100),
+			Count:    formatCount(float64(w.Total.Count)),
+			Max:      domain.FormatShortDuration(time.Duration(w.Total.MaxSeconds * float64(time.Second))),
+			Location: w.Site.Location, Function: w.Site.Function, Entry: w.Site.Entry,
+		})
+	}
+	return rows
 }
 
 func lastSample(samples []usecase.MetricSample) (float64, bool) {

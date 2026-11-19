@@ -91,6 +91,8 @@ a.stat:hover { text-decoration: none; outline: 1px solid var(--border); }
 .series-1 { --c: var(--series-1); }
 .series-2 { --c: var(--series-2); }
 .series-3 { --c: var(--series-3); }
+.share-gc { --c: var(--warn); }
+.share-idle { --c: #3a404d; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); }
 .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 
@@ -422,6 +424,15 @@ main > :empty { display: none; }
 .section-title span { margin-left: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--faint); }
 .range-info + .section-title { margin-top: 14px; }
 table.origins td.origin { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; width: 100%; }
+/* Where goroutines waited: 待った量は数字の後ろに薄い棒を敷き、行どうしを長さで比べられるようにする */
+table.waits td { font-size: 12px; }
+table.waits td.origin { font-size: 12px; }
+table.waits td.origin .faint { margin-top: 2px; }
+table.waits .wait-cause { display: inline-flex; align-items: center; gap: 6px; }
+table.waits .wait-cause .cause-name { font: 600 11px var(--mono); }
+table.waits td.wait-avg { position: relative; width: 110px; }
+table.waits .wait-bar { position: absolute; right: 10px; top: 50%; height: 16px; max-width: calc(100% - 20px); transform: translateY(-50%); border-radius: 3px; background: rgba(94, 200, 242, .14); }
+table.waits td.wait-avg > span:last-child { position: relative; }
 .legend i { background: var(--c); }
 .legend.now { margin-top: 10px; }
 table.overview-issues { margin-top: 10px; }
