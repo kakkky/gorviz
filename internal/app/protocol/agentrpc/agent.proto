@@ -135,7 +135,8 @@ message SchedulerTimeline {
   int64 goroutines_created = 4;
   int64 goroutines_destroyed = 5;
   repeated SchedEvent events = 6;
-  bool events_truncated = 7;
+  reserved 7;
+  reserved "events_truncated";
   map<int64, string> entries = 8;
   repeated GCRange gc = 9;
   repeated HeapSample heap = 10;

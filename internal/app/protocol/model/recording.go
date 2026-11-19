@@ -184,7 +184,6 @@ func JoinChunks(chunks []TraceChunk, from, to time.Time) (tl SchedulerTimeline, 
 		tl.GoroutinesCreated += part.GoroutinesCreated
 		tl.GoroutinesDestroyed += part.GoroutinesDestroyed
 		tl.GCCycles += part.GCCycles
-		tl.EventsTruncated = tl.EventsTruncated || part.EventsTruncated
 		tl.Window = shift + part.Window
 	}
 	return tl, startedAt, ok

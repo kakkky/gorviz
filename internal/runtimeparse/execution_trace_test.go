@@ -129,3 +129,26 @@ func TestBuildTraceChunk_StatsCountFrom(t *testing.T) {
 	assert.InDelta(t, float64(all.Timeline.Window/2), float64(half.Stats.Window), float64(time.Millisecond), "the part before countFrom is not counted")
 	assert.Equal(t, all.Timeline.Window, half.Timeline.Window, "the timeline itself is kept whole")
 }
+
+func TestBuildTraceChunk_KeepsEveryEvent(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, trace.Start(&buf))
+	var wg sync.WaitGroup
+	for range 30_000 {
+		wg.Go(func() {})
+	}
+	wg.Wait()
+	burstEnd := time.Now()
+	time.Sleep(10 * time.Millisecond)
+	trace.Stop()
+
+	chunk, err := buildTraceChunk(&buf, time.Now(), time.Time{})
+	require.NoError(t, err)
+	tl := chunk.Timeline
+
+	assert.Greater(t, len(tl.Events), 50_000)
+	after := chunk.Offset(burstEnd)
+	assert.True(t, slices.ContainsFunc(tl.Events, func(ev model.SchedEvent) bool {
+		return ev.At > after && ev.Place.Kind == model.PlaceWaiting && ev.Place.Reason == "sleep"
+	}), "the sleep after the burst is still in the events")
+}

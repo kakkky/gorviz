@@ -1157,7 +1157,6 @@ type SchedulerTimeline struct {
 	GoroutinesCreated   int64                  `protobuf:"varint,4,opt,name=goroutines_created,json=goroutinesCreated,proto3" json:"goroutines_created,omitempty"`
 	GoroutinesDestroyed int64                  `protobuf:"varint,5,opt,name=goroutines_destroyed,json=goroutinesDestroyed,proto3" json:"goroutines_destroyed,omitempty"`
 	Events              []*SchedEvent          `protobuf:"bytes,6,rep,name=events,proto3" json:"events,omitempty"`
-	EventsTruncated     bool                   `protobuf:"varint,7,opt,name=events_truncated,json=eventsTruncated,proto3" json:"events_truncated,omitempty"`
 	Entries             map[int64]string       `protobuf:"bytes,8,rep,name=entries,proto3" json:"entries,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Gc                  []*GCRange             `protobuf:"bytes,9,rep,name=gc,proto3" json:"gc,omitempty"`
 	Heap                []*HeapSample          `protobuf:"bytes,10,rep,name=heap,proto3" json:"heap,omitempty"`
@@ -1237,13 +1236,6 @@ func (x *SchedulerTimeline) GetEvents() []*SchedEvent {
 		return x.Events
 	}
 	return nil
-}
-
-func (x *SchedulerTimeline) GetEventsTruncated() bool {
-	if x != nil {
-		return x.EventsTruncated
-	}
-	return false
 }
 
 func (x *SchedulerTimeline) GetEntries() map[int64]string {
@@ -2230,15 +2222,14 @@ const file_agent_proto_rawDesc = "" +
 	"\fTraceLogMark\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12\x1c\n" +
 	"\tgoroutine\x18\x02 \x01(\x03R\tgoroutine\x12\x13\n" +
-	"\x05at_ns\x18\x03 \x01(\x03R\x04atNs\"\xff\x04\n" +
+	"\x05at_ns\x18\x03 \x01(\x03R\x04atNs\"\xec\x04\n" +
 	"\x11SchedulerTimeline\x12\x1b\n" +
 	"\twindow_ns\x18\x01 \x01(\x03R\bwindowNs\x122\n" +
 	"\x05procs\x18\x02 \x03(\v2\x1c.gorviz.agentrpc.v1.ProcLaneR\x05procs\x12\x18\n" +
 	"\athreads\x18\x03 \x03(\x03R\athreads\x12-\n" +
 	"\x12goroutines_created\x18\x04 \x01(\x03R\x11goroutinesCreated\x121\n" +
 	"\x14goroutines_destroyed\x18\x05 \x01(\x03R\x13goroutinesDestroyed\x126\n" +
-	"\x06events\x18\x06 \x03(\v2\x1e.gorviz.agentrpc.v1.SchedEventR\x06events\x12)\n" +
-	"\x10events_truncated\x18\a \x01(\bR\x0feventsTruncated\x12L\n" +
+	"\x06events\x18\x06 \x03(\v2\x1e.gorviz.agentrpc.v1.SchedEventR\x06events\x12L\n" +
 	"\aentries\x18\b \x03(\v22.gorviz.agentrpc.v1.SchedulerTimeline.EntriesEntryR\aentries\x12+\n" +
 	"\x02gc\x18\t \x03(\v2\x1b.gorviz.agentrpc.v1.GCRangeR\x02gc\x122\n" +
 	"\x04heap\x18\n" +
@@ -2247,7 +2238,7 @@ const file_agent_proto_rawDesc = "" +
 	"\agc_ends\x18\f \x03(\v2\x19.gorviz.agentrpc.v1.GCEndR\x06gcEnds\x1a:\n" +
 	"\fEntriesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x03R\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"S\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bR\x10events_truncated\"S\n" +
 	"\bProcLane\x12\x12\n" +
 	"\x04proc\x18\x01 \x01(\x03R\x04proc\x123\n" +
 	"\x05spans\x18\x02 \x03(\v2\x1d.gorviz.agentrpc.v1.SchedSpanR\x05spans\"s\n" +

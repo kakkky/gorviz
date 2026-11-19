@@ -89,6 +89,9 @@ var placeCodes = map[model.GoroutinePlaceKind]int64{
 	model.PlaceDead:        5,
 }
 
+// maxReplayEvents は送るイベントの上限。ブラウザは毎フレーム適用するので、忙しいプロセスで窓が長いと重くなりすぎる
+const maxReplayEvents = 50_000
+
 func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, startedAt time.Time) gmpReplayJSON {
 	r := gmpReplayJSON{
 		StartedAtNs: startedAt.UnixNano(),
@@ -102,9 +105,9 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 		Reasons:     []string{},
 		Functions:   []string{},
 		Entries:     make([][]int64, 0, len(tl.Entries)),
-		Events:      make([][]int64, 0, len(tl.Events)),
+		Events:      make([][]int64, 0, min(len(tl.Events), maxReplayEvents)),
 		Leaked:      []int64{},
-		Truncated:   tl.EventsTruncated,
+		Truncated:   len(tl.Events) > maxReplayEvents,
 	}
 	for _, l := range domain.SortedProcs(tl) {
 		r.Procs = append(r.Procs, int64(l.Proc))
@@ -131,7 +134,7 @@ func newGMPReplayJSON(tl model.SchedulerTimeline, leaked []model.GoroutineID, st
 	for g, fn := range tl.Entries {
 		r.Entries = append(r.Entries, []int64{int64(g), indexOf(fn)})
 	}
-	for _, e := range tl.Events {
+	for _, e := range tl.Events[:min(len(tl.Events), maxReplayEvents)] {
 		switch e.Kind {
 		case model.SchedEventGoroutine:
 			proc, thread, reason := int64(-1), int64(-1), int64(-1)

@@ -29,9 +29,8 @@ type SchedulerTimeline struct {
 	Threads             []ThreadID
 	GoroutinesCreated   int
 	GoroutinesDestroyed int
-	// Events は再生用の状態変化の列 (At の昇順)。量が多すぎるときは打ち切り、EventsTruncated を立てる
-	Events          []SchedEvent
-	EventsTruncated bool
+	// Events は状態変化の列 (At の昇順)。内訳などを全イベントから出すので打ち切らない
+	Events []SchedEvent
 	// Entries は G ごとの入口の関数 (go 文で起動された関数)。trace の生成時のスタックと goroutine dump から集める
 	Entries map[GoroutineID]string
 	// GC は窓の中で GC が G を止めた / 手伝わせた区間 (At の昇順)

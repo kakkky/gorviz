@@ -214,10 +214,9 @@ func (t SchedulerTimeline) Slice(from, to time.Duration) SchedulerTimeline {
 		to = from
 	}
 	out := SchedulerTimeline{
-		Window:          to - from,
-		Threads:         t.Threads,
-		Entries:         t.Entries,
-		EventsTruncated: t.EventsTruncated,
+		Window:  to - from,
+		Threads: t.Threads,
+		Entries: t.Entries,
 	}
 	for _, r := range t.GC {
 		if r.End < from || r.Start > to {

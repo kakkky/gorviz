@@ -93,8 +93,8 @@ func (x *RecordingSpan) Model() model.RecordingSpan {
 func newTimeline(t model.SchedulerTimeline) *SchedulerTimeline {
 	out := &SchedulerTimeline{
 		WindowNs: int64(t.Window), GoroutinesCreated: int64(t.GoroutinesCreated), GoroutinesDestroyed: int64(t.GoroutinesDestroyed),
-		EventsTruncated: t.EventsTruncated, GcCycles: int64(t.GCCycles),
-		Threads: each(t.Threads, func(th model.ThreadID) int64 { return int64(th) }),
+		GcCycles: int64(t.GCCycles),
+		Threads:  each(t.Threads, func(th model.ThreadID) int64 { return int64(th) }),
 		Procs: each(t.Procs, func(l model.ProcLane) *ProcLane {
 			return &ProcLane{Proc: int64(l.Proc), Spans: each(l.Spans, func(s model.SchedSpan) *SchedSpan {
 				return &SchedSpan{Goroutine: int64(s.Goroutine), Thread: int64(s.Thread), StartNs: int64(s.Start), EndNs: int64(s.End)}
@@ -123,8 +123,8 @@ func newTimeline(t model.SchedulerTimeline) *SchedulerTimeline {
 func (x *SchedulerTimeline) model() model.SchedulerTimeline {
 	out := model.SchedulerTimeline{
 		Window: time.Duration(x.GetWindowNs()), GoroutinesCreated: int(x.GetGoroutinesCreated()), GoroutinesDestroyed: int(x.GetGoroutinesDestroyed()),
-		EventsTruncated: x.GetEventsTruncated(), GCCycles: int(x.GetGcCycles()),
-		Threads: each(x.GetThreads(), func(th int64) model.ThreadID { return model.ThreadID(th) }),
+		GCCycles: int(x.GetGcCycles()),
+		Threads:  each(x.GetThreads(), func(th int64) model.ThreadID { return model.ThreadID(th) }),
 		Procs: each(x.GetProcs(), func(l *ProcLane) model.ProcLane {
 			return model.ProcLane{Proc: model.ProcID(l.GetProc()), Spans: each(l.GetSpans(), func(s *SchedSpan) model.SchedSpan {
 				return model.SchedSpan{

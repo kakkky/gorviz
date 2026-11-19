@@ -15,9 +15,6 @@ import (
 	"golang.org/x/exp/trace"
 )
 
-// 再生用イベントの上限。ブラウザに JSON で送って毎フレーム適用するので、忙しいプロセスで窓が長いと重くなりすぎる
-const maxReplayEvents = 50_000
-
 type gcRangeKey struct {
 	kind   model.GCRangeKind
 	g      trace.GoID
@@ -193,10 +190,6 @@ func buildTraceChunk(r io.Reader, receivedAt, countFrom time.Time) (model.TraceC
 			fromUndetermined = from == trace.GoUndetermined
 		}
 		emit := func(e model.SchedEvent) {
-			if len(initial)+len(tl.Events) >= maxReplayEvents {
-				tl.EventsTruncated = true
-				return
-			}
 			if fromUndetermined {
 				initial = append(initial, e)
 				return
