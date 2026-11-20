@@ -132,15 +132,15 @@ flowchart LR
 
 ### 処理の流れ
 
-agent は取ったものを読み込んで、server へ送るだけ。持つのは送るまでの分だけで、判定も診断もしない。
+agent は取ったものを整形して、server へ送るだけ。持つのは送るまでの分だけで、判定も診断もしない。
 
 | 運ぶもの | いつ | 形 |
 | --- | --- | --- |
 | ログ | 数秒ごと (`-refresh`) | 取り込んだ行そのまま |
-| goroutine dump | 取るたび (`-dump-interval`) | 読み込んだ形 (G ごとの状態・生成元・スタックの要点) |
-| execution trace | 区切りごと (`-chunk`、既定 2 秒) | 読み込んだ形 (G・P の状態変化、GC の区間、ヒープ、ログの印、集計)。生の trace は送らない |
+| goroutine dump | 取るたび (`-dump-interval`) | 整形した形 (G ごとの状態・生成元・スタックの要点) |
+| execution trace | 区切りごと (`-chunk`、既定 2 秒) | 整形した形 (G・P の状態変化、GC の区間、ヒープ、ログの印、集計)。生の trace は送らない |
 
-- trace を読み込んだ形で送るのは、生の trace より小さく、server が持つのも読むのもこの形だけで済むため。`go tool trace` に渡す生の trace は残さない
+- trace を整形した形で送るのは、生の trace より小さく、server が持つのも読むのもこの形だけで済むため。`go tool trace` に渡す生の trace は残さない
 - 送り方は gRPC の `Ingest.Push` 1 つ。gzip で圧縮する (関数名などの同じ文字列が繰り返し出るため)
 - server とつながらない間は、agent が送るまでの分を `-trace-buffer-mib` (既定 64 MiB) まで持ち、つなぎ直したら手元の分を送り直す (server は重なりを捨てる)
 
@@ -156,7 +156,7 @@ sequenceDiagram
     A->>S: 接続を張る (agent から外向き)
     loop 常時
         A->>T: trace・goroutine dump を取得、ログを取り込む
-        A->>A: 読み込む
+        A->>A: 整形する
         A->>S: ログ・dump・trace の区切りを送る
     end
     loop 数秒ごと
@@ -184,7 +184,7 @@ sequenceDiagram
 
 ### データの持ち方
 
-- **生の trace はどこにも持たない**。agent が読み込んだ区切りだけを扱う (生の trace は圧縮しても 1000 rps・31 日で約 600 GB になり、持ちきれない)
+- **生の trace はどこにも持たない**。agent が整形した区切りだけを扱う (生の trace は圧縮しても 1000 rps・31 日で約 600 GB になり、持ちきれない)
 - **agent** は送るまでの分だけ持つ (`-trace-buffer-mib`、既定 64 MiB)
 - **server のメモリ** (agent ごと)
   - 区切りの直近 (`-trace-buffer-mib`、既定 256 MiB)
@@ -236,8 +236,8 @@ agent の役割を誰が担うかだけが変わる。server とクライアン�
     - goroutine dump (`debug=2`): `-dump-interval` (既定 1 分) ごと。STW[^stw] を伴うので間隔を空ける
     - goroutineleak プロファイル[^goroutineleak]: dump の `-leak-check-every` 回に 1 回。GC を伴うため
   - ログを取り込む (標準入力。`-logs -`)
-  - trace・dump を読み込み、ログと一緒に server へ送る。生の trace は残さない
-    - 内訳や主因は全イベントから出すので、読み込むときにイベントを捨てない
+  - trace・dump を整形し、ログと一緒に server へ送る。生の trace は残さない
+    - 内訳や主因は全イベントから出すので、整形するときにイベントを捨てない
   - server とつながらない間は、送るまでの区切りを `-trace-buffer-mib` (既定 64 MiB) まで持つ
   - つないだときに `-name` (インスタンス) と `-service` (対象のアプリ) を名乗る
 - **依存先**: 対象の pprof、server
