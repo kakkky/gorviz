@@ -10,12 +10,13 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
-// maxMessageBytes は 1 つのメッセージの上限。gRPC の既定 (4MiB) では、再生用のイベントを打ち切りまで積んだ区切りや、生の trace を載せた区切りが収まらない
+// maxMessageBytes は 1 つのメッセージの上限。gRPC の既定 (4MiB) では、忙しい対象の区切り (全イベント) が収まらない
 const maxMessageBytes = 256 << 20
 
 // keepalive の間隔。止まった相手や、途中の LB に黙って切られた接続を早く見つけて、つなぎ直せるようにする
@@ -39,7 +40,8 @@ func NewClientConn(conn net.Conn) (*grpc.ClientConn, error) {
 	cc, err := grpc.NewClient("passthrough:///"+conn.RemoteAddr().String(),
 		grpc.WithContextDialer(dial),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageBytes)),
+		// 区切りは関数名などの同じ文字列が繰り返し出るので、圧縮すると何分の 1 かになる
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageBytes), grpc.UseCompressor(gzip.Name)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: pingInterval, Timeout: pingTimeout, PermitWithoutStream: true}),
 		// 使われない間に接続を閉じると、同じ conn をもう張り直せない
 		grpc.WithIdleTimeout(0),

@@ -1,33 +1,38 @@
 package recording
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kakkky/gorviz/internal/app/protocol/model"
-	"github.com/kakkky/gorviz/internal/app/server/domain"
+	"io"
+	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
 	"time"
+
+	"google.golang.org/protobuf/proto"
+
+	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
+	"github.com/kakkky/gorviz/internal/app/protocol/model"
+	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
-// TraceParser は保存した生の trace を読み直す (domain.RuntimeParser の ParseTrace)
-type TraceParser func(raw []byte, receivedAt, countFrom time.Time) (model.TraceChunk, error)
-
-// SavedStore は Issue の前後の録画をディスクに保存する。dir/<id>/meta.json と、区切りごとの生の trace (chunk-N.trace) を置く。
-// 生の trace はそのまま `go tool trace` で開ける。起動時に dir にあるものを読み直し、保持期間 (domain.IssueRetention) を過ぎたものは捨てる
+// SavedStore は Issue の前後の録画をディスクに保存する。dir/<id>/meta.json と、区切りごとに読み込んだ形 (chunk-N.pb.gz、agent から届いたときと同じ protobuf を gzip したもの) を置く。
+// 起動時に dir にあるものを読み直し、保持期間 (domain.IssueRetention) を過ぎたものは捨てる
 type SavedStore struct {
 	mu     sync.RWMutex
 	dir    string
-	parse  TraceParser
 	meta   map[string]model.SavedRecording
 	chunks map[string][]model.TraceChunk
 }
 
-func NewSavedStore(dir string, parse TraceParser, now time.Time) (*SavedStore, error) {
-	s := &SavedStore{dir: dir, parse: parse, meta: map[string]model.SavedRecording{}, chunks: map[string][]model.TraceChunk{}}
+func NewSavedStore(dir string, now time.Time) (*SavedStore, error) {
+	s := &SavedStore{dir: dir, meta: map[string]model.SavedRecording{}, chunks: map[string][]model.TraceChunk{}}
 	if dir == "" {
 		return s, nil
 	}
@@ -69,24 +74,62 @@ func (s *SavedStore) load(id string, now time.Time) error {
 	}
 	var chunks []model.TraceChunk
 	for i := range rec.Chunks {
-		raw, err := os.ReadFile(filepath.Join(s.dir, id, fmt.Sprintf("chunk-%d.trace", i)))
-		if err != nil {
-			return model.ErrInternal.Wrap(err, "read a saved trace")
+		c, err := readChunk(filepath.Join(s.dir, id, chunkFile(i)))
+		if errors.Is(err, fs.ErrNotExist) {
+			// 生の trace で保存していた頃の録画は読めないので飛ばす
+			slog.Warn("skip a saved recording in an old format", slog.String("id", id))
+			return nil
 		}
-		c, err := s.parse(raw, rec.To, time.Time{})
 		if err != nil {
 			return err
 		}
-		c.Raw = raw
-		// 保存したときは agent が前の区切りから待機理由を引き継いでいたので、読み直すときも順に引き継ぐ
-		var prev model.TraceChunk
-		if len(chunks) > 0 {
-			prev = chunks[len(chunks)-1]
-		}
-		c.InheritWaitReasons(prev)
 		chunks = append(chunks, c)
 	}
 	s.meta[id], s.chunks[id] = rec, chunks
+	return nil
+}
+
+func chunkFile(i int) string {
+	return fmt.Sprintf("chunk-%d.pb.gz", i)
+}
+
+func readChunk(path string) (model.TraceChunk, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return model.TraceChunk{}, err
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return model.TraceChunk{}, model.ErrInternal.Wrap(err, "read "+path)
+	}
+	b, err := io.ReadAll(zr)
+	if err != nil {
+		return model.TraceChunk{}, model.ErrInternal.Wrap(err, "read "+path)
+	}
+	var pb agentrpc.TraceChunk
+	if err := proto.Unmarshal(b, &pb); err != nil {
+		return model.TraceChunk{}, model.ErrInternal.Wrap(err, "decode "+path)
+	}
+	return pb.Model(), nil
+}
+
+func writeChunk(path string, c model.TraceChunk) error {
+	b, err := proto.Marshal(agentrpc.NewTraceChunk(c))
+	if err != nil {
+		return model.ErrInternal.Wrap(err, "encode a saved chunk")
+	}
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(b); err != nil {
+		return model.ErrInternal.Wrap(err, "compress a saved chunk")
+	}
+	if err := zw.Close(); err != nil {
+		return model.ErrInternal.Wrap(err, "compress a saved chunk")
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		return model.ErrInternal.Wrap(err, "write a saved chunk")
+	}
 	return nil
 }
 
@@ -99,8 +142,8 @@ func (s *SavedStore) Save(rec model.SavedRecording, chunks []model.TraceChunk) e
 			return model.ErrInternal.Wrap(err, "create a recording directory")
 		}
 		for i, c := range chunks {
-			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("chunk-%d.trace", i)), c.Raw, 0o644); err != nil {
-				return model.ErrInternal.Wrap(err, "write a saved trace")
+			if err := writeChunk(filepath.Join(dir, chunkFile(i)), c); err != nil {
+				return err
 			}
 		}
 		b, err := json.MarshalIndent(rec, "", "  ")
@@ -131,13 +174,6 @@ func (s *SavedStore) List() []model.SavedRecording {
 	}
 	slices.SortFunc(out, func(a, b model.SavedRecording) int { return b.At.Compare(a.At) })
 	return out
-}
-
-func (s *SavedStore) Chunks(id string) ([]model.TraceChunk, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	c, ok := s.chunks[id]
-	return c, ok
 }
 
 func (s *SavedStore) Prune(now time.Time) error {
@@ -184,7 +220,7 @@ func (s *SavedStore) all() []model.TraceChunk {
 	return out
 }
 
-// CompositeTraceRecording は server の側の録画。まず agent のリングバッファを見て、なければ保存した録画を見る
+// CompositeTraceRecording は server の側の録画。agent から届いた区切りをリングバッファに足し、読むときはまずリングバッファを見て、なければ保存した録画を見る
 type CompositeTraceRecording struct {
 	primary domain.TraceRecording
 	saved   *SavedStore
@@ -194,7 +230,9 @@ func NewCompositeTraceRecording(primary domain.TraceRecording, saved *SavedStore
 	return &CompositeTraceRecording{primary: primary, saved: saved}
 }
 
-func (c *CompositeTraceRecording) Append(model.TraceChunk) {}
+func (c *CompositeTraceRecording) Append(chunk model.TraceChunk) {
+	c.primary.Append(chunk)
+}
 
 func (c *CompositeTraceRecording) Latest() (model.TraceChunk, bool) {
 	if ch, ok := c.primary.Latest(); ok {

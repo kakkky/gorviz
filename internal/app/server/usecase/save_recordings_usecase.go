@@ -62,7 +62,7 @@ func (us *SaveRecordingsUsecase) Exec(ctx context.Context, in SaveRecordingsUsec
 		}
 		rec := model.SavedRecording{ID: id, Kind: i.Kind, Subject: i.Subject, At: i.At, From: chunks[0].StartedAt, To: chunks[len(chunks)-1].EndedAt(), Chunks: len(chunks)}
 		for _, c := range chunks {
-			rec.Bytes += int64(len(c.Raw))
+			rec.Bytes += c.SizeBytes()
 		}
 		if err := us.recordings.Save(rec, chunks); err != nil {
 			return out, err
@@ -75,11 +75,6 @@ func (us *SaveRecordingsUsecase) Exec(ctx context.Context, in SaveRecordingsUsec
 // ListRecordings は保存した録画の一覧
 func (us *UseCase) ListRecordings() []model.SavedRecording {
 	return us.recordings.List()
-}
-
-// RecordingChunks は保存した録画の区切り。CLI で `go tool trace` 向けに書き出すのに使う
-func (us *UseCase) RecordingChunks(id string) ([]model.TraceChunk, bool) {
-	return us.recordings.Chunks(id)
 }
 
 func sanitizeID(s string) string {

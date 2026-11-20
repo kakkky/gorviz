@@ -1,4 +1,4 @@
-// Package ingest は server の側で、push の接続の上で agent からの呼び出しを受ける
+// Package ingest は server の側で、agent からの接続の上で agent からの呼び出しを受ける
 package ingest
 
 import (
@@ -28,6 +28,9 @@ func (s *Service) Push(ctx context.Context, req *agentrpc.PushRequest) (*emptypb
 	if d := req.GetDump(); d != nil {
 		dump := d.Model()
 		in.Dump = &dump
+	}
+	for _, c := range req.GetChunks() {
+		in.Chunks = append(in.Chunks, c.Model())
 	}
 	_, err := s.receiveAgentPushUsecase.Exec(ctx, in)
 	return &emptypb.Empty{}, err

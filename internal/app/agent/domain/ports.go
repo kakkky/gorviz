@@ -19,7 +19,7 @@ type RuntimeClient interface {
 	FetchTraceChunk(ctx context.Context, duration time.Duration) (model.TraceChunk, error)
 }
 
-// RuntimeParser は pprof の goroutine dump と execution trace を読む。RuntimeClient の実装と、保存した録画を読み直す側が使う
+// RuntimeParser は pprof の goroutine dump と execution trace を読む。RuntimeClient の実装が使う
 type RuntimeParser interface {
 	ParseGoroutineDump(r io.Reader) ([]model.Goroutine, error)
 	ParseTrace(raw []byte, receivedAt, countFrom time.Time) (model.TraceChunk, error)
@@ -29,15 +29,11 @@ type LogParser interface {
 	Parse(raw string, source string, receivedAt time.Time) model.LogLine
 }
 
+// TraceRecording は取った区切りを server に送るまで持つ
 type TraceRecording interface {
 	Append(chunk model.TraceChunk)
-	Latest() (model.TraceChunk, bool)
-	At(t time.Time) (model.TraceChunk, bool)
-	// Between は [from, to] に重なる区切りを古い順に返す
-	Between(from, to time.Time) []model.TraceChunk
-	FindLogMark(seq uint64) (model.TraceChunk, model.TraceLogMark, bool)
-	// Span は今持てている区間と、その大きさ。持てる時間は trace の量 (対象の忙しさ) で変わる
-	Span() (model.RecordingSpan, bool)
+	// Since は after より後に始まった区切りを、古い順に limit 個まで返す
+	Since(after time.Time, limit int) []model.TraceChunk
 }
 
 type LogRecording interface {

@@ -57,7 +57,6 @@ func TestTraceChunkRoundTrip(t *testing.T) {
 			}},
 			SchedLatency: h, STW: h, GCMaxShare: 0.25, ProcRunning: 5 * time.Millisecond, ProcGC: time.Millisecond,
 		},
-		Raw: []byte("raw"),
 	}
 
 	got := roundTrip(t, agentrpc.NewTraceChunk(chunk), &agentrpc.TraceChunk{}).Model()
@@ -99,18 +98,9 @@ func TestGoroutineDumpRoundTrip(t *testing.T) {
 	assert.Equal(t, dump, got)
 }
 
-func TestRecordingSpanRoundTrip(t *testing.T) {
-	t.Parallel()
-	span := model.RecordingSpan{From: time.Date(2026, 11, 20, 12, 0, 0, 0, time.Local), To: time.Date(2026, 11, 20, 12, 1, 0, 0, time.Local), Bytes: 10, LimitBytes: 20}
-
-	got := roundTrip(t, agentrpc.NewRecordingSpan(span), &agentrpc.RecordingSpan{}).Model()
-
-	assert.Equal(t, span, got)
-}
-
 func TestMissingMessageIsZero(t *testing.T) {
 	t.Parallel()
-	var reply agentrpc.ChunkReply
+	var chunk *agentrpc.TraceChunk
 
-	assert.Equal(t, model.TraceChunk{}, reply.GetChunk().Model(), "a reply without a chunk reads as the zero chunk")
+	assert.Equal(t, model.TraceChunk{}, chunk.Model(), "a missing chunk reads as the zero chunk")
 }

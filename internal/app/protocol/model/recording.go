@@ -2,24 +2,22 @@ package model
 
 import "time"
 
-// TraceChunk は録画の 1 区切り。trace は同時に 1 本しか取れないので、録画ループが区切りを間を空けずに取り続け、
-// Live も Explore もここから読む。
+// TraceChunk は録画の 1 区切り。trace は同時に 1 本しか取れないので、agent が区切りを間を空けずに取り続け、
+// 読み込んだこの形で server に送る。生の trace は持たない
 type TraceChunk struct {
 	// StartedAt は Timeline の時刻 0 に当たる壁時計の時刻。trace の時計とログの時刻を対応づけるのに使う
 	StartedAt time.Time
 	Timeline  SchedulerTimeline
 	LogMarks  []TraceLogMark
 	Stats     TraceStats
-	// Raw は取ったままの trace。`go tool trace` で開けるように書き出したり、保存したりするのに使う
-	Raw []byte
 }
 
-// schedEventBytes は読み込んだ再生用イベント 1 つがメモリで占める大きさの目安
+// schedEventBytes は読み込んだイベント 1 つがメモリで占める大きさの目安
 const schedEventBytes = 96
 
-// SizeBytes はリングバッファの上限に数える大きさ。生の trace と、読み込んだイベントの両方を数える
+// SizeBytes はリングバッファの上限に数える大きさ
 func (c TraceChunk) SizeBytes() int64 {
-	return int64(len(c.Raw)) + int64(len(c.Timeline.Events))*schedEventBytes
+	return int64(len(c.Timeline.Events)) * schedEventBytes
 }
 
 const (

@@ -1,4 +1,4 @@
-// Package agent は agent を組み立てる。agent は対象 1 つを観測し、取る・持つ・軽いものを送る・trace を求められたら返すだけで、判定はしない。
+// Package agent は agent を組み立てる。agent は対象 1 つを観測し、取って読み込み、server に送るだけで、判定はしない。
 // cmd/agent (daemon 型・sidecar 型) は RunTargets を、アプリに埋め込むライブラリ型は NewEmbedded を使う
 package agent
 
@@ -20,7 +20,6 @@ import (
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
 	"github.com/kakkky/gorviz/internal/app/agent/driver/serverconn"
 	"github.com/kakkky/gorviz/internal/app/agent/presentation/loginput"
-	"github.com/kakkky/gorviz/internal/app/agent/presentation/pull"
 	"github.com/kakkky/gorviz/internal/app/agent/presentation/push"
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
 	"github.com/kakkky/gorviz/internal/app/agent/worker"
@@ -39,7 +38,6 @@ type Agent struct {
 	hello    agentrpc.Hello
 	record   *worker.RecordWorker
 	logInput *loginput.LogInput
-	pull     *pull.Service
 	push     *push.Stream
 }
 
@@ -58,20 +56,16 @@ func New(cfg *config.Config, runtimeClient domain.RuntimeClient) *Agent {
 		hello:    agentrpc.Hello{Name: cfg.Name, Service: cfg.Service, Target: cfg.TargetURL},
 		record:   worker.NewRecordWorker(cfg, uc),
 		logInput: loginput.NewLogInput(uc),
-		pull:     pull.NewService(uc),
 		push:     push.NewStream(cfg.Refresh, uc),
 	}
 }
 
-// Run は録画と、ログの取り込みと、server への 2 本の接続 (軽いものの push・trace の pull) を回す。ctx が終わるまで返らない
+// Run は録画と、ログの取り込みと、server への送信を回す。ctx が終わるまで返らない
 func (a *Agent) Run(ctx context.Context, logs ...LogSource) error {
 	return scope.Run(ctx, func(sc *scope.Scope) error {
 		sc.Go(a.record.Run)
 		sc.Go(func(ctx context.Context) error {
 			return serverconn.Push(ctx, a.cfg.AgentAddr, a.hello, a.push.Run)
-		})
-		sc.Go(func(ctx context.Context) error {
-			return serverconn.ServePull(ctx, a.cfg.AgentAddr, a.hello, a.pull)
 		})
 		for _, l := range logs {
 			sc.Go(func(ctx context.Context) error {

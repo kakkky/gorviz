@@ -60,17 +60,21 @@ func (x *GoroutineDump) Model() model.GoroutineDump {
 	}
 }
 
+func NewTraceChunks(cs []model.TraceChunk) []*TraceChunk {
+	return each(cs, NewTraceChunk)
+}
+
 func NewTraceChunk(c model.TraceChunk) *TraceChunk {
 	return &TraceChunk{
 		StartedAt: Timestamp(c.StartedAt), Timeline: newTimeline(c.Timeline), LogMarks: each(c.LogMarks, NewTraceLogMark),
-		Stats: newStats(c.Stats), Raw: c.Raw,
+		Stats: newStats(c.Stats),
 	}
 }
 
 func (x *TraceChunk) Model() model.TraceChunk {
 	return model.TraceChunk{
 		StartedAt: TimeOf(x.GetStartedAt()), Timeline: x.GetTimeline().model(),
-		LogMarks: each(x.GetLogMarks(), (*TraceLogMark).Model), Stats: x.GetStats().model(), Raw: x.GetRaw(),
+		LogMarks: each(x.GetLogMarks(), (*TraceLogMark).Model), Stats: x.GetStats().model(),
 	}
 }
 
@@ -80,14 +84,6 @@ func NewTraceLogMark(m model.TraceLogMark) *TraceLogMark {
 
 func (x *TraceLogMark) Model() model.TraceLogMark {
 	return model.TraceLogMark{Seq: x.GetSeq(), Goroutine: model.GoroutineID(x.GetGoroutine()), At: time.Duration(x.GetAtNs())}
-}
-
-func NewRecordingSpan(s model.RecordingSpan) *RecordingSpan {
-	return &RecordingSpan{From: Timestamp(s.From), To: Timestamp(s.To), Bytes: s.Bytes, LimitBytes: s.LimitBytes}
-}
-
-func (x *RecordingSpan) Model() model.RecordingSpan {
-	return model.RecordingSpan{From: TimeOf(x.GetFrom()), To: TimeOf(x.GetTo()), Bytes: x.GetBytes(), LimitBytes: x.GetLimitBytes()}
 }
 
 func newTimeline(t model.SchedulerTimeline) *SchedulerTimeline {

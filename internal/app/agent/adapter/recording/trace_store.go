@@ -7,10 +7,9 @@ import (
 	"github.com/kakkky/gorviz/internal/app/protocol/model"
 )
 
-// TraceStore は録画した区切りを古い順に持つリングバッファ。大きさの合計が上限を超えたら古いものから捨てる (最新の 1 つは残す)。
-// 上限は時間ではなくバイト数なので、対象が忙しいほど持てる時間は短くなる
+// TraceStore は取った区切りを server に送るまで古い順に持つ。server とつながらない間に大きさの合計が上限を超えたら、古いものから捨てる (最新の 1 つは残す)
 type TraceStore struct {
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	chunks   []model.TraceChunk
 	bytes    int64
 	maxBytes int64
@@ -20,6 +19,7 @@ func NewTraceStore(maxBytes int64) *TraceStore {
 	return &TraceStore{maxBytes: maxBytes}
 }
 
+// Append は区切りを足す。runtime は区切りより前から続く待ちの理由を書かないので、直前の区切りから引き継いでから持つ
 func (s *TraceStore) Append(chunk model.TraceChunk) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -37,57 +37,19 @@ func (s *TraceStore) Append(chunk model.TraceChunk) {
 	}
 }
 
-func (s *TraceStore) Span() (model.RecordingSpan, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.chunks) == 0 {
-		return model.RecordingSpan{}, false
-	}
-	return model.RecordingSpan{From: s.chunks[0].StartedAt, To: s.chunks[len(s.chunks)-1].EndedAt(), Bytes: s.bytes, LimitBytes: s.maxBytes}, true
-}
-
-func (s *TraceStore) Latest() (model.TraceChunk, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if len(s.chunks) == 0 {
-		return model.TraceChunk{}, false
-	}
-	return s.chunks[len(s.chunks)-1], true
-}
-
-func (s *TraceStore) At(t time.Time) (model.TraceChunk, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for i := len(s.chunks) - 1; i >= 0; i-- {
-		if s.chunks[i].Contains(t) {
-			return s.chunks[i], true
-		}
-	}
-	return model.TraceChunk{}, false
-}
-
-func (s *TraceStore) Between(from, to time.Time) []model.TraceChunk {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// Since は after より後に始まった区切りを、古い順に limit 個まで返す
+func (s *TraceStore) Since(after time.Time, limit int) []model.TraceChunk {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []model.TraceChunk
 	for _, c := range s.chunks {
-		if c.EndedAt().Before(from) || c.StartedAt.After(to) {
+		if !c.StartedAt.After(after) {
 			continue
 		}
 		out = append(out, c)
-	}
-	return out
-}
-
-func (s *TraceStore) FindLogMark(seq uint64) (model.TraceChunk, model.TraceLogMark, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	for i := len(s.chunks) - 1; i >= 0; i-- {
-		for _, m := range s.chunks[i].LogMarks {
-			if m.Seq == seq {
-				return s.chunks[i], m, true
-			}
+		if len(out) >= limit {
+			break
 		}
 	}
-	return model.TraceChunk{}, model.TraceLogMark{}, false
+	return out
 }

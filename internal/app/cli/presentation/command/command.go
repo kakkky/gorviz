@@ -37,18 +37,3 @@ func (c *Command) Issues(ctx context.Context) error {
 	}
 	return nil
 }
-
-// Export は保存した録画を out の下に書き出し、書き出した先を 1 件ずつ書く
-func (c *Command) Export(ctx context.Context, out string) error {
-	res, err := c.usecase.NewExportRecordingsUsecase().Exec(ctx, usecase.ExportRecordingsUsecaseInput{Out: out})
-	for _, r := range res.Exported {
-		fmt.Fprintf(c.w, "%s: %d chunks → %s (go tool trace %s/chunk-0.trace)\n", r.ID, r.Chunks, r.Location, r.Location)
-	}
-	if err != nil {
-		return err
-	}
-	if len(res.Exported) == 0 {
-		fmt.Fprintln(c.w, "no saved recordings")
-	}
-	return nil
-}

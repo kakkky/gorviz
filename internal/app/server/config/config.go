@@ -13,6 +13,8 @@ type Config struct {
 	AgentAddr string
 	// SaveDir は server が Issue の前後の録画を保存するディレクトリ。空なら保存しない (メモリにだけ持つ)
 	SaveDir string
+	// TraceBufferBytes は agent ごとに、届いた区切りの直近を持つリングバッファの上限。時間ではなくバイト数で決め、超えたら古い区切りから捨てる
+	TraceBufferBytes int64
 	// Refresh は画面 (Live の再生・CLI) を新しくする間隔。対象には触らず、録画済みのものを読むだけ
 	Refresh time.Duration
 	// TraceWindow は Scheduler で再生する長さの既定。録画の最新の区切りの末尾をこの長さだけ切り出す
@@ -34,6 +36,7 @@ func NewConfig(name string, args []string) (*Config, error) {
 	fs.StringVar(&cfg.HTTPAddr, "addr", "localhost:7070", "listen address of the GUI and the API (server)")
 	fs.StringVar(&cfg.AgentAddr, "agent-addr", "localhost:7071", "TCP address where the server waits for agents and agents connect to")
 	fs.StringVar(&cfg.SaveDir, "save-dir", "", "directory where the server saves recordings around issues (empty: memory only)")
+	traceBufferMiB := fs.Int64("trace-buffer-mib", 256, "upper bound in MiB of the latest trace chunks kept per agent")
 	fs.DurationVar(&cfg.Refresh, "refresh", 2*time.Second, "refresh interval of the live views (does not touch the target)")
 	fs.DurationVar(&cfg.TraceWindow, "trace-window", 500*time.Millisecond, "default length of the latest recorded trace replayed in the scheduler view (100ms, 500ms, 1s or 2s can be picked there)")
 	fs.IntVar(&cfg.LeakMinSamples, "leak-min-samples", 5, "dumps required before reporting a growth-based leak suspect")
@@ -48,5 +51,6 @@ func NewConfig(name string, args []string) (*Config, error) {
 	if fs.NArg() > 0 {
 		return nil, fmt.Errorf("unexpected arguments: %q", fs.Args())
 	}
+	cfg.TraceBufferBytes = *traceBufferMiB << 20
 	return &cfg, nil
 }

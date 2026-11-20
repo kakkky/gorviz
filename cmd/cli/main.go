@@ -1,4 +1,4 @@
-// gorviz は非対話の操作をまとめた CLI。検出した Issue を表示したり、保存した録画を書き出したりする。
+// gorviz は非対話の操作をまとめた CLI。検出した Issue を表示する。
 // 画面は持たない (見るのは GUI)
 package main
 
@@ -18,8 +18,7 @@ import (
 const usage = `gorviz is the command line of gorviz.
 
 Usage:
-  gorviz issues [-server] [-agent]           print the detected issues once
-  gorviz export [-server] [-agent] [-out]    write the saved recordings as trace files for "go tool trace"
+  gorviz issues [-server] [-agent]    print the detected issues once
 `
 
 func main() {
@@ -42,8 +41,6 @@ func run(args []string) error {
 	switch args[0] {
 	case "issues":
 		return issues(ctx, args[1:])
-	case "export":
-		return export(ctx, args[1:])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		return fmt.Errorf("unknown command %q", args[0])
@@ -58,15 +55,4 @@ func issues(ctx context.Context, args []string) error {
 		return err
 	}
 	return cli.Issues(ctx, os.Stdout, *server, *agent)
-}
-
-func export(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("gorviz export", flag.ContinueOnError)
-	server := fs.String("server", "http://localhost:7070", "URL of the gorviz server")
-	agent := fs.String("agent", "", "name of the agent (default: the first connected one)")
-	out := fs.String("out", "gorviz-recordings", "output directory")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	return cli.Export(ctx, os.Stdout, *server, *agent, *out)
 }

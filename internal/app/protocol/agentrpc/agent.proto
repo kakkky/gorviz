@@ -1,6 +1,5 @@
-// agent と server の間の口。接続はどちらも agent から server へ外向きに張り、張った直後に Hello (1 行の JSON) を送ってから gRPC を流す。
-//   - push の接続: agent が呼び出し側で、server の Ingest を呼ぶ
-//   - pull の接続: 向きを逆にして server が呼び出し側になり、agent の Agent を呼ぶ
+// agent と server の間の口。接続は agent から server へ外向きに 1 本張り、張った直後に Hello (1 行の JSON) を送ってから gRPC を流す。
+// agent が呼び出し側で、server の Ingest を呼ぶ。
 // 時間の長さ (_ns) は区切りの先頭からの経過時間か、長さそのもの。時刻は Timestamp で、ないときは送らない
 syntax = "proto3";
 
@@ -12,60 +11,15 @@ import "google/protobuf/timestamp.proto";
 option go_package = "github.com/kakkky/gorviz/internal/app/protocol/agentrpc";
 
 service Ingest {
-  // Push は軽いもの (ログ・goroutine dump) を送る。agent が数秒ごとに呼ぶ
+  // Push はログ・goroutine dump・読み込んだ trace の区切りを送る。agent が数秒ごとに呼ぶ
   rpc Push(PushRequest) returns (google.protobuf.Empty);
 }
 
-// Agent は server が必要なときだけ trace を求める口。持っているものを返すだけで、判定はしない
-service Agent {
-  // LatestChunk は最新の区切りを、生の trace を除いて返す。if_newer_than より新しい区切りがなければ not_modified を返し、同じ区切りを何度も運ばない
-  rpc LatestChunk(LatestChunkRequest) returns (ChunkReply);
-  // ChunkAt は at を含む区切りを、生の trace を除いて返す
-  rpc ChunkAt(ChunkAtRequest) returns (ChunkReply);
-  // ChunksBetween は保存に使うので、生の trace ごと区切りを 1 つずつ流す
-  rpc ChunksBetween(ChunksBetweenRequest) returns (stream TraceChunk);
-  rpc FindLogMark(FindLogMarkRequest) returns (FindLogMarkReply);
-  rpc Span(google.protobuf.Empty) returns (SpanReply);
-}
-
-// PushRequest は前に送ったものから変わっていないものを送らない
+// PushRequest は前に送ったものから変わっていないものを送らない。chunks は古い順
 message PushRequest {
   repeated LogLine logs = 1;
   GoroutineDump dump = 2;
-}
-
-message LatestChunkRequest {
-  google.protobuf.Timestamp if_newer_than = 1;
-}
-
-message ChunkAtRequest {
-  google.protobuf.Timestamp at = 1;
-}
-
-// ChunkReply の chunk がなければ、まだ区切りがない
-message ChunkReply {
-  TraceChunk chunk = 1;
-  bool not_modified = 2;
-}
-
-message ChunksBetweenRequest {
-  google.protobuf.Timestamp from = 1;
-  google.protobuf.Timestamp to = 2;
-}
-
-message FindLogMarkRequest {
-  uint64 seq = 1;
-}
-
-// FindLogMarkReply の chunk がなければ見つからなかった。chunk は生の trace を除く
-message FindLogMarkReply {
-  TraceChunk chunk = 1;
-  TraceLogMark mark = 2;
-}
-
-// SpanReply の span がなければ、まだ何も録っていない
-message SpanReply {
-  RecordingSpan span = 1;
+  repeated TraceChunk chunks = 3;
 }
 
 enum LogLevel {
@@ -119,7 +73,8 @@ message TraceChunk {
   SchedulerTimeline timeline = 2;
   repeated TraceLogMark log_marks = 3;
   TraceStats stats = 4;
-  bytes raw = 5;
+  reserved 5;
+  reserved "raw";
 }
 
 message TraceLogMark {
@@ -257,11 +212,4 @@ message WaitSite {
 message Histogram {
   repeated uint64 counts = 1;
   int64 max_ns = 2;
-}
-
-message RecordingSpan {
-  google.protobuf.Timestamp from = 1;
-  google.protobuf.Timestamp to = 2;
-  int64 bytes = 3;
-  int64 limit_bytes = 4;
 }

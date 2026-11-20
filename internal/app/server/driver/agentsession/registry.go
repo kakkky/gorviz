@@ -36,7 +36,7 @@ func NewRegistry(newSession func(agentrpc.Hello) (*Session, error)) *Registry {
 	return &Registry{newSession: newSession, sessions: map[string]*Session{}}
 }
 
-// Attach は agent が push・pull のどちらかの接続を張ってきたときに呼び、その agent の受け口を返す。
+// Attach は agent が接続を張ってきたときに呼び、その agent の受け口を返す。
 // 初めての agent なら Session を作って start で回し始める。同じ名前の agent がつなぎ直したなら、前と同じ Session を使う
 func (r *Registry) Attach(ctx context.Context, hello agentrpc.Hello, start func(func(context.Context) error)) (agentlistener.Endpoint, bool) {
 	r.mu.Lock()
@@ -52,7 +52,7 @@ func (r *Registry) Attach(ctx context.Context, hello agentrpc.Hello, start func(
 		r.order = append(r.order, hello.Name)
 	}
 	r.mu.Unlock()
-	slog.InfoContext(ctx, "agent connected", slog.String("agent", hello.Name), slog.String("target", hello.Target), slog.String("kind", string(hello.Kind)))
+	slog.InfoContext(ctx, "agent connected", slog.String("agent", hello.Name), slog.String("target", hello.Target))
 	if !ok {
 		for _, w := range s.Workers {
 			start(w)

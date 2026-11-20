@@ -37,12 +37,11 @@ type SavedRecordings interface {
 	Save(rec model.SavedRecording, chunks []model.TraceChunk) error
 	Has(id string) bool
 	List() []model.SavedRecording
-	Chunks(id string) ([]model.TraceChunk, bool)
 	// Prune は IssueRetention を過ぎた録画を捨てる
 	Prune(now time.Time) error
 }
 
-// AgentInbox は agent が push の接続で送ってきたもの (ログ・dump) の受け取り先。DumpSource・LogSource はここに届いたものを読む
+// AgentInbox は agent が送ってきたログ・dump の受け取り先。DumpSource・LogSource はここに届いたものを読む。区切りは TraceRecording に足す
 type AgentInbox interface {
 	Receive(logs []model.LogLine, dump *model.GoroutineDump)
 }

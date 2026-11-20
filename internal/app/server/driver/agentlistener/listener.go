@@ -1,10 +1,9 @@
-// Package agentlistener は server の側で、agent からの接続を待ち受ける。接続ごとに最初の 1 行の Hello を読み、向き (push・pull) で振り分ける
+// Package agentlistener は server の側で、agent からの接続を待ち受ける。接続ごとに最初の 1 行の Hello を読み、その agent の受け口につなぐ
 package agentlistener
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net"
 
@@ -16,14 +15,13 @@ import (
 
 // Endpoint は agent 1 つ分の受け口
 type Endpoint struct {
-	// Pull は pull の接続を受けたときに、その接続で agent を呼ぶ gRPC のクライアントを渡す
-	Pull func(*grpc.ClientConn)
-	// Ingest は push の接続の上で、agent からの呼び出しを受ける
+	// Ingest は接続の上で、agent からの呼び出しを受ける
 	Ingest agentrpc.IngestServer
+	// Attach は接続が張られたときに呼び、返した関数を接続が切れたときに呼ぶ
+	Attach func() (detach func())
 }
 
-// Accept は agent からの接続を受ける。accept でその agent の受け口を引き、pull の接続なら Pull に渡し、
-// push の接続なら Ingest に agent からの呼び出しを受けさせる。ctx が終わるまで返らない
+// Accept は agent からの接続を受ける。accept でその agent の受け口を引き、Ingest に agent からの呼び出しを受けさせる。ctx が終わるまで返らない
 func Accept(ctx context.Context, addr string, accept func(agentrpc.Hello) (Endpoint, bool)) error {
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
@@ -41,9 +39,6 @@ func Accept(ctx context.Context, addr string, accept func(agentrpc.Hello) (Endpo
 			return model.ErrUnavailable.Wrap(err, "accept an agent")
 		}
 		hello, err := readHello(conn)
-		if err == nil && hello.Kind != agentrpc.ConnPush && hello.Kind != agentrpc.ConnPull {
-			err = model.ErrInvalidArgument.With(fmt.Sprintf("unknown connection kind %q", hello.Kind))
-		}
 		if err != nil {
 			slog.WarnContext(ctx, "read the agent hello", slog.Any("err", err))
 			conn.Close()
@@ -54,23 +49,14 @@ func Accept(ctx context.Context, addr string, accept func(agentrpc.Hello) (Endpo
 			conn.Close()
 			continue
 		}
-		if hello.Kind == agentrpc.ConnPull {
-			cc, err := agentrpc.NewClientConn(conn)
-			if err != nil {
-				slog.ErrorContext(ctx, "create a client for the agent", slog.String("agent", hello.Name), slog.Any("err", err))
-				conn.Close()
-				continue
-			}
-			ep.Pull(cc)
-			continue
-		}
-		go servePush(ctx, conn, ep.Ingest)
+		go serve(ctx, conn, ep)
 	}
 }
 
-func servePush(ctx context.Context, conn net.Conn, ingest agentrpc.IngestServer) {
+func serve(ctx context.Context, conn net.Conn, ep Endpoint) {
 	defer conn.Close()
-	agentrpc.Serve(ctx, conn, func(s grpc.ServiceRegistrar) { agentrpc.RegisterIngestServer(s, ingest) })
+	defer ep.Attach()()
+	agentrpc.Serve(ctx, conn, func(s grpc.ServiceRegistrar) { agentrpc.RegisterIngestServer(s, ep.Ingest) })
 }
 
 // readHello は 1 行だけ読む。後ろは gRPC がそのまま使うので、余分に読み進めない

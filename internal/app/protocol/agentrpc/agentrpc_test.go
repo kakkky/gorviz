@@ -12,12 +12,12 @@ import (
 	agentkvs "github.com/kakkky/gorviz/internal/app/agent/adapter/kvs"
 	agentrecording "github.com/kakkky/gorviz/internal/app/agent/adapter/recording"
 	"github.com/kakkky/gorviz/internal/app/agent/driver/serverconn"
-	"github.com/kakkky/gorviz/internal/app/agent/presentation/pull"
 	"github.com/kakkky/gorviz/internal/app/agent/presentation/push"
 	agentusecase "github.com/kakkky/gorviz/internal/app/agent/usecase"
 	"github.com/kakkky/gorviz/internal/app/protocol/agentrpc"
 	"github.com/kakkky/gorviz/internal/app/protocol/model"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/agentconn"
+	serverrecording "github.com/kakkky/gorviz/internal/app/server/adapter/recording"
 	"github.com/kakkky/gorviz/internal/app/server/driver/agentlistener"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/ingest"
 	serverusecase "github.com/kakkky/gorviz/internal/app/server/usecase"
@@ -36,112 +36,105 @@ func (f fakeRuntime) FetchTraceChunk(context.Context, time.Duration) (model.Trac
 	return model.TraceChunk{}, nil
 }
 
-func TestAgentToServer(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// server は区切りをリングバッファに、ログ・dump を inbox に受ける
+type server struct {
+	inbox  *agentconn.Inbox
+	traces *serverrecording.TraceStore
+}
+
+func startServer(ctx context.Context, addr string, accepted chan<- agentrpc.Hello) server {
+	s := server{inbox: agentconn.NewInbox(100), traces: serverrecording.NewTraceStore(1 << 20)}
+	uc := serverusecase.NewUseCase(serverusecase.Settings{}, s.inbox, s.inbox, nil, s.traces, nil, nil, nil, nil, s.inbox)
+	go func() {
+		_ = agentlistener.Accept(ctx, addr, func(h agentrpc.Hello) (agentlistener.Endpoint, bool) {
+			if accepted != nil {
+				accepted <- h
+			}
+			return agentlistener.Endpoint{Ingest: ingest.NewService(uc), Attach: s.inbox.Attach}, true
+		})
+	}()
+	return s
+}
+
+func freeAddr(t *testing.T) string {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	addr := ln.Addr().String()
 	require.NoError(t, ln.Close())
+	return addr
+}
+
+func TestAgentToServer(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	addr := freeAddr(t)
 
 	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
 	traces := agentrecording.NewTraceStore(1 << 20)
-	traces.Append(model.TraceChunk{StartedAt: base, Timeline: model.SchedulerTimeline{Window: time.Second}, Raw: []byte("raw"), LogMarks: []model.TraceLogMark{{Seq: 3, Goroutine: 9}}})
+	for i := range 6 {
+		traces.Append(model.TraceChunk{StartedAt: base.Add(time.Duration(i) * time.Second), Timeline: model.SchedulerTimeline{Window: time.Second}, LogMarks: []model.TraceLogMark{{Seq: uint64(i), Goroutine: 9}}})
+	}
 	goroutines := []model.Goroutine{{ID: 1, State: "chan receive", Labels: map[string]string{"scope": "s"}}}
 	logs := agentrecording.NewLogStore(100)
 	logs.Append(model.LogLine{Message: "a"})
 	logs.Append(model.LogLine{Message: "b"})
 	agentUC := agentusecase.NewUseCase(agentusecase.Settings{}, fakeRuntime{goroutines}, agentkvs.NewInMemoryKVS(), traces, logs, nil)
-	_, err = agentUC.NewRecordDumpUsecase().Exec(ctx, agentusecase.RecordDumpUsecaseInput{Now: base})
+	_, err := agentUC.NewRecordDumpUsecase().Exec(ctx, agentusecase.RecordDumpUsecaseInput{Now: base})
 	require.NoError(t, err)
 
-	hello := agentrpc.Hello{Name: "api", Target: "http://app:6060"}
-	accepted := make(chan agentrpc.Hello, 2)
-	agent := agentconn.NewClient(100)
-	serverUC := serverusecase.NewUseCase(serverusecase.Settings{}, agent, agent, nil, agent, nil, nil, nil, nil, agent)
+	accepted := make(chan agentrpc.Hello, 1)
+	srv := startServer(ctx, addr, accepted)
 	go func() {
-		_ = agentlistener.Accept(ctx, addr, func(h agentrpc.Hello) (agentlistener.Endpoint, bool) {
-			accepted <- h
-			return agentlistener.Endpoint{Pull: agent.SetConn, Ingest: ingest.NewService(serverUC)}, true
-		})
+		_ = serverconn.Push(ctx, addr, agentrpc.Hello{Name: "api", Target: "http://app:6060"}, push.NewStream(10*time.Millisecond, agentUC).Run)
 	}()
-	go func() { _ = serverconn.Push(ctx, addr, hello, push.NewStream(10*time.Millisecond, agentUC).Run) }()
-	go func() { _ = serverconn.ServePull(ctx, addr, hello, pull.NewService(agentUC)) }()
 
-	var kinds []agentrpc.ConnKind
-	for range 2 {
-		select {
-		case h := <-accepted:
-			assert.Equal(t, "api", h.Name, "the agent introduces itself on each connection it dialed")
-			kinds = append(kinds, h.Kind)
-		case <-time.After(5 * time.Second):
-			t.Fatal("the agent did not connect")
-		}
+	select {
+	case h := <-accepted:
+		assert.Equal(t, "api", h.Name, "the agent introduces itself on the connection it dialed")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the agent did not connect")
 	}
-	assert.ElementsMatch(t, []agentrpc.ConnKind{agentrpc.ConnPush, agentrpc.ConnPull}, kinds, "the agent dials one connection per direction")
+	require.Eventually(t, srv.inbox.Connected, 5*time.Second, 10*time.Millisecond)
 
-	require.Eventually(t, func() bool { _, ok := agent.LatestDump(); return ok }, 5*time.Second, 10*time.Millisecond)
-	got, _ := agent.LatestDump()
+	require.Eventually(t, func() bool { _, ok := srv.inbox.LatestDump(); return ok }, 5*time.Second, 10*time.Millisecond)
+	got, _ := srv.inbox.LatestDump()
 	assert.Equal(t, goroutines, got.Goroutines, "the agent pushes the dump")
-	assert.Equal(t, []model.LogLine{{ID: 2, Message: "b"}}, agent.LogsSince(1, 10), "the server reads the pushed logs after its cursor")
-	assert.Empty(t, agent.LogsSince(2, 10), "lines the server has read are dropped from the client")
+	assert.Equal(t, []model.LogLine{{ID: 2, Message: "b"}}, srv.inbox.LogsSince(1, 10), "the server reads the pushed logs after its cursor")
+	assert.Empty(t, srv.inbox.LogsSince(2, 10), "lines the server has read are dropped from the inbox")
 
-	require.Eventually(t, agent.Connected, 5*time.Second, 10*time.Millisecond)
-	latest, ok := agent.Latest()
+	require.Eventually(t, func() bool { return len(srv.traces.Between(base, base.Add(time.Hour))) == 6 }, 5*time.Second, 10*time.Millisecond,
+		"every chunk reaches the server, a few at a time")
+	_, mark, ok := srv.traces.FindLogMark(3)
 	assert.True(t, ok)
-	assert.Nil(t, latest.Raw, "the latest chunk for the live view is pulled without the raw trace")
-	again, ok := agent.Latest()
-	assert.True(t, ok)
-	assert.Equal(t, latest.StartedAt, again.StartedAt, "an unchanged latest chunk is not sent again")
-
-	between := agent.Between(base, base.Add(time.Second))
-	require.Len(t, between, 1)
-	assert.Equal(t, []byte("raw"), between[0].Raw, "chunks for saving carry the raw trace")
-
-	_, mark, ok := agent.FindLogMark(3)
-	assert.True(t, ok)
-	assert.Equal(t, model.GoroutineID(9), mark.Goroutine)
+	assert.Equal(t, model.GoroutineID(9), mark.Goroutine, "chunks keep the log marks")
 }
 
 func TestAgentReconnectsAfterServerRestart(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := ln.Addr().String()
-	require.NoError(t, ln.Close())
+	addr := freeAddr(t)
 
 	base := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
 	traces := agentrecording.NewTraceStore(1 << 20)
 	traces.Append(model.TraceChunk{StartedAt: base, Timeline: model.SchedulerTimeline{Window: time.Second}})
 	agentUC := agentusecase.NewUseCase(agentusecase.Settings{}, fakeRuntime{}, agentkvs.NewInMemoryKVS(), traces, agentrecording.NewLogStore(100), nil)
-	_, err = agentUC.NewRecordDumpUsecase().Exec(ctx, agentusecase.RecordDumpUsecaseInput{Now: base})
+	_, err := agentUC.NewRecordDumpUsecase().Exec(ctx, agentusecase.RecordDumpUsecaseInput{Now: base})
 	require.NoError(t, err)
-	hello := agentrpc.Hello{Name: "api", Target: "http://app:6060"}
-	go func() { _ = serverconn.Push(ctx, addr, hello, push.NewStream(10*time.Millisecond, agentUC).Run) }()
-	go func() { _ = serverconn.ServePull(ctx, addr, hello, pull.NewService(agentUC)) }()
+	go func() {
+		_ = serverconn.Push(ctx, addr, agentrpc.Hello{Name: "api", Target: "http://app:6060"}, push.NewStream(10*time.Millisecond, agentUC).Run)
+	}()
 
-	startServer := func(ctx context.Context) *agentconn.Client {
-		agent := agentconn.NewClient(100)
-		serverUC := serverusecase.NewUseCase(serverusecase.Settings{}, agent, agent, nil, agent, nil, nil, nil, nil, agent)
-		go func() {
-			_ = agentlistener.Accept(ctx, addr, func(agentrpc.Hello) (agentlistener.Endpoint, bool) {
-				return agentlistener.Endpoint{Pull: agent.SetConn, Ingest: ingest.NewService(serverUC)}, true
-			})
-		}()
-		return agent
-	}
 	firstCtx, stopFirst := context.WithCancel(ctx)
-	first := startServer(firstCtx)
-	require.Eventually(t, first.Connected, 5*time.Second, 10*time.Millisecond)
-	require.Eventually(t, func() bool { _, ok := first.LatestDump(); return ok }, 5*time.Second, 10*time.Millisecond)
+	first := startServer(firstCtx, addr, nil)
+	require.Eventually(t, first.inbox.Connected, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { _, ok := first.traces.Latest(); return ok }, 5*time.Second, 10*time.Millisecond)
 
 	stopFirst()
-	first.SetConn(nil)
-	second := startServer(ctx)
+	second := startServer(ctx, addr, nil)
 
-	require.Eventually(t, func() bool { _, ok := second.Latest(); return ok }, 10*time.Second, 50*time.Millisecond, "the agent dials the restarted server again and answers pulls")
-	require.Eventually(t, func() bool { _, ok := second.LatestDump(); return ok }, 10*time.Second, 50*time.Millisecond, "the agent pushes to the restarted server again")
+	require.Eventually(t, func() bool { _, ok := second.traces.Latest(); return ok }, 10*time.Second, 50*time.Millisecond, "the agent sends the chunks it holds to the restarted server")
+	require.Eventually(t, func() bool { _, ok := second.inbox.LatestDump(); return ok }, 10*time.Second, 50*time.Millisecond, "the agent pushes to the restarted server again")
 }

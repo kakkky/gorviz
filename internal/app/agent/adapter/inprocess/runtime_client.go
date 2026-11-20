@@ -63,7 +63,6 @@ func (c *RuntimeClient) FetchTraceChunk(ctx context.Context, duration time.Durat
 	if err != nil {
 		return model.TraceChunk{}, err
 	}
-	chunk.Raw = buf.Bytes()
 	if !c.last.IsZero() {
 		chunk = chunk.Since(c.last)
 	}

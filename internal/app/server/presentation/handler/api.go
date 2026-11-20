@@ -32,7 +32,6 @@ func (a *API) Routes() []Route {
 		{Pattern: "GET /api/logs", Handler: a.withUseCase(a.logs)},
 		{Pattern: "GET /api/goroutines/{id}", Handler: a.withUseCase(a.goroutine)},
 		{Pattern: "GET /api/recordings", Handler: a.withUseCase(a.recordings)},
-		{Pattern: "GET /api/recordings/{id}/chunks/{n}", Handler: a.withUseCase(a.recordingChunk)},
 	}
 }
 
@@ -162,20 +161,6 @@ func (a *API) recordings(rw http.ResponseWriter, _ *http.Request, uc *usecase.Us
 		recs = []model.SavedRecording{}
 	}
 	writeJSON(rw, recs)
-}
-
-// recordingChunk は保存した録画の n 番目の区切りを、取ったままの trace として返す。`go tool trace` で開ける
-func (a *API) recordingChunk(rw http.ResponseWriter, r *http.Request, uc *usecase.UseCase) {
-	chunks, ok := uc.RecordingChunks(r.PathValue("id"))
-	n, err := strconv.Atoi(r.PathValue("n"))
-	if !ok || err != nil || n < 0 || n >= len(chunks) {
-		writeJSONError(rw, http.StatusNotFound, "no such recording chunk")
-		return
-	}
-	rw.Header().Set("Content-Type", "application/octet-stream")
-	if _, err := rw.Write(chunks[n].Raw); err != nil {
-		slog.ErrorContext(r.Context(), "write a recording chunk", slog.Any("err", err))
-	}
 }
 
 func writeJSON(rw http.ResponseWriter, v any) {

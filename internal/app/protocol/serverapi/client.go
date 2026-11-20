@@ -70,16 +70,6 @@ func (c *Client) Recordings(ctx context.Context) ([]model.SavedRecording, error)
 	return out, c.get(ctx, "/api/recordings", nil, &out)
 }
 
-// RecordingChunk は保存した録画の n 番目の区切りを、取ったままの trace として返す
-func (c *Client) RecordingChunk(ctx context.Context, id string, n int) ([]byte, error) {
-	body, err := c.do(ctx, fmt.Sprintf("/api/recordings/%s/chunks/%d", url.PathEscape(id), n), nil)
-	if err != nil {
-		return nil, err
-	}
-	defer body.Close()
-	return io.ReadAll(body)
-}
-
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
 	body, err := c.do(ctx, path, q)
 	if err != nil {

@@ -24,7 +24,6 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/presentation/ingest"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 	"github.com/kakkky/gorviz/internal/app/server/worker"
-	"github.com/kakkky/gorviz/internal/runtimeparse"
 )
 
 // Run は GUI・API の HTTP と、agent からの接続の待ち受けを回す。ctx が終わるまで返らない
@@ -48,7 +47,7 @@ func newSession(cfg *config.Config, hello agentrpc.Hello) (*agentsession.Session
 	if cfg.SaveDir != "" {
 		saveDir = filepath.Join(cfg.SaveDir, hello.Name)
 	}
-	saved, err := recording.NewSavedStore(saveDir, runtimeparse.NewParser().ParseTrace, time.Now())
+	saved, err := recording.NewSavedStore(saveDir, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -68,18 +67,18 @@ func newSession(cfg *config.Config, hello agentrpc.Hello) (*agentsession.Session
 	if err != nil {
 		return nil, err
 	}
-	agent := agentconn.NewClient(cfg.MaxLogLines)
+	inbox := agentconn.NewInbox(cfg.MaxLogLines)
 	sessionCfg := *cfg
 	sessionCfg.TargetURL = hello.Name + " — " + hello.Target
-	uc := usecase.NewUseCase(settingsOf(cfg), agent, agent, kvs.NewInMemoryKVS(),
-		recording.NewCompositeTraceRecording(agent, saved), recording.NewLogStore(cfg.MaxLogLines), saved, metrics, issues, agent)
+	uc := usecase.NewUseCase(settingsOf(cfg), inbox, inbox, kvs.NewInMemoryKVS(),
+		recording.NewCompositeTraceRecording(recording.NewTraceStore(cfg.TraceBufferBytes), saved), recording.NewLogStore(cfg.MaxLogLines), saved, metrics, issues, inbox)
 	return &agentsession.Session{
 		Handler: handler.Session{
-			Name: hello.Name, Service: hello.Service, Target: hello.Target, Connected: agent.Connected, UseCase: uc,
+			Name: hello.Name, Service: hello.Service, Target: hello.Target, Connected: inbox.Connected, UseCase: uc,
 			Handler: httpserver.NewRouteMux(handler.NewHandler(&sessionCfg, uc).Routes()),
 		},
-		Endpoint: agentlistener.Endpoint{Pull: agent.SetConn, Ingest: ingest.NewService(uc)},
-		Workers:  []func(context.Context) error{worker.NewDiagnoseWorker(hello.Name, agent.Connected, cfg.Refresh, uc).Run},
+		Endpoint: agentlistener.Endpoint{Ingest: ingest.NewService(uc), Attach: inbox.Attach},
+		Workers:  []func(context.Context) error{worker.NewDiagnoseWorker(hello.Name, inbox.Connected, cfg.Refresh, uc).Run},
 	}, nil
 }
 
