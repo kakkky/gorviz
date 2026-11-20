@@ -175,9 +175,10 @@ sequenceDiagram
 ```
 
 - 診断は、クライアントが求めたときにだけ行う。Issue を検出したときは保存するだけで、診断はしない
-- server が持つ trace は、Issue の前後を保存したものだけ (Issue 自体は保存せず、要るたびにログ・dump から検出し直す)
-  - Issue の前後は後で求められるが、agent のリングバッファ[^ringbuffer]からは数十秒〜数分で消えるため
-  - それ以外は求められることが少なく、量が多いので保存しない (直近なら agent に残っている)
+- server がディスクに持つのは、Issue・推移 (メトリクス)・Issue の前後の trace。どれも 31 日
+  - Issue の前後の trace は後で求められるが、agent のリングバッファ[^ringbuffer]からは数十秒〜数分で消えるため
+  - それ以外の trace は量が多いので生のままは保存しない (直近なら agent に残っている)
+  - 31 日遡るための持ち方 (ログの保存、trace を削ぎ落として持つこと) は [data-retention.md](data-retention.md) で検討している
 - 診断に使う trace は、まず agent に求める。agent のリングバッファから消えていれば、保存したものを使う
 - ローカルでも agent と server は別プロセスにし、本番と同じ口でつなぐ
 
@@ -208,7 +209,8 @@ agent の役割を誰が担うかだけが変わる。server とクライアン�
     - goroutine dump (`debug=2`): `-dump-interval` (既定 1 分) ごと。STW[^stw] を伴うので間隔を空ける
     - goroutineleak プロファイル[^goroutineleak]: dump の `-leak-check-every` 回に 1 回。GC を伴うため
   - ログを取り込む (標準入力。`-logs -`)
-  - trace の直近をリングバッファ (`-trace-buffer-mib`、既定 256 MiB) に持つ。上限はバイト数なので、対象が忙しいほど持てる時間は短い
+  - trace の直近をリングバッファ (`-trace-buffer-mib`、既定 256 MiB) に持つ。上限はバイト数 (生の trace と読み込んだ全イベント) なので、対象が忙しいほど持てる時間は短い
+    - 内訳や主因は全イベントから出すので、読み込むときにイベントを捨てない。画面の再生に送るのは窓あたり 5 万件まで
   - 軽いものを server へ push し、trace は server に求められたら返す
   - つないだときに `-name` (インスタンス) と `-service` (対象のアプリ) を名乗る
 - **依存先**: 対象の pprof、server
@@ -222,7 +224,7 @@ agent の役割を誰が担うかだけが変わる。server とクライアン�
 - **やること**
   - agent からの接続を受け、agent ごとにセッションを持つ (`internal/app/server`)
   - 数秒ごとに、push で届いたログ・dump から Issue を検出する
-  - Issue をきっかけに、その前後の trace を pull してディスクに保存する (`-save-dir`)
+  - Issue をきっかけに、その前後の trace を pull してディスクに保存する (`-save-dir`)。Issue と推移も同じ場所に 31 日持つ
   - 診断: goroutine ごとの状態別の時間内訳[^breakdown]と主因[^cause]
   - GUI (Web) と JSON の API を出す
   - 保存した trace を `go tool trace` で開ける形で書き出す
@@ -234,7 +236,7 @@ GUI の画面:
 | 画面 | 役割 |
 | --- | --- |
 | Overview | 全体の様子 (未解決 Issue の数、goroutine 数・エラー・CPU 待ち・ヒープの推移) |
-| Issues | 検出した問題の一覧 (30 日残る)。1 つ選ぶと、回数の推移と見つかった回ごとの調べに入る先 |
+| Issues | 検出した問題の一覧 (31 日残る)。1 つ選ぶと、回数の推移と見つかった回ごとの調べに入る先 |
 | Logs | ログ一覧と件数の推移。行を開くと JSON のキーと値を見られ、`Goroutine →` で書いた goroutine (分からなければその時刻の Scheduler) を開く |
 | Scheduler | 録画を GMP[^gmp] の概念図で再生する。最新を見ているあいだは新しい窓を追い、窓の端まで再生すると録画の続きをつなぐ。G を選ぶとその Goroutine を開く |
 | Goroutine | 1 つの goroutine の診断と根拠 (その窓で書いたログを含む)。どの画面から入っても最後はここに行き着く |
@@ -345,7 +347,7 @@ Issue は runtime 層の問題だけにする。遅いリクエストやエラ�
 ## やらないこと
 
 - 複数サービスをまたぐ分散トレーシング
-- メトリクスの長期保存・ダッシュボード
+- 汎用のメトリクス基盤・ダッシュボード (推移は Overview と Issues に要る分だけを 31 日持つ)
 - server の SaaS 提供 (セルフホストのみ)
 - OOM の調査 (runtime の中で見えるメモリの逼迫 `MEMORY_PRESSURE` まで)
 - 直し方の提示
