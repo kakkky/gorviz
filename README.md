@@ -102,7 +102,6 @@ bin/gorviz-agent  -name api-1 -service api -target http://localhost:6060 -agent-
 ```sh
 open http://localhost:7070                  # GUI
 bin/gorviz issues                           # Issue の一覧
-bin/gorviz export -out ./export             # 保存した trace を go tool trace で開ける形で書き出す
 ```
 
 GUI の画面:
@@ -147,16 +146,18 @@ agent と server はそれぞれ自分の flag だけを受け付ける。launch
 - **取得 (gorviz-agent)**
   - `-name` / `-service`: agent (インスタンス) の名前と、対象のアプリの名前。画面の左上の切り替えで、service ごとにインスタンスを並べる。launcher で `-service` を省くと、起動するコマンドの名前 (`go run ./example/todo` なら `todo`) になる
   - `-chunk` (既定 2s): trace を区切る長さ
-  - `-trace-buffer-mib` (既定 256): trace の直近を持つ上限。対象が忙しいほど持てる時間は短い
+  - `-trace-buffer-mib` (既定 64): server とつながらない間、送るまでの trace の区切りを持つ上限
   - `-dump-interval` (既定 1m): goroutine dump の間隔。dump は全 goroutine を一瞬止める
   - `-leak-check-every` (既定 5): dump 何回に 1 回、runtime のリーク判定を行うか (GC を伴う。0 で無効)
   - `-record-mode` (既定 `always`): `intermittent` にすると `-record-every` ごとに `-record-for` だけ取る。負荷は減るが、問題の瞬間を取り逃すことがある
   - `-refresh` (既定 2s): agent が server へ送る間隔
+- **持つ (gorviz-server)**
+  - `-trace-buffer-mib` (既定 256): agent ごとに、届いた trace の区切りの直近を持つ上限。対象が忙しいほど持てる時間は短い
 - **判定 (gorviz-server)**
   - `-cpu-wait` / `-gc-per-second`: Issue の閾値
   - `-leak-min-growth`: 件数の推移でリークとみなす増加数
 - **保存 (gorviz-server)**
-  - `-save-dir`: Issue の前後の trace を保存する先 (空ならメモリだけ)
+  - `-save-dir`: Issue の前後の trace の区切り (読み込んだ形)・Issue・推移を保存する先 (空ならメモリだけ)
 
 一覧は `-h` で見る。
 

@@ -60,7 +60,7 @@ gorviz の方針:
 ### プロセスの依存の向き
 
 - 通信の中心は **server**。他のすべてが server に向かってつなぐ
-- agent → server は agent から外向きの TCP 2 本 (push / pull) で、その上で gRPC を流す。対象の環境に外からの入口を開けない
+- agent → server は agent から外向きの TCP 1 本で、その上で gRPC を流す。対象の環境に外からの入口を開けない
 - クライアントは server の HTTP API とだけ話し、agent や対象に直接つながない
 - agent の置き方は 2 通り。server から見るとどちらも同じ agent で、違いは agent が対象からどうデータを取るかだけ
 
@@ -81,7 +81,7 @@ flowchart LR
 
     agent -->|"HTTP で trace・dump を取得"| pprof
     app -->|"stdout / stderr (標準入力経由)"| agent
-    agent -->|"TCP 2 本 (push / pull)"| server
+    agent -->|"TCP 1 本 (gRPC)"| server
 ```
 
 - agent は対象の pprof を HTTP で叩いて trace・goroutine dump を取る。対象のコードは pprof を公開するだけ
@@ -104,12 +104,12 @@ flowchart LR
     app -->|"ログを書く"| h
     h -->|"ログを渡す (プロセス内)"| agent
     agent -->|"trace を切り出す"| fr
-    agent -->|"TCP 2 本 (push / pull)"| server
+    agent -->|"TCP 1 本 (gRPC)"| server
 ```
 
 - agent はアプリと同じプロセスの中で動き、trace は FlightRecorder から直接取る。pprof の公開は要らない
 - ログは、ロガーの差し込み口から agent に直接渡る。アプリが出力したバイト列そのまま
-- trace がアプリのメモリにあるので、プロセスが落ちると直前の trace は残らない
+- 区切りは取るたびに server へ送るので、プロセスが落ちて失うのは送る前の数秒分だけ
 
 #### server とクライアント (共通)
 
@@ -122,7 +122,7 @@ flowchart LR
     mcp["gorviz-mcp"]
     llm["LLM エージェント"]
 
-    agents -->|"TCP 2 本 (push / pull)"| server
+    agents -->|"TCP 1 本 (gRPC)"| server
     browser -->|"HTTP"| server
     cli -->|"HTTP API"| server
     mcp -->|"HTTP API"| server
@@ -131,16 +131,19 @@ flowchart LR
 
 ### 処理の流れ
 
-agent と server の間の 2 本の接続:
+agent は取ったものを読み込んで、server へ送るだけ。持つのは送るまでの分だけで、判定も診断もしない。
 
-| 接続 | 張る側 | 呼び出す側 | 運ぶもの | いつ |
-| --- | --- | --- | --- | --- |
-| push | agent | agent | 軽いもの (ログ・goroutine dump) | 数秒ごと (`-refresh`)。変わっていないものは送らない |
-| pull | agent | server | 重いもの (execution trace) | server が要るときだけ (保存するとき・画面で見るとき) |
+| 運ぶもの | いつ | 形 |
+| --- | --- | --- |
+| ログ | 数秒ごと (`-refresh`) | 取り込んだ行そのまま |
+| goroutine dump | 取るたび (`-dump-interval`) | 読み込んだ形 (G ごとの状態・生成元・スタックの要点) |
+| execution trace | 区切りごと (`-chunk`、既定 2 秒) | 読み込んだ形 (G・P の状態変化、GC の区間、ヒープ、ログの印、集計)。生の trace は送らない |
 
-trace だけ pull にしているのは、量が多く大半は何も起きていない区間なので、常に送ると転送と保存が割に合わないため。
+- trace を読み込んだ形で送るのは、生の trace より小さく、server が持つのも読むのもこの形だけで済むため。`go tool trace` に渡す生の trace は残さない
+- 送り方は gRPC の `Ingest.Push` 1 つ。gzip で圧縮する (関数名などの同じ文字列が繰り返し出るため)
+- server とつながらない間は、agent が送るまでの分を `-trace-buffer-mib` (既定 64 MiB) まで持ち、つなぎ直したら手元の分を送り直す (server は重なりを捨てる)
 
-口の形は `internal/app/protocol/agentrpc/agent.proto` (`make proto.gen` で Go のコードを作る)。どちらの接続も、張った直後に名乗り (1 行の JSON) を送ってから gRPC を流す。pull の接続は TCP を張る側 (agent) が gRPC のサーバになり、server が agent の `Agent` サービスを呼ぶ。gRPC はこの接続をつなぎ直さないので、切れたら agent が張り直す。keepalive で、止まった相手や途中で黙って切られた接続を見つける。
+口の形は `internal/app/protocol/agentrpc/agent.proto` (`make proto.gen` で Go のコードを作る)。接続を張った直後に名乗り (1 行の JSON) を送ってから gRPC を流す。gRPC はこの接続をつなぎ直さないので、切れたら agent が張り直す。keepalive で、止まった相手や途中で黙って切られた接続を見つける。
 
 ```mermaid
 sequenceDiagram
@@ -149,37 +152,33 @@ sequenceDiagram
     participant S as gorviz-server
     participant C as クライアント (GUI / CLI / MCP)
 
-    A->>S: push と pull の接続を張る (agent から外向き)
+    A->>S: 接続を張る (agent から外向き)
     loop 常時
         A->>T: trace・goroutine dump を取得、ログを取り込む
-        A->>A: trace の直近をリングバッファに持つ
+        A->>A: 読み込む
+        A->>S: ログ・dump・trace の区切りを送る
     end
     loop 数秒ごと
-        A->>S: ログ・dump を送る (push)
-        S->>S: Issue を検出する
+        S->>S: 区切りの直近をリングバッファに持ち、Issue を検出する
     end
     opt Issue を検出したとき
-        S->>A: その前後の trace を求める (pull)
-        A-->>S: trace
-        S->>S: ディスクに保存する
+        S->>S: その前後の区切りをディスクに保存する
     end
     C->>S: 画面 / API を開く
-    S->>A: 要る区間の trace を求める (pull)
-    alt agent が持っている
-        A-->>S: trace
-    else agent から消えている
-        S->>S: 保存した trace を読む
+    alt リングバッファにある
+        S->>S: リングバッファの区切りを読む
+    else 消えている
+        S->>S: 保存した区切りを読む
     end
     S->>S: 診断する
     S-->>C: 診断と根拠
 ```
 
 - 診断は、クライアントが求めたときにだけ行う。Issue を検出したときは保存するだけで、診断はしない
-- server がディスクに持つのは、Issue・推移 (メトリクス)・Issue の前後の trace。どれも 31 日
-  - Issue の前後の trace は後で求められるが、agent のリングバッファ[^ringbuffer]からは数十秒〜数分で消えるため
-  - それ以外の trace は量が多いので生のままは保存しない (直近なら agent に残っている)
-  - 31 日遡るための持ち方 (ログの保存、trace を削ぎ落として持つこと) は [data-retention.md](data-retention.md) で検討している
-- 診断に使う trace は、まず agent に求める。agent のリングバッファから消えていれば、保存したものを使う
+- server がディスクに持つのは、Issue・推移 (メトリクス)・Issue の前後の区切り。どれも 31 日
+  - Issue の前後は後で求められるが、server のリングバッファ[^ringbuffer]からは数十秒〜数分で消えるため
+  - それ以外の区切りは量が多いので、今は保存しない
+  - 31 日遡るための持ち方 (ログの保存、区切りを削ぎ落として持つこと) は [data-retention.md](data-retention.md) で検討している
 - ローカルでも agent と server は別プロセスにし、本番と同じ口でつなぐ
 
 ### agent の置き方
@@ -209,12 +208,12 @@ agent の役割を誰が担うかだけが変わる。server とクライアン�
     - goroutine dump (`debug=2`): `-dump-interval` (既定 1 分) ごと。STW[^stw] を伴うので間隔を空ける
     - goroutineleak プロファイル[^goroutineleak]: dump の `-leak-check-every` 回に 1 回。GC を伴うため
   - ログを取り込む (標準入力。`-logs -`)
-  - trace の直近をリングバッファ (`-trace-buffer-mib`、既定 256 MiB) に持つ。上限はバイト数 (生の trace と読み込んだ全イベント) なので、対象が忙しいほど持てる時間は短い
-    - 内訳や主因は全イベントから出すので、読み込むときにイベントを捨てない。画面の再生に送るのは窓あたり 5 万件まで
-  - 軽いものを server へ push し、trace は server に求められたら返す
+  - trace・dump を読み込み、ログと一緒に server へ送る。生の trace は残さない
+    - 内訳や主因は全イベントから出すので、読み込むときにイベントを捨てない
+  - server とつながらない間は、送るまでの区切りを `-trace-buffer-mib` (既定 64 MiB) まで持つ
   - つないだときに `-name` (インスタンス) と `-service` (対象のアプリ) を名乗る
 - **依存先**: 対象の pprof、server
-- **やらないこと**: 判定・診断・画面
+- **やらないこと**: 判定・診断・画面・取ったものを長く持つこと
 - 1 つの対象を観測する agent は 1 つ (trace はプロセスで同時に 1 本しか取れないため)
 
 ### gorviz-server
@@ -223,12 +222,13 @@ agent の役割を誰が担うかだけが変わる。server とクライアン�
 
 - **やること**
   - agent からの接続を受け、agent ごとにセッションを持つ (`internal/app/server`)
-  - 数秒ごとに、push で届いたログ・dump から Issue を検出する
-  - Issue をきっかけに、その前後の trace を pull してディスクに保存する (`-save-dir`)。Issue と推移も同じ場所に 31 日持つ
+  - agent から届いた trace の区切りの直近を、agent ごとのリングバッファ (`-trace-buffer-mib`、既定 256 MiB) に持つ。上限はバイト数なので、対象が忙しいほど持てる時間は短い
+  - 数秒ごとに、届いたログ・dump・区切りから Issue を検出する
+  - Issue をきっかけに、その前後の区切りをディスクに保存する (`-save-dir`)。Issue と推移も同じ場所に 31 日持つ
   - 診断: goroutine ごとの状態別の時間内訳[^breakdown]と主因[^cause]
   - GUI (Web) と JSON の API を出す
-  - 保存した trace を `go tool trace` で開ける形で書き出す
-- **依存先**: agent (pull)、ディスク
+  - 画面の再生に送るイベントは窓あたり 5 万件まで (ブラウザが毎フレーム適用するため)
+- **依存先**: ディスク (agent からはつながってくるだけで、server からは呼ばない)
 - **やらないこと**: 対象に直接つなぐこと
 
 GUI の画面:
@@ -276,7 +276,7 @@ GUI の画面:
 
 | コンポーネント | 入口 | 誰向け | やること |
 | --- | --- | --- | --- |
-| gorviz (CLI) | `cmd/cli` | 人間 (端末) | `issues` で Issue を表示、`export` で保存した trace を書き出す |
+| gorviz (CLI) | `cmd/cli` | 人間 (端末) | `issues` で Issue を表示 |
 | gorviz-mcp | `cmd/mcp` | LLM エージェント | MCP[^mcp] サーバ (stdio)。画面と同じ診断を JSON で返す。読み取りだけ |
 
 - LLM 向けの構造化データは MCP だけが返す
@@ -338,11 +338,10 @@ Issue は runtime 層の問題だけにする。遅いリクエストやエラ�
 | # | 誰が | いつ | 何をする | gorviz が返すもの |
 | --- | --- | --- | --- | --- |
 | 1 | 運用する開発者 | goroutine 数が増え続けているのに気づいた | Issues の `LEAK` から goroutine に降りる | 生成元の go 文と止まっている場所 (file:line)・待機理由・件数の推移 |
-| 2 | 運用する開発者 | 深夜のエラーに翌朝気づいた | Logs でそのエラーログの `Goroutine →` を押す | 保存済みの前後の trace から、書いた goroutine の主因と止まっていた場所 |
+| 2 | 運用する開発者 | 深夜のエラーに翌朝気づいた | Logs でそのエラーログの `Goroutine →` を押す | 保存済みの前後の区切りから、書いた goroutine の主因と止まっていた場所 |
 | 3 | 運用する開発者 | 遅いリクエストを調べたい | 所要時間のあるログを選ぶ | そのリクエストの区間 (書いた時刻 − 所要時間 〜 書いた時刻) の内訳と主因 |
 | 4 | 開発者 + LLM | 原因調査を LLM に任せたい | LLM が MCP でログを探し、診断を取り、コードを読む | 確かさ付きの診断を JSON で。LLM が原因と修正案を出す |
 | 5 | 開発者 | 診断が本当か確かめたい / スケジューラを理解したい | Goroutine や Scheduler で再生する | GMP の概念図での再生 |
-| 6 | 開発者 | 振り返りで共有したい | CLI の `export` で書き出す | `go tool trace` で開けるファイル |
 
 ## やらないこと
 

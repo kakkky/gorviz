@@ -6,7 +6,7 @@ server で 31 日遡って調べられるようにする。保存先は server �
 
 ## 方針
 
-- 古くなるほど細かさを落とす。生の trace は Issue 付近だけ、それ以外は削ぎ落とした形で持つ
+- 生の trace はどこにも持たない。agent が読み込んだ形 (区切り) で送り、server は Issue 付近の区切りをそのまま、それ以外は古くなるほど削ぎ落として持つ
 - 利用者が決めるのは `-data-dir` と `-disk-limit` (使ってよい大きさ) だけ。31 日分の小さいものを先に取り置き、残りを細かいものに回す。あふれたら細かいものの古い方から捨てる
 - 保存はサービス単位。インスタンスはファイル名か各行の項目で持つので、再起動・スケールで履歴が切れない
 - server のメモリには直近の分と索引だけを持ち、古いものは画面を開いたときにファイルから読む
@@ -16,14 +16,13 @@ server で 31 日遡って調べられるようにする。保存先は server �
 ```mermaid
 flowchart LR
     T[対象アプリ] -->|trace・ログ・dump| A[agent]
-    A -->|"push: ログ・dump・削ぎ落とした trace (区切りごと)"| S[server]
-    S -->|"pull: Issue 付近の生の trace"| A
+    A -->|"ログ・dump・読み込んだ区切り"| S[server]
     S --> D[(data-dir)]
 ```
 
-- agent は今と同じく生の trace をリングバッファに持つ。区切りごとに下の (1) イベント列と (2) G ごとの内訳を作って push する。agent がするのは集計だけで、判定はしない
-- server は push されたものから推移を集計し、Issue を判定して、ファイルに書く
-- Issue が見つかったら、その前後の生の trace を agent から pull して保存する (今のまま)
+- agent は取ったものを読み込んで送るだけ。持つのは送るまでの分だけで、判定はしない (実装済み)
+- server は届いた区切りの直近をリングバッファに持ち、Issue を判定して、その前後の区切りを保存する (実装済み)
+- server は区切りから推移と、下の (1) イベント列・(2) G ごとの内訳を作ってファイルに書く (未実装)
 
 ## server のファイル
 
@@ -36,7 +35,7 @@ flowchart LR
   slow/<日付>.jsonl                           遅かった G
   goroutines/<日付>/<時>-<instance>.bin.zst   (2) 全 G の内訳
   timeline/<日付>/<時>/<分>-<instance>.bin.zst (1) イベント列
-  recordings/<id>/meta.json, trace.zst        Issue 付近の生の trace
+  recordings/<id>/meta.json, chunk-N.pb.gz    Issue 付近の区切り
 ```
 
 日付・時刻は UTC。どれもその単位が閉じたら書き足さないので、期限が来たらファイルかディレクトリごと消せる。
@@ -81,7 +80,7 @@ flowchart LR
   - 移った先の状態
   - 待機理由
   - 止まった場所
-- **生の trace** (`recordings`): FlightRecorder から切り出した区切りの重なりを除いて 1 本につなぎ、zstd で圧縮する。`meta.json` は今の `model.SavedRecording`
+- **Issue 付近の区切り** (`recordings`): agent から届いた区切り (`model.TraceChunk`) を、届いたときと同じ protobuf にして gzip する。`meta.json` は `model.SavedRecording`
 
 ## 根拠 (実測)
 
@@ -104,4 +103,4 @@ flowchart LR
 
 - 生の trace は圧縮しても 1/1.6〜1/2 にしかならない。1000 rps で 31 日持つと約 600 GB
 - G の内訳は 1 件 6 B ほど。1000 rps で 7 日なら約 7 GB
-- FlightRecorder の区切り (`chunk.Raw`) は前の区切りと重なっていて、つなぐと取り続けた分の 2 倍になる。保存するときは重なりを除く
+- FlightRecorder から切り出した生の trace は前の区切りと重なっていて、つなぐと取り続けた分の 2 倍になる。読み込んだ区切りは重なりを落としてあるので、この問題はない
