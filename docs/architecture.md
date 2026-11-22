@@ -305,55 +305,6 @@ flowchart TD
 
 組み立てと config だけを持つ。server と agent を同じプロセスで並べて呼び、間は TCP (localhost) でつなぐ。launcher 自身は通信の相手にならない。
 
-## 組み立て
-
-- `<コンポーネント>.go` が、各層の `NewXxx` を内側から順に呼んで依存を渡し、driver・worker の `Run` を scope の下で起動する。DI のライブラリは使わない
-- driver の後始末は、コンストラクタが cleanup として返す
-- `cmd/<コンポーネント>/` の main は、シグナルで終わる ctx を作り、config を渡して 1 回呼ぶだけ
-
-```go
-// cmd/<コンポーネント>/main.go
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	if err := <コンポーネント>.Run(ctx, config.MustLoad(os.Args[1:])); err != nil {
-		os.Exit(1)
-	}
-}
-
-// internal/app/<コンポーネント>/<コンポーネント>.go
-func Run(ctx context.Context, cfg *config.Config) error {
-	// driver (adapter が使う接続)
-	conn, cleanup, err := xxxdriver.NewXxxConn(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	// adapter
-	xxx := xxxadapter.NewXxx(cfg)
-	yyy := yyyadapter.NewYyy(conn)
-
-	// usecase
-	uc := usecase.NewUseCase(xxx, yyy)
-
-	// presentation
-	xxxHandler := xxxhandler.NewXxxHandler(uc)
-
-	// worker
-	xxxWorker := worker.NewXxxWorker(cfg, uc)
-
-	// driver (presentation を受けて待ち受ける)
-	xxxListener := yyydriver.NewXxxListener(cfg, xxxHandler)
-
-	return scope.Run(ctx, func(sc *scope.Scope) error {
-		sc.Go(xxxWorker.Run)
-		sc.Go(xxxListener.Run)
-		return nil
-	})
-}
-```
-
 ## 処理の流れ
 
 ### 観測データを取る (agent)
@@ -507,7 +458,7 @@ sequenceDiagram
     end
 
     L->>E: サブコマンドを実行する (シェル)
-    E->>E: 環境変数・設定ファイルからトークンを読む
+    E->>E: 環境変数からトークンを読む
     E->>C: トークンを持たせて作る
     E->>P: 実行する
     P->>C: 呼ぶ (Accept: TOON)
@@ -540,7 +491,7 @@ sequenceDiagram
         participant S as api.Handler
     end
 
-    E->>E: 環境変数・設定ファイルからトークンを読む
+    E->>E: 環境変数からトークンを読む
     E->>C: トークンを持たせて作る
     E->>D: stdio で待ち受ける
     L->>D: tool の呼び出し (stdio)
