@@ -80,7 +80,7 @@ flowchart TD
 
 ## コンポーネントの中の層
 
-どのコンポーネントも、`internal/app/<コンポーネント>/` の中を同じ層に分ける。層は外側から内側へ以下。
+どのコンポーネントも、`internal/app/<コンポーネント>/` の中を同じ層に分ける。ただし、手順も判断も持たない cli は presentation だけを、mcp は driver と presentation だけを持つ。層は外側から内側へ以下。
 
 ```mermaid
 flowchart TD
@@ -137,14 +137,14 @@ flowchart TD
         direction LR
         SyncInstancesWorker
         ObservationWorker
-        SendWorker
+        ExportWorker
     end
     subgraph usecase["usecase"]
         direction LR
         ForwardLogLineUsecase
         SyncInstancesUsecase
         CollectObservationsUsecase
-        SendObservationsUsecase
+        ExportObservationsUsecase
     end
     subgraph domain["domain"]
         direction LR
@@ -171,7 +171,7 @@ flowchart TD
     LogHandler --> ForwardLogLineUsecase
     SyncInstancesWorker --> SyncInstancesUsecase
     ObservationWorker --> CollectObservationsUsecase
-    SendWorker --> SendObservationsUsecase
+    ExportWorker --> ExportObservationsUsecase
     usecase --> domain
     domain -. 実装 .-> adapter
     KVSAccessor --> InMemoryKVS
@@ -190,7 +190,8 @@ flowchart TD
     end
     subgraph presentation["presentation"]
         direction LR
-        ObservationService["observation.ObservationService (+ interceptor)"]
+        Interceptor["interceptor.Interceptor"]
+        ObservationService["observation.ObservationService"]
         Middleware["middleware.Middleware"]
         Handler["web.Handler (+ Templ)"]
         APIHandler["api.Handler"]
@@ -205,15 +206,16 @@ flowchart TD
         ReceiveObservationsUsecase
         DetectIssuesUsecase
         DiagnoseGoroutineUsecase
-        GetXxxUsecase
+        GetOverviewUsecase
+        ListIssuesUsecase
+        ListLogsUsecase
+        ListTraceChunksUsecase
         PruneExpiredDataUsecase
     end
     subgraph domain["domain"]
         direction LR
         Issue
-        IssueOccurrence
         GoroutineDiagnosis
-        Confidence
         Observation["observation.LogLine / TraceChunk / GoroutineSnapshot / LeakReport / Cursor"]
     end
     subgraph adapter["adapter"]
@@ -222,66 +224,66 @@ flowchart TD
         NotifyClient["client.WebhookClient / SlackClient / MailClient"]
     end
     subgraph driverOut["driver"]
-        DataDir["datadir.DataDir"]
+        Root["filesystem.Root"]
     end
 
-    GRPCServer --> ObservationService --> ReceiveObservationsUsecase
+    GRPCServer --> Interceptor --> ObservationService --> ReceiveObservationsUsecase
     HTTPServer --> Middleware
     Middleware --> Handler
     Middleware --> APIHandler
-    Handler --> GetXxxUsecase
+    Handler --> GetOverviewUsecase
+    Handler --> ListIssuesUsecase
+    Handler --> ListLogsUsecase
+    Handler --> ListTraceChunksUsecase
     Handler --> DiagnoseGoroutineUsecase
-    APIHandler --> GetXxxUsecase
+    APIHandler --> GetOverviewUsecase
+    APIHandler --> ListIssuesUsecase
+    APIHandler --> ListLogsUsecase
+    APIHandler --> ListTraceChunksUsecase
     APIHandler --> DiagnoseGoroutineUsecase
     DetectIssuesWorker --> DetectIssuesUsecase
     PruneExpiredDataWorker --> PruneExpiredDataUsecase
     usecase --> domain
     domain -. 実装 .-> adapter
-    DiskAccessor --> DataDir
+    DiskAccessor --> Root
 ```
 
 - 層の外に `assets/` (CSS・JS・Stimulus controllers) を持つ
 
 ### cli
 
+server の HTTP API を呼んでそのまま返すのと、`internal/docs/` を引くだけで、手順も判断も持たない。presentation だけを持つ。
+
 ```mermaid
 flowchart TD
     subgraph presentation["presentation"]
         Command["command.Command"]
     end
-    subgraph usecase["usecase"]
-        direction LR
-        CallServerAPIUsecase
-        LookupDocsUsecase
-    end
     ServerAPIClient["protocol/serverapi.Client"]
     Docs["internal/docs"]
 
-    Command --> CallServerAPIUsecase
-    Command --> LookupDocsUsecase
-    CallServerAPIUsecase -. domain の interface .-> ServerAPIClient
-    LookupDocsUsecase --> Docs
+    Command --> ServerAPIClient
+    Command --> Docs
 ```
 
 ### mcp
 
+cli と同じく手順も判断も持たない。stdio で MCP を待ち受ける driver と、presentation だけを持つ。
+
 ```mermaid
 flowchart TD
+    subgraph driver["driver"]
+        MCPServer["mcpserver.MCPServer (stdio)"]
+    end
     subgraph presentation["presentation"]
         ToolHandler["handler.ToolHandler (+ server instructions)"]
-    end
-    subgraph usecase["usecase"]
-        direction LR
-        CallServerAPIUsecase
-        LookupDocsUsecase
     end
     ServerAPIClient["protocol/serverapi.Client"]
     Docs["internal/docs"]
 
-    ToolHandler --> CallServerAPIUsecase
-    ToolHandler --> LookupDocsUsecase
-    CallServerAPIUsecase -. domain の interface .-> ServerAPIClient
-    LookupDocsUsecase --> Docs
+    MCPServer --> ToolHandler
+    ToolHandler --> ServerAPIClient
+    ToolHandler --> Docs
 ```
 
 ### launcher
@@ -337,67 +339,188 @@ func Run(ctx context.Context, cfg *config.Config) error {
 }
 ```
 
-## 並行処理
-
-- コンポーネントの中で回し続けるもの (待ち受け・worker・接続ごとの処理) は、エントリで 1 つの scope ([kakkky/scope](https://github.com/kakkky/scope)) の下に起動する
-- どれかが失敗したら、scope の ctx が終わり、残りも止まる。`ctx` が終わるまで返らない関数として書く
-- usecase の中で並列に走らせる処理 (インスタンスごと・期間ごとの集計など) も、scope の下に起動する
-- goroutine を scope の外で起動しない
-
 ## 処理の流れ
 
-### 観測データ (agent → server)
+### 観測データを取る (agent)
 
-```
-agent
-  worker (Pod を見張る。daemon 型)
-    → usecase (観測するインスタンスの一覧を差し替える)
-  worker (trace・プロファイルを取り続ける)          driver/logsource → presentation/logs (ログを取り込む)
-    → usecase (インスタンスごとに整形し、スナップショットを組み立て、送るまで置く)
-  worker (数秒ごとにまとめて送る)
-    → usecase (インスタンスごとに、server が持っている位置の続きを集め、返ってきた位置を覚える)
-    → adapter (driver/grpcconn が張った接続の上の gRPC)
-server
-  driver/grpcserver (ハンドシェイクを読む)
-    → presentation/observation (トークンを確かめ、観測データに付いた名前から service・instance を決める)
-    → usecase (抜けがないか確かめ、重複を除き、ディスクに書く。インスタンスの始まりを記録する。持っている位置を返す)
-    → adapter (services/<サービス>/... に書く)
-```
+```mermaid
+sequenceDiagram
+    participant W as ObservationWorker
+    participant U as CollectObservationsUsecase
+    participant KVS as accessor.KVSAccessor
+    participant RC as client.PprofClient
+    participant D as domain
+    participant RB as accessor.RingBufferAccessor
 
-- 接続は agent から server へ外向きに 1 本。server から agent へは呼ばない
-- agent は送るまでの分しか持たない。判定はしない
-- どこまで送ったかは、server が返す位置で決める。agent は、つなぎ直したことを知らなくてよい。つなぎ直しは driver に閉じる
-- server は、届いた観測データを、付いている名前のサービスとインスタンスのものとして書く
-
-### Issue の検出と通知
-
-```
-server worker (数秒ごと・5 分ごと)
-  → usecase (直近の観測データとメトリクスを読む)
-  → domain (閾値・普段との比較で判定)
-  → adapter (Issue と、前後の execution trace を書く / 通知を送る)
+    loop チャンクごと
+        W->>U: Exec
+        U->>KVS: 観測するインスタンスの一覧を読む
+        par インスタンスごと
+            U->>RC: 生の execution trace・プロファイルを取る
+            U->>D: チャンク・スナップショットを組み立てる
+            U->>RB: インスタンスのキーに積む
+        end
+    end
 ```
 
-### GUI と HTTP API のリクエスト
+### ログを取り込む (agent)
 
-```
-driver/httpserver (TLS)
-  → presentation/middleware (認証・アクセスログ・エラー)
-  → presentation/web (GUI) / presentation/api (HTTP API)
-  → usecase (ディスクの観測データを読み、診断する)
-  → presentation/web の Templ で HTML を返す / Accept に応じて TOON か JSON を返す
-```
+```mermaid
+sequenceDiagram
+    participant S as logsource.FileTailer など
+    participant R as logs.Receiver
+    participant U as ForwardLogLineUsecase
+    participant D as domain
+    participant RB as accessor.RingBufferAccessor
 
-### gorviz-cli・gorviz-mcp
-
-```
-presentation/command (cli) / presentation/handler (mcp)
-  → usecase
-  → protocol/serverapi のクライアント (server の HTTP API)
+    S->>R: 1 行
+    R->>U: Exec
+    U->>D: 行を読み取り、どのインスタンスのものか決める
+    U->>RB: インスタンスのキーに積む
 ```
 
-- どちらも server の HTTP API だけを呼び、agent やアプリには直接つながない。読み取りだけを行う
-- 返す形 (TOON / JSON) は Accept で server に頼み、受け取ったものをそのまま返す。TOON への書き直しは server の `presentation/api` だけが持つ
+### 観測データを送る (agent → server)
+
+```mermaid
+sequenceDiagram
+    box agent
+        participant W as ExportWorker
+        participant U as ExportObservationsUsecase
+        participant RB as accessor.RingBufferAccessor
+        participant C as client.GorvizServerClient
+    end
+    box server
+        participant G as grpcserver.GRPCServer
+        participant I as interceptor.Interceptor
+        participant O as observation.ObservationService
+        participant RU as ReceiveObservationsUsecase
+        participant A as accessor (disk)
+    end
+
+    loop 数秒ごと
+        W->>U: Exec
+        loop インスタンスごと
+            U->>RB: カーソルの続きを取り出す
+            U->>C: 送る (インスタンスの名前・カーソル付き)
+            C->>G: gRPC (grpcconn の接続の上)
+            G->>I: トークンを確かめる
+            I->>O: Export (gRPC)
+            O->>RU: Exec
+            RU->>A: 抜けと重複を確かめ、書く
+            RU-->>C: server のカーソル
+            C-->>U: server のカーソル
+            U->>RB: カーソルを覚える
+        end
+    end
+```
+
+### Issue の検出と通知 (server)
+
+```mermaid
+sequenceDiagram
+    participant W as DetectIssuesWorker
+    participant U as DetectIssuesUsecase
+    participant A as accessor (disk)
+    participant D as domain
+    participant N as client.WebhookClient など
+
+    loop 数秒ごと・5 分ごと
+        W->>U: Exec
+        U->>A: 直近の観測データを読む
+        U->>D: 閾値・普段との比較で判定する
+        U->>A: Issue と、前後の execution trace を書く
+        U->>N: 発生が始まったら通知する
+    end
+```
+
+### GUI と HTTP API のリクエスト (server)
+
+```mermaid
+sequenceDiagram
+    participant B as ブラウザ / cli / mcp
+    participant H as httpserver.HTTPServer
+    participant M as middleware.Middleware
+    participant P as web.Handler / api.Handler
+    participant U as ListIssuesUsecase など
+    participant A as accessor (disk)
+
+    B->>H: HTTP
+    H->>M: ログイン・トークンを確かめる
+    M->>P: リクエスト
+    P->>U: Exec
+    U->>A: 読む
+    U-->>P: 結果
+    P-->>B: HTML (Templ) / TOON・JSON (Accept)
+```
+
+### gorviz-cli
+
+```mermaid
+sequenceDiagram
+    participant L as LLM エージェント / 人
+    box cli
+        participant E as エントリ
+        participant P as command.Command
+        participant C as protocol/serverapi.Client
+    end
+    box server
+        participant M as middleware.Middleware
+        participant S as api.Handler
+    end
+
+    L->>E: サブコマンドを実行する (シェル)
+    E->>E: 環境変数・設定ファイルからトークンを読む
+    E->>C: トークンを持たせて作る
+    E->>P: 実行する
+    P->>C: 呼ぶ (Accept: TOON)
+    C->>M: HTTP API (トークン付き)
+    alt トークンが正しい
+        M->>S: リクエスト
+        S-->>C: TOON
+        C-->>P: そのまま
+        P-->>L: そのまま出力する
+    else トークンがない・正しくない
+        M-->>C: 401
+        C-->>P: 認証のエラー
+        P-->>L: トークンの渡し方を示して終わる
+    end
+```
+
+### gorviz-mcp
+
+```mermaid
+sequenceDiagram
+    participant L as LLM エージェント
+    box mcp
+        participant E as エントリ
+        participant D as mcpserver.MCPServer
+        participant P as handler.ToolHandler
+        participant C as protocol/serverapi.Client
+    end
+    box server
+        participant M as middleware.Middleware
+        participant S as api.Handler
+    end
+
+    E->>E: 環境変数・設定ファイルからトークンを読む
+    E->>C: トークンを持たせて作る
+    E->>D: stdio で待ち受ける
+    L->>D: tool の呼び出し (stdio)
+    D->>P: tool
+    P->>C: 呼ぶ (Accept: TOON)
+    C->>M: HTTP API (トークン付き)
+    alt トークンが正しい
+        M->>S: リクエスト
+        S-->>C: TOON
+        C-->>P: そのまま
+        P-->>D: tool の結果
+    else トークンがない・正しくない
+        M-->>C: 401
+        C-->>P: 認証のエラー
+        P-->>D: tool のエラー (トークンの渡し方を示す)
+    end
+    D-->>L: tool の結果
+```
 
 ## サービスとインスタンス
 
@@ -410,7 +533,7 @@ presentation/command (cli) / presentation/handler (mcp)
 認証・アクセスログ・エラーの返し方・panic の復旧は、各層に書かず、入口の手前でまとめて扱う。
 
 - HTTP (GUI・HTTP API) は、`presentation/middleware` で扱う
-- gRPC (agent からの観測データ) は、`presentation/observation` の interceptor で扱う
+- gRPC (agent からの観測データ) は、`presentation/interceptor` で扱う
 - driver には置かない。エラーの種別 (domain) や画面 (view) を使うため
 - handler・usecase は、認証やエラーのレスポンスを自分で書かない
 
