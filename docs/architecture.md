@@ -149,7 +149,7 @@ flowchart TD
     subgraph domain["domain"]
         direction LR
         TargetInstance
-        Observation["observation.LogLine / TraceChunk / GoroutineSnapshot / LeakReport / Cursor"]
+        Observation["observation.LogLine / TraceChunk / GoroutineSnapshot / GoroutineLeakCheck / Cursor"]
     end
     subgraph adapter["adapter"]
         direction LR
@@ -198,25 +198,34 @@ flowchart TD
     end
     subgraph worker["worker"]
         direction LR
+        AggregateMetricsWorker
+        AggregateGoroutineStateBreakdownsWorker
         DetectIssuesWorker
-        PruneExpiredDataWorker
+        PreserveExecutionTracesAroundErrorLogsWorker
+        AttachLogWriterGoroutinesWorker
+        PruneDataWorker
     end
     subgraph usecase["usecase"]
         direction LR
-        ReceiveObservationsUsecase
+        IngestObservationsUsecase
+        AggregateMetricsUsecase
+        AggregateGoroutineStateBreakdownsUsecase
         DetectIssuesUsecase
+        PreserveExecutionTracesAroundErrorLogsUsecase
+        AttachLogWriterGoroutinesUsecase
         DiagnoseGoroutineUsecase
         GetOverviewUsecase
         ListIssuesUsecase
         ListLogsUsecase
         ListTraceChunksUsecase
-        PruneExpiredDataUsecase
+        PruneDataUsecase
     end
     subgraph domain["domain"]
         direction LR
+        Metric
         Issue
-        GoroutineDiagnosis
-        Observation["observation.LogLine / TraceChunk / GoroutineSnapshot / LeakReport / Cursor"]
+        Goroutine["Goroutine (StateBreakdown / Diagnosis / Leak)"]
+        Observation["observation.LogLine / TraceChunk / GoroutineSnapshot / GoroutineLeakCheck / Cursor"]
     end
     subgraph adapter["adapter"]
         direction LR
@@ -227,7 +236,7 @@ flowchart TD
         Root["filesystem.Root"]
     end
 
-    GRPCServer --> Interceptor --> ObservationService --> ReceiveObservationsUsecase
+    GRPCServer --> Interceptor --> ObservationService --> IngestObservationsUsecase
     HTTPServer --> Middleware
     Middleware --> Handler
     Middleware --> APIHandler
@@ -241,13 +250,19 @@ flowchart TD
     APIHandler --> ListLogsUsecase
     APIHandler --> ListTraceChunksUsecase
     APIHandler --> DiagnoseGoroutineUsecase
+    AggregateMetricsWorker --> AggregateMetricsUsecase
+    AggregateGoroutineStateBreakdownsWorker --> AggregateGoroutineStateBreakdownsUsecase
     DetectIssuesWorker --> DetectIssuesUsecase
-    PruneExpiredDataWorker --> PruneExpiredDataUsecase
+    PreserveExecutionTracesAroundErrorLogsWorker --> PreserveExecutionTracesAroundErrorLogsUsecase
+    AttachLogWriterGoroutinesWorker --> AttachLogWriterGoroutinesUsecase
+    PruneDataWorker --> PruneDataUsecase
     usecase --> domain
     domain -. 実装 .-> adapter
     DiskAccessor --> Root
 ```
 
+- `filesystem.Root` は保存先を開くときに、ロックを取り、形式のバージョンを確かめ、書きかけの一時ファイルを消す。一時ファイルに書いてから名前を付ける書き込みも Root が持つ
+- 追記するファイルの途中で切れた末尾は、accessor がそのファイルに追記を始める前に切り詰める
 - 層の外に `assets/` (CSS・JS・Stimulus controllers) を持つ
 
 ### cli
@@ -393,7 +408,7 @@ sequenceDiagram
         participant G as grpcserver.GRPCServer
         participant I as interceptor.Interceptor
         participant O as observation.ObservationService
-        participant RU as ReceiveObservationsUsecase
+        participant RU as IngestObservationsUsecase
         participant A as accessor (disk)
     end
 
@@ -414,6 +429,27 @@ sequenceDiagram
     end
 ```
 
+### 観測データから作る (server)
+
+server が観測データから作るものは、作るものごとに worker を分ける (`AggregateMetricsWorker`・`AggregateGoroutineStateBreakdownsWorker`・`DetectIssuesWorker`・`PreserveExecutionTracesAroundErrorLogsWorker`・`AttachLogWriterGoroutinesWorker`)。どの worker も、チェックポイントの続きから作る。
+
+```mermaid
+sequenceDiagram
+    participant W as AggregateMetricsWorker など
+    participant U as AggregateMetricsUsecase など
+    participant A as accessor (disk)
+    participant D as domain
+
+    loop worker ごとの間隔
+        W->>U: Exec
+        U->>A: チェックポイントを読む
+        U->>A: その続きの観測データを読む (材料がそろった分だけ)
+        U->>D: 集計する・判定する・突き合わせる
+        U->>A: 結果を書く
+        U->>A: チェックポイントを進める
+    end
+```
+
 ### Issue の検出と通知 (server)
 
 ```mermaid
@@ -426,10 +462,12 @@ sequenceDiagram
 
     loop 数秒ごと・5 分ごと
         W->>U: Exec
-        U->>A: 直近の観測データを読む
+        U->>A: チェックポイントを読む
+        U->>A: その続きの観測データを読む
         U->>D: 閾値・普段との比較で判定する
         U->>A: Issue と、前後の execution trace を書く
         U->>N: 発生が始まったら通知する
+        U->>A: チェックポイントを進める
     end
 ```
 
@@ -527,6 +565,7 @@ sequenceDiagram
 - server の usecase は server 全体で 1 つ。どのサービス・インスタンスのものかは、usecase の入力で渡す
 - サービスとインスタンスの区切りは、adapter のディスクの置き場 (`services/<サービス>/service/`・`services/<サービス>/instances/<インスタンス>/`) が持つ
 - 観測データは、ディスクに書いてからディスクから読む。メモリに置くのは、送るまで・書くまでの分と、つながっている agent の状態だけ
+- どこまで持っているか (カーソル) も、ディスクに書いてある最後の分から引く
 
 ## 横断関心事
 
