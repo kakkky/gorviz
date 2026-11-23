@@ -252,6 +252,8 @@ docker compose up # 同じ構成を、保存のたびに作り直しながら動
   - GUI の作り方
 - [docs/poc/screen-flow.md](docs/poc/screen-flow.md)
   - PoC の画面と遷移 (スクリーンショット付き)
+- [docs/poc/operational-gaps.md](docs/poc/operational-gaps.md)
+  - PoC を負荷の下で動かして分かった、運用に足りないところと直す順番
 - [example/todo-app/README.md](example/todo-app/README.md)
   - 調査のチュートリアル
 - [deploy/README.md](deploy/README.md)
