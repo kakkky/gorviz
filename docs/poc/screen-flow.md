@@ -299,7 +299,7 @@ Scheduler で local run queue に並んでいた G を押して開いたもの�
   - つまみで時刻を動かす
 - 凡例は、G の丸の色 (主因) と、リークの赤い輪
 - CPU slots (P) over time
-  - P ごとに、G が走った区間の帯。Goroutine の画面では、追っている G が走った区間を白で描く
+  - P ごとに、G が走った区間の帯。Goroutine の画面では、追っている G が走った区間を、ほかの G より明るく光る緑で描く
   - いちばん上の GC の段は concurrent mark (薄い) と stop-the-world (濃い)
   - P の段を縦に貫く線は stop-the-world。GC によるものは黄色、それ以外 (agent が trace を取り始めるときなど) は灰色で、マウスを載せると理由が出る
   - 右端は P が G を走らせていた割合
@@ -322,7 +322,7 @@ Scheduler で local run queue に並んでいた G を押して開いたもの�
 
 ![CPU_CONTENTION の瞬間の Scheduler](screenshots/18-scheduler-cpu-contention.png)
 
-統計を開いたときの 1 分を再生し、実行待ちが最も多い瞬間まで進めたもの。統計の計算で todo ごとに立てた goroutine が、いくつもの P の local run queue に数千個ずつ並んでいる (先頭の 8 個だけを描き、残りは `+9628` のように数で出す)。CPU slots の黄色い帯は、同じころに走った GC。
+統計を開いたときの 1 分を再生し、実行待ちが最も多い瞬間まで進めたもの。統計の計算で todo ごとに立てた goroutine が、いくつもの P の local run queue に数千個ずつ並んでいる (先頭の 8 個だけを描き、残りは `+3030` のように数で出す)。CPU slots の P の段を貫く黄色い線は、同じころに走った GC の stop-the-world。
 
 ### Issue の発生の前後に残した trace
 
