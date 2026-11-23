@@ -6,9 +6,11 @@ require (
 	github.com/a-h/templ v0.3.1070
 	github.com/kakkky/hotwire-go v0.3.0
 	github.com/kakkky/scope v0.11.0
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/rs/zerolog v1.35.1
 	github.com/sirupsen/logrus v1.10.0
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/exp v0.0.0-20261113113407-e3970619a1a4
 	google.golang.org/grpc v1.85.0
