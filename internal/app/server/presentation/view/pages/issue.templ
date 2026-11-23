@@ -1,0 +1,211 @@
+package pages
+
+import (
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+)
+
+type IssueViewModel struct {
+	Base          layout.BaseViewModel
+	Picker        components.TimeRangePickerViewModel
+	Kind          string
+	Subject       string
+	Certainty     string
+	CertaintyNote string
+	Ongoing       bool
+	Instances     string
+	NextAction    string
+	Counts        components.ChartViewModel
+	Occurrences   []OccurrenceViewModel
+	Retention     string
+}
+
+// OccurrenceViewModel は発生 1 回。Leaks は GOROUTINE_LEAK のスタックごと、Locks は LOCK_CONTENTION の Lock を呼んだ関数ごとの行。
+// Trace は前後の execution trace を Scheduler で開けないときの理由
+type OccurrenceViewModel struct {
+	Instance      string
+	Period        string
+	Ongoing       bool
+	Judge         string
+	Certainty     string
+	CertaintyNote string
+	Reason        string
+	SchedulerURL  string
+	Trace         *components.UnavailableViewModel
+	Leaks         []LeakSiteViewModel
+	Locks         []LockSiteViewModel
+	Impacts       []ImpactViewModel
+	ImpactsTitle  string
+	Open          bool
+}
+
+type LeakSiteViewModel struct {
+	CreatedBy         string
+	CreatedByLocation string
+	Function          string
+	Location          string
+	Reason            string
+	Leak              string
+	Certainty         string
+	CertaintyNote     string
+	Goroutines        string
+	URL               string
+}
+
+type LockSiteViewModel struct {
+	Function       string
+	Location       string
+	Share          string
+	Count          int
+	Average        string
+	Max            string
+	HolderFunction string
+	HolderLocation string
+	HolderURL      string
+	HolderLabel    string
+}
+
+type ImpactViewModel struct {
+	Goroutine string
+	Entry     string
+	Function  string
+	Location  string
+	Reason    string
+	Duration  string
+	URL       string
+}
+
+templ Issue(vm IssueViewModel) {
+	@layout.Base(vm.Base) {
+		<div class="page-head">
+			<h1>
+				@components.KindBadge(vm.Kind)
+				<span class="subject">{ vm.Subject }</span>
+			</h1>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
+		<section class="panel summary">
+			<dl class="facts">
+				<div><dt>certainty</dt><dd>@components.CertaintyBadge(vm.Certainty, vm.CertaintyNote) <span class="faint">{ vm.CertaintyNote }</span></dd></div>
+				<div>
+					<dt>state</dt>
+					<dd>
+						if vm.Ongoing {
+							@components.OngoingBadge(true)
+							<span class="mono">{ vm.Instances }</span>
+						} else {
+							<span class="muted">not going on in any instance</span>
+						}
+					</dd>
+				</div>
+				<div><dt>next action</dt><dd class="next-action">{ vm.NextAction }</dd></div>
+			</dl>
+		</section>
+		<section class="panel">
+			@components.Chart(vm.Counts)
+			<p class="faint">{ vm.Retention }</p>
+		</section>
+		<section class="panel">
+			<h2>Occurrences <span class="count">{ len(vm.Occurrences) }</span><span class="faint">each one is where to start looking</span></h2>
+			for _, o := range vm.Occurrences {
+				@occurrence(vm.Kind, o)
+			}
+		</section>
+	}
+}
+
+templ occurrence(kind string, o OccurrenceViewModel) {
+	<details class="occurrence" open?={ o.Open }>
+		<summary>
+			<span class="mono">{ o.Instance }</span>
+			<span class="mono">{ o.Period }</span>
+			@components.OngoingBadge(o.Ongoing)
+			@components.CertaintyBadge(o.Certainty, o.CertaintyNote)
+			<span class="faint">judged by { o.Judge }</span>
+			<span class="reason">{ o.Reason }</span>
+		</summary>
+		<div class="occurrence-body">
+			<p class="actions">
+				<a class="btn" href={ templ.SafeURL(o.SchedulerURL) }>Replay the scheduler around it</a>
+			</p>
+			if o.Trace != nil {
+				@components.Unavailable(*o.Trace)
+			}
+			if len(o.Leaks) > 0 {
+				<h3>Leaked goroutines, per stack</h3>
+				<table>
+					<thead><tr><th>created by (go statement)</th><th>stopped at</th><th>wait reason</th><th>leak</th><th>certainty</th><th></th></tr></thead>
+					<tbody>
+						for _, l := range o.Leaks {
+							<tr>
+								<td class="wrap"><code>{ l.CreatedBy }</code><div class="loc">{ l.CreatedByLocation }</div></td>
+								<td class="wrap"><code>{ l.Function }</code><div class="loc">{ l.Location }</div></td>
+								<td class="mono">{ l.Reason }</td>
+								<td class="wrap">{ l.Leak }</td>
+								<td>@components.CertaintyBadge(l.Certainty, l.CertaintyNote)</td>
+								<td class="actions">
+									if l.URL != "" {
+										<a class="btn small" href={ templ.SafeURL(l.URL) } title={ l.Goroutines }>Goroutine</a>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+			if len(o.Locks) > 0 {
+				<h3>Lock wait, per function that called Lock</h3>
+				<table>
+					<thead>
+						<tr><th>called Lock</th><th class="num">share</th><th class="num">count</th><th class="num">avg</th><th class="num">max</th><th>held by (made it wait)</th></tr>
+					</thead>
+					<tbody>
+						for _, l := range o.Locks {
+							<tr>
+								<td class="wrap"><code>{ l.Function }</code><div class="loc">{ l.Location }</div></td>
+								<td class="num mono">{ l.Share }</td>
+								<td class="num mono">{ l.Count }</td>
+								<td class="num mono">{ l.Average }</td>
+								<td class="num mono">{ l.Max }</td>
+								<td class="wrap">
+									if l.HolderFunction != "" {
+										<code>{ l.HolderFunction }</code>
+										<div class="loc">{ l.HolderLocation }</div>
+									} else {
+										<span class="faint">not recorded</span>
+									}
+									if l.HolderURL != "" {
+										<a class="btn small" href={ templ.SafeURL(l.HolderURL) }>{ l.HolderLabel }</a>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+			if len(o.Impacts) > 0 {
+				<h3>{ o.ImpactsTitle }</h3>
+				<table>
+					<thead><tr><th>goroutine</th><th>entry</th><th>where</th><th>reason</th><th class="num">time</th></tr></thead>
+					<tbody>
+						for _, m := range o.Impacts {
+							<tr>
+								<td class="mono">
+									if m.URL != "" {
+										<a href={ templ.SafeURL(m.URL) }>{ m.Goroutine }</a>
+									} else {
+										{ m.Goroutine }
+									}
+								</td>
+								<td class="wrap"><code>{ m.Entry }</code></td>
+								<td class="wrap"><code>{ m.Function }</code><div class="loc">{ m.Location }</div></td>
+								<td class="mono">{ m.Reason }</td>
+								<td class="num mono">{ m.Duration }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</div>
+	</details>
+}

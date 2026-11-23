@@ -1,0 +1,25 @@
+package components
+
+// CertaintyBadge は確かさ (FACT / INFERENCE)。Note は意味の説明
+templ CertaintyBadge(certainty string, note string) {
+	if certainty != "" {
+		<span class={ "badge", "certainty-" + certainty } title={ note }>{ certainty }</span>
+	}
+}
+
+// CauseBadge は主因。色は内訳の帯・再生の G の丸と同じ
+templ CauseBadge(cause string) {
+	if cause != "" {
+		<span class={ "badge", "cause", "cause-" + cause }><span class="swatch"></span>{ cause }</span>
+	}
+}
+
+templ KindBadge(kind string) {
+	<span class="badge kind">{ kind }</span>
+}
+
+templ OngoingBadge(ongoing bool) {
+	if ongoing {
+		<span class="badge ongoing" title="an occurrence is still going on in some instance">ongoing</span>
+	}
+}

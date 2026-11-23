@@ -1,0 +1,36 @@
+package components
+
+import (
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+)
+
+// GMPReplayViewModel はアイランドの要素。Props は GMPReplayProps、Window は最初に再生する ReplayWindow の JSON (なければ空)。
+// FeedID は SSE の turbo-stream が新しい窓を足す先で、アイランドの描く要素 (mount) の外に置く
+type GMPReplayViewModel struct {
+	Props  string
+	Window string
+	FeedID string
+}
+
+templ GMPReplay(vm GMPReplayViewModel) {
+	<div
+		class="gmp-replay"
+		{ stimulus.AttrControllers(assets.GMPReplayIsland.Controller)... }
+		{ stimulus.AttrValue(assets.GMPReplayIsland.Controller, "component", assets.GMPReplayIsland.Component)... }
+		{ stimulus.AttrValue(assets.GMPReplayIsland.Controller, "props", vm.Props)... }
+	>
+		<div class="gmp-mount" { stimulus.AttrTargets(assets.GMPReplayIsland.Controller, "mount")... }></div>
+		<div id={ vm.FeedID } hidden>
+			if vm.Window != "" {
+				@ReplayWindowScript(vm.Window)
+			}
+		</div>
+	</div>
+}
+
+// ReplayWindowScript は再生する窓 1 つ。アイランドの controller が target として受け取り、読んだら外す
+templ ReplayWindowScript(windowJSON string) {
+	@templ.Raw(`<script type="application/json" data-` + assets.GMPReplayIsland.Controller + `-target="window">` + windowJSON + `</script>`)
+}

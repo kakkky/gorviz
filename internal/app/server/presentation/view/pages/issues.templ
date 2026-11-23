@@ -1,0 +1,65 @@
+package pages
+
+import (
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+)
+
+type IssuesViewModel struct {
+	Base      layout.BaseViewModel
+	Picker    components.TimeRangePickerViewModel
+	Rows      []IssueRowViewModel
+	NextURL   string
+	Retention string
+}
+
+type IssueRowViewModel struct {
+	Kind          string
+	Subject       string
+	Certainty     string
+	CertaintyNote string
+	Occurrences   int
+	Last          string
+	Ongoing       bool
+	Instances     string
+	URL           string
+}
+
+templ Issues(vm IssuesViewModel) {
+	@layout.Base(vm.Base) {
+		<div class="page-head">
+			<h1>Issues</h1>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
+		<section class="panel">
+			<p class="faint">{ vm.Retention }</p>
+			if len(vm.Rows) == 0 {
+				<p class="muted">No issue was detected in this period.</p>
+			} else {
+				<table class="clickable">
+					<thead>
+						<tr><th>kind</th><th>subject</th><th>certainty</th><th class="num">occurrences</th><th>last started</th><th>ongoing</th></tr>
+					</thead>
+					<tbody>
+						for _, row := range vm.Rows {
+							<tr>
+								<td><a href={ templ.SafeURL(row.URL) }>@components.KindBadge(row.Kind)</a></td>
+								<td class="wrap"><a href={ templ.SafeURL(row.URL) }>{ row.Subject }</a></td>
+								<td>@components.CertaintyBadge(row.Certainty, row.CertaintyNote)</td>
+								<td class="num mono">{ row.Occurrences }</td>
+								<td class="mono">{ row.Last }</td>
+								<td>
+									@components.OngoingBadge(row.Ongoing)
+									<span class="mono small">{ row.Instances }</span>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+			if vm.NextURL != "" {
+				<p><a class="btn" href={ templ.SafeURL(vm.NextURL) }>More issues →</a></p>
+			}
+		</section>
+	}
+}

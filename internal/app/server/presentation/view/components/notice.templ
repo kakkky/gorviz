@@ -1,0 +1,38 @@
+package components
+
+// UnavailableViewModel は保持期間を過ぎた (または残っていない) ため出せない欄。Field は欄の名前、Text は理由、Since はいつ以降なら出せるか
+type UnavailableViewModel struct {
+	Field string
+	Text  string
+	Since string
+}
+
+templ Unavailable(vm UnavailableViewModel) {
+	<div class="unavailable" role="note">
+		<strong>{ vm.Field }</strong>
+		<span>{ vm.Text }</span>
+		if vm.Since != "" {
+			<span class="faint">(retained since { vm.Since })</span>
+		}
+	</div>
+}
+
+// LinkItemViewModel はリンク 1 つと、その説明
+type LinkItemViewModel struct {
+	Label string
+	URL   string
+	Note  string
+}
+
+templ LinkList(items []LinkItemViewModel) {
+	<ul class="links">
+		for _, l := range items {
+			<li>
+				<a href={ templ.SafeURL(l.URL) }>{ l.Label }</a>
+				if l.Note != "" {
+					<span class="faint">{ l.Note }</span>
+				}
+			</li>
+		}
+	</ul>
+}

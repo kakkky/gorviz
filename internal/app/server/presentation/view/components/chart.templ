@@ -1,0 +1,111 @@
+package components
+
+// ChartViewModel は server が座標まで決めた時系列のグラフ (SVG)。座標は viewBox (ChartWidth × ChartHeight) の中の値。
+// Hovers は区切りごとの透明な帯で、title に値を出し、URL があればそこへ移る
+type ChartViewModel struct {
+	Title     string
+	Note      string
+	Legend    []ChartLegendViewModel
+	Lines     []ChartLineViewModel
+	Bars      []ChartBarViewModel
+	YTicks    []ChartTickViewModel
+	XTicks    []ChartTickViewModel
+	Marks     []ChartMarkViewModel
+	Hovers    []ChartHoverViewModel
+	Threshold *ChartTickViewModel
+	Empty     string
+}
+
+type ChartLegendViewModel struct {
+	Label string
+	Class string
+	Value string
+}
+
+type ChartLineViewModel struct {
+	Class  string
+	Path   string
+	Dashed bool
+}
+
+type ChartBarViewModel struct {
+	Class string
+	X     string
+	Y     string
+	W     string
+	H     string
+}
+
+type ChartTickViewModel struct {
+	Pos   string
+	Label string
+}
+
+type ChartMarkViewModel struct {
+	X     string
+	Class string
+	Title string
+}
+
+type ChartHoverViewModel struct {
+	X     string
+	W     string
+	Title string
+	URL   string
+}
+
+const (
+	ChartWidth  = 640
+	ChartHeight = 150
+	ChartLeft   = 48
+	ChartRight  = 632
+	ChartTop    = 10
+	ChartBottom = 128
+)
+
+templ Chart(vm ChartViewModel) {
+	<figure class="chart">
+		<figcaption>
+			<strong>{ vm.Title }</strong>
+			for _, l := range vm.Legend {
+				<span class={ "legend", l.Class }><i></i>{ l.Label } <span class="mono">{ l.Value }</span></span>
+			}
+			if vm.Note != "" {
+				<span class="faint">{ vm.Note }</span>
+			}
+		</figcaption>
+		<svg viewBox="0 0 640 150" preserveAspectRatio="none" role="img" aria-label={ vm.Title }>
+			for _, t := range vm.YTicks {
+				<line class="grid" x1="48" x2="632" y1={ t.Pos } y2={ t.Pos }></line>
+				<text class="ylabel" x="44" y={ t.Pos } text-anchor="end" dominant-baseline="middle">{ t.Label }</text>
+			}
+			for _, t := range vm.XTicks {
+				<text class="xlabel" x={ t.Pos } y="144" text-anchor="middle">{ t.Label }</text>
+			}
+			if vm.Threshold != nil {
+				<line class="threshold" x1="48" x2="632" y1={ vm.Threshold.Pos } y2={ vm.Threshold.Pos }><title>{ vm.Threshold.Label }</title></line>
+			}
+			for _, b := range vm.Bars {
+				<rect class={ "bar", b.Class } x={ b.X } y={ b.Y } width={ b.W } height={ b.H }></rect>
+			}
+			for _, l := range vm.Lines {
+				<path class={ "line", l.Class, templ.KV("dashed", l.Dashed) } d={ l.Path }></path>
+			}
+			for _, m := range vm.Marks {
+				<line class={ "mark", m.Class } x1={ m.X } x2={ m.X } y1="10" y2="128"><title>{ m.Title }</title></line>
+			}
+			for _, h := range vm.Hovers {
+				if h.URL != "" {
+					<a href={ templ.SafeURL(h.URL) }>
+						<rect class="hover" x={ h.X } y="10" width={ h.W } height="118"><title>{ h.Title }</title></rect>
+					</a>
+				} else {
+					<rect class="hover" x={ h.X } y="10" width={ h.W } height="118"><title>{ h.Title }</title></rect>
+				}
+			}
+			if vm.Empty != "" {
+				<text class="empty" x="340" y="70" text-anchor="middle">{ vm.Empty }</text>
+			}
+		</svg>
+	</figure>
+}

@@ -1,0 +1,17 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+)
+
+// ReplayFeed は SSE で届いた新しい再生の窓を足す先の id
+const ReplayFeed = "gmp-feed"
+
+// ReplayWindowStream は最新を追っている再生に、新しく届いた窓 1 つを足す
+templ ReplayWindowStream(windowJSON string) {
+	@turbo.StreamAppend(ReplayFeed) {
+		@components.ReplayWindowScript(windowJSON)
+	}
+}

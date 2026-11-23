@@ -1,0 +1,118 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+)
+
+// OverviewBodyViewModel は Overview の中身。最新を見ているあいだは SSE でこれだけを描き直す
+type OverviewBodyViewModel struct {
+	Range     string
+	UpdatedAt string
+	Ongoing   []OngoingIssueViewModel
+	IssuesURL string
+	Charts    []components.ChartViewModel
+	Retention *components.UnavailableViewModel
+	Instances []OverviewInstanceViewModel
+	Lifecycle []string
+}
+
+type OngoingIssueViewModel struct {
+	Kind          string
+	Subject       string
+	Certainty     string
+	CertaintyNote string
+	Instances     string
+	Last          string
+	URL           string
+}
+
+type OverviewInstanceViewModel struct {
+	Name         string
+	Running      bool
+	State        string
+	SchedulerURL string
+	LogsURL      string
+}
+
+templ OverviewBody(vm OverviewBodyViewModel) {
+	<section class="panel issues-now">
+		<h2>
+			Ongoing issues
+			<span class={ "count", templ.KV("alert", len(vm.Ongoing) > 0) }>{ len(vm.Ongoing) }</span>
+			<a class="more" href={ templ.SafeURL(vm.IssuesURL) }>all issues →</a>
+		</h2>
+		if len(vm.Ongoing) == 0 {
+			<p class="muted">No issue is going on in any instance.</p>
+		} else {
+			<table>
+				<thead><tr><th>kind</th><th>subject</th><th>certainty</th><th>instances</th><th>last started</th></tr></thead>
+				<tbody>
+					for _, o := range vm.Ongoing {
+						<tr>
+							<td><a href={ templ.SafeURL(o.URL) }>@components.KindBadge(o.Kind)</a></td>
+							<td class="wrap"><a href={ templ.SafeURL(o.URL) }>{ o.Subject }</a></td>
+							<td>@components.CertaintyBadge(o.Certainty, o.CertaintyNote)</td>
+							<td class="mono">{ o.Instances }</td>
+							<td class="mono">{ o.Last }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+	</section>
+	if vm.Retention != nil {
+		@components.Unavailable(*vm.Retention)
+	}
+	<section class="panel">
+		<h2>
+			Trends
+			<span class="muted mono">{ vm.Range }</span>
+			<span class="faint">updated { vm.UpdatedAt }</span>
+		</h2>
+		<p class="legend-line faint">
+			<span class="mark-key start"></span>instance start
+			<span class="mark-key restart"></span>restart
+			<span class="mark-key end"></span>instance end
+			<span class="mark-key threshold"></span>threshold the issue is judged by
+		</p>
+		<div class="charts">
+			for _, c := range vm.Charts {
+				@components.Chart(c)
+			}
+		</div>
+	</section>
+	<section class="panel">
+		<h2>Instances</h2>
+		<table>
+			<thead><tr><th>instance</th><th>state</th><th></th></tr></thead>
+			<tbody>
+				for _, i := range vm.Instances {
+					<tr>
+						<td class="mono"><span class={ "dot", templ.KV("running", i.Running) }></span>{ i.Name }</td>
+						<td class="muted wrap">{ i.State }</td>
+						<td class="actions">
+							<a class="btn small" href={ templ.SafeURL(i.SchedulerURL) }>Scheduler</a>
+							<a class="btn small ghost" href={ templ.SafeURL(i.LogsURL) }>Logs</a>
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		if len(vm.Lifecycle) > 0 {
+			<h3>Starts and ends in this period</h3>
+			<ul class="plain mono small">
+				for _, l := range vm.Lifecycle {
+					<li>{ l }</li>
+				}
+			</ul>
+		}
+	</section>
+}
+
+templ OverviewStream(vm OverviewBodyViewModel) {
+	@turbo.StreamUpdate("overview-body") {
+		@OverviewBody(vm)
+	}
+}

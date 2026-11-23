@@ -1,0 +1,17 @@
+{
+  "name": "gorviz-server-assets",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node build.mjs --test && for f in node_modules/gorviz-test-dist/*.mjs; do node \"$f\" || exit 1; done"
+  },
+  "devDependencies": {
+    "@hotwired/stimulus": "3.2.2",
+    "esbuild": "0.28.2",
+    "preact": "11.2.0",
+    "turbo-mount": "0.4.5",
+    "typescript": "7.0.2"
+  }
+}

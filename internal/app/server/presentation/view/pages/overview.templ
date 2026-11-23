@@ -1,0 +1,32 @@
+package pages
+
+import (
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
+)
+
+// OverviewViewModel の StreamURL は最新を見ているときの SSE (なければ空)
+type OverviewViewModel struct {
+	Base      layout.BaseViewModel
+	Picker    components.TimeRangePickerViewModel
+	Body      partials.OverviewBodyViewModel
+	StreamURL string
+}
+
+templ Overview(vm OverviewViewModel) {
+	@layout.Base(vm.Base) {
+		<div class="page-head">
+			<h1>Overview</h1>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
+		if vm.StreamURL != "" {
+			@turbo.StreamSSESource("overview-stream", vm.StreamURL)
+		}
+		<div id="overview-body" class="stack">
+			@partials.OverviewBody(vm.Body)
+		</div>
+	}
+}

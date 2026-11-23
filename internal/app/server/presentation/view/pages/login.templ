@@ -1,0 +1,29 @@
+package pages
+
+import "github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+
+// LoginViewModel の Next はログインしたあとに開く画面、Message はトークンが違ったときの知らせ
+type LoginViewModel struct {
+	Next    string
+	Message string
+}
+
+templ Login(vm LoginViewModel) {
+	@layout.Bare("log in") {
+		<section class="panel narrow login">
+			<h1>gorviz</h1>
+			<p class="muted">Log in with a token issued by gorviz-server (the launcher prints it as GORVIZ_TOKEN).</p>
+			if vm.Message != "" {
+				<p class="error" role="alert">{ vm.Message }</p>
+			}
+			<form method="post" action="/login" data-turbo="false">
+				<input type="hidden" name="next" value={ vm.Next }/>
+				<label class="field">
+					<span>Token</span>
+					<input type="password" name="token" autofocus autocomplete="current-password" required/>
+				</label>
+				<button type="submit" class="btn primary">Log in</button>
+			</form>
+		</section>
+	}
+}

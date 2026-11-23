@@ -1,0 +1,126 @@
+package layout
+
+import (
+	"github.com/kakkky/hotwire-go/stimulus"
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+)
+
+// BaseViewModel は全画面の外枠。Services は見出しで切り替えるサービス、Tabs は見ているサービスの画面、
+// Instances は Scheduler を開くインスタンス (見ているインスタンスが Active)
+type BaseViewModel struct {
+	Title     string
+	Service   string
+	Instance  string
+	Services  []LinkViewModel
+	Tabs      []LinkViewModel
+	Instances []InstanceLinkViewModel
+}
+
+type LinkViewModel struct {
+	Label  string
+	URL    string
+	Active bool
+}
+
+type InstanceLinkViewModel struct {
+	Label   string
+	URL     string
+	Active  bool
+	Running bool
+}
+
+func controllerPaths() []string {
+	out := make([]string, 0, len(assets.Controllers))
+	for _, c := range assets.Controllers {
+		out = append(out, assets.Versioned(c.Path))
+	}
+	return out
+}
+
+templ head(title string) {
+	<head>
+		<meta charset="UTF-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<title>{ title } · gorviz</title>
+		<link rel="stylesheet" href={ assets.Versioned(assets.StylesheetPath) } data-turbo-track="reload"/>
+		// 古いブラウザは module の読み込み開始後に出た import map を無視するので、import map (ScriptLoad) を module より先に出す
+		@stimulus.ScriptLoad(controllerPaths()...)
+		<script type="module" src={ assets.Versioned(assets.IslandsPath) } data-turbo-track="reload"></script>
+		@turbo.ScriptImport()
+	</head>
+}
+
+templ Base(vm BaseViewModel) {
+	<!DOCTYPE html>
+	<html lang="ja">
+		@head(vm.Title)
+		<body>
+			<header class="app">
+				<a class="brand" href="/">gorviz</a>
+				<details class="menu service-switcher">
+					<summary title="switch the service">
+						<span class="menu-label">service</span>
+						<strong>{ vm.Service }</strong>
+					</summary>
+					<div class="menu-pop">
+						for _, s := range vm.Services {
+							<a href={ templ.SafeURL(s.URL) } class={ templ.KV("active", s.Active) }>{ s.Label }</a>
+						}
+					</div>
+				</details>
+				<nav class="tabs">
+					for _, t := range vm.Tabs {
+						<a href={ templ.SafeURL(t.URL) } class={ templ.KV("active", t.Active) }>{ t.Label }</a>
+					}
+					<details class={ "menu", templ.KV("active", vm.Instance != "") }>
+						<summary title="open the Scheduler of an instance">
+							Scheduler
+							if vm.Instance != "" {
+								<span class="mono">{ vm.Instance }</span>
+							}
+						</summary>
+						<div class="menu-pop">
+							for _, i := range vm.Instances {
+								<a href={ templ.SafeURL(i.URL) } class={ templ.KV("active", i.Active) }>
+									<span class={ "dot", templ.KV("running", i.Running) } title={ runningTitle(i.Running) }></span>
+									{ i.Label }
+								</a>
+							}
+							if len(vm.Instances) == 0 {
+								<span class="faint">no instance</span>
+							}
+						</div>
+					</details>
+				</nav>
+				<form method="post" action="/logout" class="logout" data-turbo="false">
+					<button type="submit" class="btn ghost">Log out</button>
+				</form>
+			</header>
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+func runningTitle(running bool) string {
+	if running {
+		return "running"
+	}
+	return "ended"
+}
+
+// Bare はサービスを選ぶ前の画面 (ログイン・サービスがまだないとき) の外枠
+templ Bare(title string) {
+	<!DOCTYPE html>
+	<html lang="ja">
+		@head(title)
+		<body class="bare">
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}

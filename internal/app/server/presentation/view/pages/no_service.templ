@@ -1,0 +1,13 @@
+package pages
+
+import "github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+
+templ NoService() {
+	@layout.Bare("waiting for agents") {
+		<section class="panel narrow">
+			<h1>gorviz</h1>
+			<p>No agent has sent observations yet. Start gorviz-agent (or gorviz-launcher) next to your app; its service appears here as soon as the first batch arrives.</p>
+			<p><a class="btn" href="/">Reload</a></p>
+		</section>
+	}
+}

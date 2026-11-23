@@ -1,0 +1,62 @@
+package components
+
+import (
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+)
+
+// TimeRangePickerViewModel は見る期間を選ぶ部品。Label は今の期間、Live は今に合わせて動く期間。
+// Presets はよく使う期間、Action と Keep は入力欄で選んだときの送り先と一緒に送る今の絞り込み。From・To は入力欄の初期値 (RFC 3339)
+type TimeRangePickerViewModel struct {
+	Label   string
+	Live    bool
+	Presets []PresetViewModel
+	Action  string
+	Keep    []KeptParamViewModel
+	From    string
+	To      string
+}
+
+type PresetViewModel struct {
+	Label  string
+	URL    string
+	Active bool
+}
+
+type KeptParamViewModel struct {
+	Name  string
+	Value string
+}
+
+templ TimeRangePicker(vm TimeRangePickerViewModel) {
+	<details class="trp" { stimulus.AttrControllers(assets.TimeRangePickerController.Name)... } { stimulus.AttrValue(assets.TimeRangePickerController.Name, "from", vm.From)... } { stimulus.AttrValue(assets.TimeRangePickerController.Name, "to", vm.To)... }>
+		<summary class="trp-button" title="change the time range">
+			<svg class="icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+			if vm.Live {
+				<span class="live-dot" title="follows the latest data"></span>
+			}
+			<span>{ vm.Label }</span>
+		</summary>
+		<div class="trp-pop">
+			<div class="trp-presets">
+				for _, p := range vm.Presets {
+					<a href={ templ.SafeURL(p.URL) } class={ templ.KV("active", p.Active) }>{ p.Label }</a>
+				}
+			</div>
+			<form method="get" action={ templ.SafeURL(vm.Action) } class="trp-custom" { stimulus.AttrActions("submit->" + assets.TimeRangePickerController.Name + "#submit")... }>
+				for _, k := range vm.Keep {
+					<input type="hidden" name={ k.Name } value={ k.Value }/>
+				}
+				<input type="hidden" name="from" { stimulus.AttrTargets(assets.TimeRangePickerController.Name, "fromValue")... }/>
+				<input type="hidden" name="to" { stimulus.AttrTargets(assets.TimeRangePickerController.Name, "toValue")... }/>
+				<label><span>from</span><input type="datetime-local" step="1" required { stimulus.AttrTargets(assets.TimeRangePickerController.Name, "fromInput")... }/></label>
+				<label><span>to</span><input type="datetime-local" step="1" required { stimulus.AttrTargets(assets.TimeRangePickerController.Name, "toInput")... }/></label>
+				<div class="trp-actions">
+					<button type="button" class="btn ghost" { stimulus.AttrActions(assets.TimeRangePickerController.Name + "#close")... }>Cancel</button>
+					<button type="submit" class="btn primary">Apply</button>
+				</div>
+			</form>
+		</div>
+	</details>
+}

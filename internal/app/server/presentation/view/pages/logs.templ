@@ -1,0 +1,134 @@
+package pages
+
+import (
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
+)
+
+type LogsViewModel struct {
+	Base      layout.BaseViewModel
+	Picker    components.TimeRangePickerViewModel
+	Filter    LogFilterViewModel
+	Histogram components.ChartViewModel
+	Total     int
+	Levels    []LevelCountViewModel
+	Rows      []LogRowViewModel
+	NextURL   string
+	Retention *components.UnavailableViewModel
+	Detail    partials.LogDetailViewModel
+}
+
+// LogFilterViewModel は絞り込みの入力欄。Keep は期間 (from・to) など、絞り込みを変えても残す query
+type LogFilterViewModel struct {
+	Action    string
+	Keep      []components.KeptParamViewModel
+	Level     string
+	Instance  string
+	Instances []string
+	Attrs     []string
+	Text      string
+	ClearURL  string
+}
+
+type LevelCountViewModel struct {
+	Level string
+	Count int
+}
+
+type LogRowViewModel struct {
+	At       string
+	Instance string
+	Level    string
+	Message  string
+	Duration string
+	URL      string
+	Open     bool
+}
+
+var logLevels = []string{"", "DEBUG", "INFO", "WARN", "ERROR"}
+
+func levelLabel(l string) string {
+	if l == "" {
+		return "any level"
+	}
+	return l + " and above"
+}
+
+templ Logs(vm LogsViewModel) {
+	@layout.Base(vm.Base) {
+		<div class="page-head">
+			<h1>Logs</h1>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
+		<form class="panel filters" method="get" action={ templ.SafeURL(vm.Filter.Action) }>
+			for _, k := range vm.Filter.Keep {
+				<input type="hidden" name={ k.Name } value={ k.Value }/>
+			}
+			<label>
+				<span>level</span>
+				<select name="level">
+					for _, l := range logLevels {
+						<option value={ l } selected?={ l == vm.Filter.Level }>{ levelLabel(l) }</option>
+					}
+				</select>
+			</label>
+			<label>
+				<span>instance</span>
+				<select name="instance">
+					<option value="">all instances</option>
+					for _, i := range vm.Filter.Instances {
+						<option value={ i } selected?={ i == vm.Filter.Instance }>{ i }</option>
+					}
+				</select>
+			</label>
+			for _, a := range vm.Filter.Attrs {
+				<label><span>key=value</span><input type="text" name="attr" value={ a } placeholder="path=/todos" class="mono"/></label>
+			}
+			<label class="grow"><span>text</span><input type="search" name="q" value={ vm.Filter.Text } placeholder="contains…"/></label>
+			<button type="submit" class="btn primary">Filter</button>
+			<a class="btn ghost" href={ templ.SafeURL(vm.Filter.ClearURL) }>Clear</a>
+		</form>
+		if vm.Retention != nil {
+			@components.Unavailable(*vm.Retention)
+		}
+		<section class="panel">
+			@components.Chart(vm.Histogram)
+			<p class="level-counts">
+				<span class="mono">{ vm.Total } lines</span>
+				for _, l := range vm.Levels {
+					<span class={ "level", "level-" + l.Level }>{ l.Level }</span>
+					<span class="mono">{ l.Count }</span>
+				}
+			</p>
+		</section>
+		<div class="split">
+			<section class="panel log-list">
+				if len(vm.Rows) == 0 {
+					<p class="muted">No log line matches in this period.</p>
+				} else {
+					<table class="logs">
+						<thead><tr><th>time</th><th>instance</th><th>level</th><th>message</th><th class="num">took</th></tr></thead>
+						<tbody>
+							for _, row := range vm.Rows {
+								<tr class={ templ.KV("open", row.Open) }>
+									<td class="mono"><a href={ templ.SafeURL(row.URL) } data-turbo-frame={ partials.LogDetailFrame } data-turbo-action="advance">{ row.At }</a></td>
+									<td class="mono small">{ row.Instance }</td>
+									<td><span class={ "level", "level-" + row.Level }>{ row.Level }</span></td>
+									<td class="wrap message"><a href={ templ.SafeURL(row.URL) } data-turbo-frame={ partials.LogDetailFrame } data-turbo-action="advance">{ row.Message }</a></td>
+									<td class="num mono">{ row.Duration }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+				if vm.NextURL != "" {
+					<p><a class="btn" href={ templ.SafeURL(vm.NextURL) }>Later lines →</a></p>
+				}
+			</section>
+			<aside class="detail-side">
+				@partials.LogDetail(vm.Detail)
+			</aside>
+		</div>
+	}
+}
