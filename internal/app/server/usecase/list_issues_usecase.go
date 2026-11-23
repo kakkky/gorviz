@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
@@ -21,6 +22,9 @@ type IssueSummary struct {
 	Ongoing          bool
 	OngoingInstances []observation.InstanceName
 	NextAction       string
+	FirstOccurredAt  time.Time
+	// StartedAt は期間の中の発生の始まり。推移を描くのに使う
+	StartedAt []time.Time
 }
 
 // summarizeIssues は日ごとのファイルを Issue ごとにまとめる。from より前に終わった発生は数えない
@@ -39,6 +43,10 @@ func summarizeIssues(days []domain.DatedIssue, from, to time.Time) []IssueSummar
 			s.Occurrences++
 			s.Certainty = s.Certainty.Stronger(o.Certainty)
 			s.LastOccurredAt = maxTime(s.LastOccurredAt, o.StartedAt)
+			if s.FirstOccurredAt.IsZero() || o.StartedAt.Before(s.FirstOccurredAt) {
+				s.FirstOccurredAt = o.StartedAt
+			}
+			s.StartedAt = append(s.StartedAt, o.StartedAt)
 			if o.Ongoing() {
 				s.Ongoing = true
 				if !slices.Contains(s.OngoingInstances, o.Instance) {
@@ -50,6 +58,7 @@ func summarizeIssues(days []domain.DatedIssue, from, to time.Time) []IssueSummar
 	out := make([]IssueSummary, 0, len(byName))
 	for _, s := range byName {
 		if s.Occurrences > 0 {
+			slices.SortFunc(s.StartedAt, time.Time.Compare)
 			out = append(out, *s)
 		}
 	}
@@ -75,7 +84,10 @@ type ListIssuesUsecaseInput struct {
 	To       time.Time
 	Cursor   domain.PageCursor
 	MaxBytes int
-	Now      time.Time
+	// Query と Kind は絞り込み。Query は対象と名前に含まれる文字列 (大文字小文字を区別しない)
+	Query string
+	Kind  domain.IssueKind
+	Now   time.Time
 }
 
 type ListIssuesUsecaseOutput struct {
@@ -117,6 +129,13 @@ func (u *ListIssuesUsecase) Exec(ctx context.Context, in ListIssuesUsecaseInput)
 	if err != nil {
 		return ListIssuesUsecaseOutput{}, err
 	}
-	page, next := domain.Page(summarizeIssues(days, from, to), after, in.MaxBytes, func(s IssueSummary) int { return len(s.Name) + len(s.Subject) + 160 })
+	summaries := slices.DeleteFunc(summarizeIssues(days, from, to), func(s IssueSummary) bool {
+		return (in.Kind != "" && s.Kind != in.Kind) || (in.Query != "" && !containsFold(s.Subject+" "+s.Name, in.Query))
+	})
+	page, next := domain.Page(summaries, after, in.MaxBytes, func(s IssueSummary) int { return len(s.Name) + len(s.Subject) + 160 })
 	return ListIssuesUsecaseOutput{From: from, To: to, Issues: page, Next: next, RetainedSince: since}, nil
+}
+
+func containsFold(s, sub string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
 }
