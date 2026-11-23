@@ -1,4 +1,4 @@
-# 開発用: docker compose up で gorviz (http://localhost:7070) と観測対象の Todo アプリ (http://localhost:8080) を起動し、
+# 開発用: docker compose up で gorviz (http://localhost:7070) と観測する Todo アプリ (http://localhost:8090) を起動し、
 # .go・.templ・.css・.js を保存するたびに作り直す (make launcher.up と同じ構成)
 services:
   dev:
@@ -14,7 +14,7 @@ services:
       - go-build:/root/.cache/go-build
     ports:
       - "7070:7070"
-      - "8080:8080"
+      - "8090:8090"
 
 volumes:
   go-mod:

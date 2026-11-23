@@ -3,16 +3,14 @@ root = "."
 tmp_dir = "bin/air"
 
 [build]
-  cmd = "templ generate && go build -o ./bin/air/gorviz-launcher ./cmd/launcher"
-  # air は sh -c 越しに起動し、作り直すときの Interrupt を sh にしか送らない。exec で sh を launcher に置き換え、
-  # Interrupt が launcher に届くようにする (届かないと古い launcher が 7070 を持ったまま残り、新しい launcher が起動できない)
-  full_bin = "exec ./bin/air/gorviz-launcher -addr 0.0.0.0:7070 -target http://localhost:6060 -save-dir bin/recordings -dump-interval 5s -leak-check-every 2 -- go run ./example/todo -addr 0.0.0.0:8080"
+  cmd = "templ generate && go build -o ./bin/air/gorviz-launcher ./cmd/launcher && go build -o ./bin/air/todo-app ./example/todo-app"
+  full_bin = "exec ./docker/dev/run.sh"
   include_ext = ["go", "templ", "css", "js"]
-  exclude_dir = ["bin", ".git", ".playwright-mcp", "docs", "deploy"]
+  exclude_dir = ["bin", ".git", ".playwright-mcp", "docs", "deploy", "node_modules"]
   # templ generate が書く _templ.go で、もう一度作り直しが走らないようにする
   exclude_regex = ["_templ\\.go$", "_test\\.go$"]
   delay = 500
-  # launcher は Interrupt で Todo アプリを止めてから終わるので、強制終了の前に待つ
+  # launcher と todo-app が Interrupt で止まるまで、強制終了の前に待つ
   send_interrupt = true
   kill_delay = "6s"
 
