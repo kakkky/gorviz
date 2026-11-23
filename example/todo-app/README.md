@@ -50,10 +50,10 @@ gorviz の Issues が見つけるのは runtime 層の問題だけ。遅いリ�
 1. gorviz を開いてログインすると、サービス `todo` の **Overview** が開く
    - 右上の時計で期間を選ぶ。`last 15m` くらいが見やすい
    - Ongoing issues は、どこかのインスタンスで発生が続いている Issue
-   - Trends は、goroutine 数・ログとエラー・CPU 待ち・ヒープ・GC・ロックの待ち・OS のスレッドの推移。赤い点線は Issue の判定の線
+   - その下は小見出しごとの推移 (GOROUTINES・LOGS・MEMORY & GC・CPU・LOCKS)。赤い点線は Issue の判定の線
 2. Instances の `Scheduler` を押す
    - P のカードに、今走っている G が出る。ほとんどの P は idle のはず
-   - ◀ ▶ で状態の変化を 1 つずつ進められる。G を押すと、その goroutine の診断に移る
+   - ⏮ ⏭ で出来事 (G や P の状態が変わった瞬間) を 1 つずつ進められる。G のチップを押すと、その goroutine の診断に移る
 
 ![Overview](../../docs/poc/screenshots/02-overview.png)
 
@@ -63,12 +63,12 @@ gorviz の Issues が見つけるのは runtime 層の問題だけ。遅いリ�
 
 1. Todo アプリで **リマインダー** にチェックを入れて、5〜10 回追加する
    - ときどき「reminder could not be registered (timeout)」が出る
-2. 1〜2 分待つと、gorviz の Overview の Ongoing issues に `GOROUTINE_LEAK` が出る。行を押して Issue の詳細を開く
+2. 1〜2 分待つと、gorviz の Overview の Ongoing issues に `GOROUTINE_LEAK` が出る。行を押して Issue の詳細を開く (いちばん新しい発生は開いてある)
    - 確かさは `FACT`。runtime の goroutineleak プロファイルが「この channel に届く G はもういない」と判定した
    - Leaked goroutines, per stack に、生成元 `(*NotifierClient).RegisterReminder` (`notifier_client.go:25`)・止まっている場所 (`notifier_client.go:27`)・「同じ場所で待っている M 個のうち N 個がリーク」が出る
-3. 右の `Goroutine` を押して、リークした G の診断を開く
+3. 行の `Goroutine →` を押して、リークした G の診断を開く
    - 主因は `SYNC_WAIT`、待機理由は `chan send` (送れずに止まっている)
-   - Leak に `leaked` と「同じスタックの M 個のうち N 個がリーク」(`FACT`)
+   - カードの見出しに `GOROUTINE_LEAK`、leak の欄に「同じスタックの M 個のうち N 個がリーク」(`FACT`)
 4. 考える: なぜ送り先がいないのか
 
 ![GOROUTINE_LEAK の詳細](../../docs/poc/screenshots/06-issue-goroutine-leak.png)
@@ -81,13 +81,13 @@ gorviz の Issues が見つけるのは runtime 層の問題だけ。遅いリ�
 
 1. Todo アプリで **今すぐバックアップ** を押し、すぐ別のタブで一覧を開く (1 分ごとにも自動で起きる)
    - 一覧の表示に 1 秒以上かかる
-2. gorviz の Issues に `LOCK_CONTENTION` が出る。開いて、Lock wait, per function that called Lock の行を見る
+2. gorviz の Issues に `LOCK_CONTENTION` が出る。開いて、発生の下の Lock wait, per function that called Lock の行を見る
    - 回数は少ないのに、1 回あたりの平均と最大が長い。ロックを取る回数が多すぎるのではなく、誰かがロックを長く持っている
    - 止まった場所は `driver/memstore/memstore.go:35` (置き場の `Do` のロック)
    - held by に、ロックを持って待たせていた側の G が出る
 3. held by の G を押す
-   - バックアップの worker (`(*BackupTodosWorker).Run`) の G。時間の大半は次のバックアップまでの待ち (`SYNC_WAIT`) だが、`SLEEP` の 1.5 秒が、ロックを持ったまま遅いディスクへの書き出しを待っていた時間
-4. Logs を開き、同じ時間帯の `took` が 1 秒を超えた `request done` (`path` が `/`) の行を開いて、書いた G へ移る
+   - バックアップのリクエスト (自動のときは worker) の G。主因は `SLEEP` で、止まっていた場所は遅いディスクへの書き出し (`adapter/accessor/backup_file_accessor.go`)。ロックを持ったまま 1.5 秒寝ている
+4. Logs を開き、同じ時間帯の `took` が 1 秒を超えた `request done` (`path` が `/`) の行の `Goroutine →` で、書いた G へ移る
    - 待たされた側は、主因が `LOCK_WAIT`、止まっていた場所が `sync.(*Mutex).Lock` (`memstore.go:35`)
    - Woken by に、ロックを手放して起こした G (`sync.(*Mutex).Unlock`) が出る
 5. 考える: 誰が、なぜロックを長く握っているか
@@ -105,8 +105,7 @@ gorviz の Issues が見つけるのは runtime 層の問題だけ。遅いリ�
 2. gorviz の Logs で level を `ERROR and above` にする
    - 件数の推移が、2 分ごとに山になる
    - メッセージは `request failed`。行を開くと、JSON のキーと値に `mail service unavailable (503)` がある
-3. ログの詳細の Written by から、書いた G へ移る
-   - 結びつきは `FACT` (ロガーアダプタが振った番号で、ログ行と execution trace を結んだ)
+3. 行を開くと written by に書いた G と `FACT` が出る (ロガーアダプタが振った番号で、ログ行と execution trace を結んだ)。行の `Goroutine →` で、その G へ移る
    - 主因は `IO_WAIT` で、`LOCK_WAIT` はほとんどない。goroutine 同士の待ち合わせの問題ではない
    - エラーログの前後の execution trace は 31 日残すので、後日でも書いた瞬間を再生できる
 4. 考える: 自分のコードの問題か、外の問題か
@@ -121,9 +120,9 @@ gorviz の Issues が見つけるのは runtime 層の問題だけ。遅いリ�
 2. **統計を見る** を何度か押す (1 回に数秒かかる)
 3. gorviz の Issues に `CPU_CONTENTION` が出る。開いて Goroutines that were RUNNABLE the longest を見る
    - `ComputeStats.func1` の G が、P を待って何秒も `RUNNABLE` のまま並んでいる
-4. `Replay the scheduler around it` を押し、時刻のつまみを動かして実行待ちが最も多い瞬間を探す
+4. 発生の行の `Scheduler →` を押し、時刻のつまみを動かして実行待ちが最も多い瞬間を探す (山が見つからなければ、右上の期間を前後に広げる)
    - すべての P が埋まり、local run queue に `ComputeStats.func1` の G が数千個並んでいる
-   - 並んでいる G を押すと、主因が `RUNNABLE` の診断が出る
+   - 並んでいる G のチップを押すと、主因が `RUNNABLE` の診断が出る
 5. Logs で、統計を開いたリクエスト (`took` が数秒の `request done`) から書いた G へ移る
    - 主因は `SYNC_WAIT` (`sync.(*WaitGroup).Wait`)。自分は子の goroutine の終わりを待っているだけで、遅い理由は子の側 (P を待たされた `ComputeStats.func1`) にある
 6. 考える: なぜ P が足りなくなるのか

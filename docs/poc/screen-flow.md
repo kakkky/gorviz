@@ -2,6 +2,8 @@
 
 gorviz-server の GUI (PoC) の画面と、画面どうしの行き来をまとめたもの。振る舞いの仕様は [design.md](../design.md) の「4.2.4 GUI」にある。ここに書くのは、今の PoC で実際にどう見え、どこからどこへ移れるか。
 
+見た目は旧 PoC の画面を引き継ぎ、design.md で増えた欄 (確かさ・何から算出したか・保持期間を過ぎた欄・インスタンス・発生ごとの影響の大きかった goroutine など) を同じ部品の形で足している。
+
 スクリーンショットは、[example/todo-app](../../example/todo-app) を `make launcher.up` で観測し、チュートリアルの不具合 (リーク・ロックの待ち・CPU の取り合い・GC・エラーログ) を起こしたあとに撮った。インスタンスの名前は、launcher を動かしたホストの名前 (`MacBookAir`) になっている。
 
 ## 目次
@@ -26,31 +28,30 @@ flowchart TD
     issues["Issues<br/>/services/{s}/issues"]
     issue["Issue の詳細<br/>/services/{s}/issues/{issue}"]
     logs["Logs<br/>/services/{s}/logs"]
-    logdetail["ログの詳細 (Logs の右側)<br/>/services/{s}/logs?log={id}"]
     scheduler["Scheduler<br/>/services/{s}/instances/{i}/scheduler"]
     goroutine["Goroutine<br/>/services/{s}/instances/{i}/goroutines/{g}"]
 
     login -->|"トークンでログイン"| overview
-    overview -->|"発生中の Issue の行"| issue
-    overview -->|"all issues →"| issues
-    overview -->|"ログと エラーの棒"| logs
-    overview -->|"Instances の Scheduler"| scheduler
-    overview -->|"Instances の Logs"| logs
+    overview -->|"Ongoing issues の行"| issue
+    overview -->|"Ongoing issues の数"| issues
+    overview -->|"Logs and errors の棒"| logs
+    overview -->|"Instances の Scheduler・Logs"| scheduler
     issues -->|"行"| issue
-    issue -->|"影響の大きかった goroutine (?issue&occurrence)"| goroutine
-    issue -->|"待たせていた側の goroutine"| goroutine
-    issue -->|"Replay the scheduler around it"| scheduler
-    logs -->|"行"| logdetail
-    logdetail -->|"書いた goroutine (?log)"| goroutine
-    logdetail -->|"エラーログの前後に残した trace"| scheduler
-    scheduler -->|"G を押す (?from&to = 再生している範囲)"| goroutine
-    goroutine -->|"Woken by の goroutine"| goroutine
-    goroutine -->|"Open this period in the Scheduler"| scheduler
-    goroutine -->|"Issues around this period"| issues
+    issue -->|"発生の行の Scheduler →"| scheduler
+    issue -->|"影響の大きかった G・待たせていた G・Goroutine →"| goroutine
+    logs -->|"行の Goroutine → (書いた G が分かれば)"| goroutine
+    logs -->|"行の Goroutine → (分からなければ)"| scheduler
+    logs -->|"開いた行の kept traces"| scheduler
+    scheduler -->|"G のチップ"| goroutine
+    goroutine -->|"Scheduler →"| scheduler
+    goroutine -->|"woken by の G"| goroutine
+    goroutine -->|"書いたログの行"| logs
+    goroutine -->|"再生の G のチップ"| goroutine
 ```
 
-- どの画面からも、見出しの `Overview`・`Issues`・`Logs`・`Scheduler` (インスタンスを選ぶ) へ移れる
-- 見るサービスは、見出しの `SERVICE` で切り替える
+- どの画面からも、見出しの `Overview`・`Issues`・`Logs`・`Scheduler` へ移れる
+  - `Scheduler` は、見ているインスタンス (なければ動いているインスタンス) の Scheduler
+- 見るサービスとインスタンスは、見出しのピルで切り替える
 - サービス単位の画面 (Overview・Issues・Logs) から、インスタンス単位の画面 (Scheduler・Goroutine) へ移るとき、行のインスタンスに決まる
 - Goroutine の調べる期間は、URL の query で入口ごとに決まる (design.md「4.2.6.1 調べる期間」)
   - `?log={ログの ID}`
@@ -64,52 +65,68 @@ flowchart TD
 
 ### 見出し
 
-![見出しのサービスの切り替え](screenshots/03-service-switcher.png)
+![見出しのピルを開いたところ](screenshots/03-service-switcher.png)
 
-- 左から `gorviz` (トップへ)、`SERVICE` (サービスの切り替え)、`Overview`・`Issues`・`Logs`・`Scheduler` のタブ、`Log out`
-- `SERVICE` を押すと、agent が観測データに付けて送ってきたサービスの一覧が出る (この PoC では `todo` だけ)
-- `Scheduler` のタブはインスタンスを選ぶメニュー (「[Scheduler](#scheduler)」)
+- 左から `gorviz`、サービスとインスタンスのピル、右寄せで `Overview`・`Issues`・`Logs`・`Scheduler` のタブ、`Log out`
+- ピルの緑の点は、動いているインスタンスがあること
+- ピルを開くと、サービスごとにインスタンスが並ぶ
+  - サービスの名前 (`TODO`) を押すと、そのサービスの Overview
+  - インスタンスを押すと、そのインスタンスの Scheduler
+  - インスタンスの横に `running`・`ended`
 
 ### 期間を選ぶ部品
 
 ![期間を選ぶ部品](screenshots/04-time-range-picker.png)
 
-- 右上の時計のボタンで開く。緑の点は、最新を追っている (`last 1h` のような今からの相対の期間) ことを示す
-- 上の段は決まった期間 (`last 15m`・`last 1h`・`last 6h`・`last 24h`・`last 7d`)。画面ごとに候補が違う (Scheduler は `latest 5s`〜`latest 1m`、Issues は 31 日まで)
-- 下の段で、from・to をブラウザの時刻で入れて `Apply` する。URL にはそのまま `from`・`to` (RFC 3339) で載るので、URL を共有すれば同じ期間を開ける
+- 右上のピルに、時計・最新を追っているかの緑の点・期間 (`11/23 22:23:52 → 11/23 22:28:52`)・長さ (`5m`) が出る
+- 開くと、上の段によく使う期間、下の段に from・to の入力欄 (ブラウザの時刻) が出る
+- 画面ごとに候補が違う
+  - Overview は `last 15m` 〜 `last 7d`
+  - Issues は 31 日まで
+  - Logs は `last 5m` 〜 `last 24h`
+  - Scheduler は `latest 5s` 〜 `latest 1m`
+- URL にはそのまま `from`・`to` (RFC 3339 か `-15m` のような今からの相対) で載るので、URL を共有すれば同じ期間を開ける
 
 ## ログイン
 
 ![ログイン](screenshots/01-login.png)
 
-- GUI はログインが要る。トークンを入れて `Log in` する (PoC では server が発行したトークンでログインする。launcher はログに `GORVIZ_TOKEN=...` として出す)
+- GUI はログインが要る。server が発行したトークンを入れる (launcher はログに `GORVIZ_TOKEN=...` として出す)
 - ログインすると cookie にトークンを持ち、もとの URL (なければ最初のサービスの Overview) に戻る
-- HTTP API (cli・mcp) は同じトークンを `Authorization
-  - Bearer` で渡す
+- HTTP API (cli・mcp) は同じトークンを `Authorization: Bearer` で渡す
 
 ## Overview
 
-サービスの全体の様子。サービスを開いたときの最初の画面。
+サービスの全体の様子。サービスを開いたときの最初の画面。旧 PoC と同じく、小見出し (STATUS・GOROUTINES・LOGS・MEMORY & GC・CPU・LOCKS) で区切る。
 
 ![Overview](screenshots/02-overview.png)
 
-- Ongoing issues
-  - どこかのインスタンスで発生が続いている Issue の数 (赤い丸) と一覧。行の種類・対象・確かさ・発生しているインスタンス・最後に始まった時刻。行を押すと「[Issue の詳細](#issue-の詳細)」へ。`all issues →` で「[Issues](#issues)」へ
-- Trends
-  - 選んだ期間の推移。どのグラフも横軸の時刻がそろっている
-  - Goroutines (インスタンスを足し合わせた数)
-  - Logs and errors (10 秒ごとのログとエラーの件数。棒を押すとその時間の Logs へ)
-  - CPU wait
-    - `RUNNABLE` から `RUNNING` になるまでの p99 (赤の点線は `CPU_CONTENTION` の閾値 1ms)
-  - Share of goroutine time spent RUNNABLE
-  - Heap (heap と GC の目標値)
-  - GC CPU share (GC と mark assist。点線は `GC_PRESSURE` の閾値)
-  - Lock wait per running time (ロックの待ちと実行中の時間の比。点線は `LOCK_CONTENTION` の閾値 100%)
-  - OS threads
-- 緑の縦の点線はインスタンスの始まり、黄色は同じ名前での再起動、灰色は終わり (design.md「3.4.1 インスタンスのライフサイクル」)
-- 最新を追っている間は、SSE で数秒ごとに描き直す (`updated` の時刻が進む)
-- Instances
-  - インスタンスごとの状態 (緑の点は動いている)。`Scheduler` と `Logs` へ移れる。下に、この期間の始まり・終わりの一覧
+- STATUS
+  - Ongoing issues
+    - どこかのインスタンスで発生が続いている Issue の数 (押すと Issues)
+    - 行は種類・確かさ・対象・発生しているインスタンス・最後に始まった時刻。押すとその Issue の詳細
+  - Goroutines
+    - 最新の goroutine の数 (インスタンスを足し合わせたもの)、動いているインスタンスの数、OS のスレッドの数
+- GOROUTINES
+  - Goroutines の推移
+  - Instances
+    - インスタンスごとの状態と、`Scheduler`・`Logs` へのボタン
+    - 期間の中の始まり・終わりの一覧
+- LOGS
+  - Logs and errors
+    - 10 秒ごとの行の数を、エラー (赤) とそれ以外 (青) で積み上げる。棒を押すと、その時間の Logs
+- MEMORY & GC
+  - Heap (heap と GC の目標値)・GC の CPU の割合・mark assist の CPU の割合
+- CPU
+  - Wait to run (`RUNNABLE` から `RUNNING` になるまでの p99)・Waiting for P (P を待っていた goroutine の数の平均)・OS threads
+- LOCKS
+  - Lock wait (ロックの待ちと実行中の時間の比)
+- どのグラフも横軸の時刻がそろっている
+  - 赤の点線は Issue の判定の線 (凡例に何の線かが出る)
+  - 緑の縦の点線はインスタンスの始まり、黄色は同じ名前での再起動、灰色は終わり (design.md「3.4.1 インスタンスのライフサイクル」)
+  - 凡例の数字は、期間の最後の値
+  - 区切りにマウスを載せると、その時間の値が出る
+- 最新を追っている間は、SSE で数秒ごとに描き直す
 
 この画像では、ロックの待ち・CPU 待ち・mark assist の山と、ヒープの山が同じころに出ている (チュートリアルで起こした不具合)。
 
@@ -119,26 +136,26 @@ flowchart TD
 
 ![Issues](screenshots/05-issues.png)
 
-- 列は、種類・対象・確かさ・発生の回数・最後に始まった時刻・発生中か (発生中ならインスタンス)
-- 対象は、`GOROUTINE_LEAK` なら生成元の関数、ほかの種類ならサービス (インスタンス全体で判定するため)
-- 確かさの印にマウスを載せると意味が出る
-  - `FACT` は runtime の判定や trace の記録から直接言える
-  - `INFERENCE` は gorviz が推移や比較から推し量った
-- 行を押すと「[Issue の詳細](#issue-の詳細)」へ
+- 上の検索欄で、対象の文字列と種類で絞る
+- 期間の中の発生の数、種類ごとの数と割合、種類で積み上げた発生の推移
+- 一覧の列は、種類 (発生中なら赤い点)・確かさ・対象・今の様子・発生の回数・期間の中の推移・最初と最後の発生
+  - 対象は、`GOROUTINE_LEAK` なら生成元の関数、`LONG_STW` なら STW の理由、ほかの種類ならサービス (インスタンス全体で判定するため)
+  - 確かさの印にマウスを載せると意味が出る
+    - `FACT` は runtime の判定や trace の記録から直接言える
+    - `INFERENCE` は gorviz が推移や比較から推し量った
+- 行を押すと「[Issue の詳細](#issue-の詳細)」
 
 ## Issue の詳細
 
-上に Issue の要点、下に発生ごとの調べ始める先が並ぶ。どの種類も同じ形で、発生ごとの表の中身だけが種類で変わる。
+上に Issue の要点、真ん中に日ごとの発生の回数、下に発生ごとの調べ始める先が並ぶ。どの種類も同じ形で、発生を開いたときの表の中身だけが種類で変わる。
 
 - 上の段
-  - 確かさ、発生中か、ネクストアクション (どこを見直すかの方向)
-- Occurrences per day
-  - 日ごとの発生の回数
+  - 種類・確かさ・対象・発生中か
+  - 最初と最後の発生、期間の中の発生の回数、いつから残っているか
 - Occurrences
-  - 発生ごとに、インスタンス・始まりと終わり・確かさ・何で判定したか (閾値・普段との比較・リーク判定) と、その値
-  - `Replay the scheduler around it`
-    - 発生の前後に残した execution trace を Scheduler で再生する (31 日残るので、通常の trace (7 日) が消えたあとでも開ける)
-  - 影響の大きかった goroutine の表。G の番号を押すと、発生の前後を調べる期間にして「[Goroutine](#goroutine)」へ
+  - 発生ごとに 1 行。始まりと終わり・インスタンス・確かさ・何で判定したか (閾値・普段との比較・リーク判定) とその値
+  - 行の `Scheduler →` で、発生の前後の execution trace を Scheduler で再生する (31 日残るので、通常の trace (7 日) が消えたあとでも開ける)
+  - 行の `>` で、その発生で影響の大きかった goroutine の表を開く (いちばん新しい発生は開いてある)。G を押すと、発生の前後を調べる期間にして「[Goroutine](#goroutine)」
 
 ### GOROUTINE_LEAK
 
@@ -146,18 +163,18 @@ flowchart TD
 
 - runtime の goroutineleak プロファイルが判定したので `FACT`
 - Leaked goroutines, per stack
-  - スタックごとに 1 行。生成元 (go 文を書いた関数と file:line)・止まっている場所 (file:line)・「同じ場所で待っている M 個のうち N 個がリーク」・確かさ
+  - スタックごとに 1 行。生成元 (go 文を書いた関数と file:line)・止まっている場所 (file:line)・「同じ場所で待っている M 個のうち N 個がリーク」・確かさ・`Goroutine →`
 - Leaked goroutines
-  - リークした G の番号の一覧
+  - リークした G の番号
 
 ### LOCK_CONTENTION
 
 ![LOCK_CONTENTION の詳細](screenshots/07-issue-lock-contention.png)
 
 - Lock wait, per function that called Lock
-  - `Lock` を呼んだ場所ごとに 1 行。待ち時間の割合・回数・1 回あたりの平均と最大・止まった場所 (file:line)・待たせていた側 (held by) の関数と場所と G
+  - `Lock` を呼んだ場所ごとに 1 行。待ち時間の割合・回数・1 回あたりの平均と最大・止まった場所 (file:line)
+  - held by に、待たせていた側 (ロックを持っていた側) の G・関数・場所。G を押すと、ロックを持っていた側の Goroutine (何をしていたかを見る)
   - 回数と 1 回あたりの長さを並べて、ロックを取る回数が多すぎるのか、誰かが長く持っているのかを見分ける
-  - held by の G を押すと、ロックを持っていた側の Goroutine へ (何をしていたかを見る)
 - Goroutines that waited on locks the longest
   - ロックで長く待たされた G
 
@@ -167,7 +184,7 @@ flowchart TD
 
 - `RUNNABLE` から `RUNNING` になるまでの p99 が 1ms を超えたので、閾値で `INFERENCE`
 - Goroutines that were RUNNABLE the longest
-  - P を待たされた時間の長い G。ここでは `ComputeStats.func1` (統計で todo ごとに立てた goroutine) が並ぶ
+  - P を待たされた時間の長い G。ここでは統計で todo ごとに立てた `ComputeStats.func1` が並ぶ
 
 ### GC_PRESSURE
 
@@ -175,7 +192,15 @@ flowchart TD
 
 - mark assist の CPU の割合が 5% を超えたので `INFERENCE` (GC の CPU の割合が 50% に達していれば `FACT`)
 - Goroutines made to do the most mark assist
-  - mark assist をさせられた時間の長い G。ここでは CSV エクスポートのリクエスト (`net/http.(*conn).serve`)
+  - mark assist をさせられた時間の長い G
+
+### LONG_STW
+
+![LONG_STW の詳細](screenshots/22-issue-long-stw.png)
+
+- 1 回の stop-the-world が 1ms 以上だったので `INFERENCE`。対象は STW の理由 (`GC sweep termination`)
+- Goroutines that stopped the world
+  - STW の理由と長さ
 
 ## Logs
 
@@ -183,74 +208,73 @@ flowchart TD
 
 ![Logs](screenshots/10-logs.png)
 
-- 上の段の絞り込み
-  - レベル (この重さ以上)・インスタンス・JSON のキーと値 (`path=/todos` の形)・文字列
-- Matching lines per 10s
-  - 絞ったログの 10 秒ごとの件数。下にレベルごとの件数
+- 上の検索欄
+  - 文字列・JSON のキーと値 (`path=/todos` の形)・レベル (この重さ以上)・インスタンスで絞る
+- 件数の推移
+  - レベルごとの色で積み上げる (ERROR・WARN・INFO・DEBUG・no level)。棒を押すと、その時間に絞る
 - 一覧
-  - 時刻・インスタンス・レベル・メッセージ・所要時間 (`duration` などのキーがあれば)。行を押すと右にログの詳細が開く
+  - 時刻・レベル・メッセージ・インスタンス・所要時間 (`duration` などのキーがあれば)・`Goroutine →`
+  - 行の `>` か行そのものを押すと、すぐ下に JSON のキーと値が開く
+  - `Goroutine →` は、書いた goroutine が分かればその Goroutine、分からなければその時刻の Scheduler へ移る
+  - ロガーアダプタの番号のない行は、`Goroutine ? →` のように `?` が付く (書いた goroutine を時刻から推し量るため)
 
 ![ERROR に絞った Logs](screenshots/11-logs-error-filter.png)
 
 `ERROR and above` に絞ると、完了メールの送信先が落ちている間 (2 分のうち 30 秒) のエラーが山になって見える。
 
-### ログの詳細
+### 開いた行
 
-![ログの詳細](screenshots/12-log-detail.png)
+![開いた行](screenshots/12-log-detail.png)
 
-- 右側にログ 1 行の詳細が開く (URL に `?log={ID}` が付くので、そのまま共有できる)
-- Written by
-  - このログを書いた goroutine と、結びつきの確かさ
-  - ロガーアダプタが振った番号で execution trace と結んだら `FACT`。その時刻に走っていた goroutine が 1 つだけなら `INFERENCE`
-  - `G… · open Goroutine` を押すと、このログを入口にした期間で「[Goroutine](#goroutine)」へ
-  - 分からないときは、その時刻の Scheduler へのリンクになる
+URL に `?log={ID}` を付けると、その行を開いた状態で出す (共有できる)。開いた行には、キーと値の上に次が出る。
+
+- written at と read from
+  - ログに書かれた時刻 (なければ取り込んだ時刻) と、取り込み元
+- written by
+  - 書いた goroutine と結びつきの確かさ。ロガーアダプタが振った番号で結んだら `FACT`、その時刻に走っていた goroutine が 1 つだけなら `INFERENCE`
 - period to look at
   - Goroutine で調べる期間 (所要時間があればリクエストの区間、なければ書いた時刻の前後)
-- Execution traces kept around this error
-  - `ERROR` 以上のログの前後に残した execution trace。押すとその範囲の Scheduler へ
-- Fields
-  - JSON のキーと値、元の行
+- kept traces
+  - `ERROR` 以上のログの前後に残した execution trace。押すとその範囲の Scheduler
 
 ## Goroutine
 
-1 つの goroutine の診断と根拠。どの画面から入っても最後はここに行き着く。
+1 つの goroutine の診断と根拠。どの画面から入っても最後はここに行き着く。旧 PoC と同じく、上に追っている G のカード、下に GMP の再生を置く。
 
 ### ログから入ったとき
 
 ![ログから入った Goroutine](screenshots/14-goroutine-from-log.png)
 
-- 上の段
-  - 調べる期間とその決まり方 (`from the log line ...`)、入口の関数、生成元、何から算出したか (`execution trace` / 1 分ごとの内訳 / スナップショット)
-- Main cause
-  - 主因と確かさ。trace の状態の変化から決めたので `FACT`
-  - 主因が `SYNC_WAIT`・`LOCK_WAIT` なら「待っていた相手を見る」、`RUNNABLE` なら「同じ時間の CPU_CONTENTION を見る」といった次の一手を出す
-- Time by state
-  - 状態別の時間内訳 (帯と表)。`not recorded` は、その期間に G が居なかったか状態が記録されていない時間
-- Stopped at
-  - 最も長く止まっていた状態・時間・待機理由と、関数・file:line
-- Leak
-  - runtime がリークと判定したか (最後のリーク判定の時刻つき)
-- Woken by
-  - この G の待ちを終わらせて起こした goroutine と、起こした場所。押すとその G へ
-- Logs written in the period
-  - この G が期間中に書いたログ
-- GMP replay
-  - 期間のスケジューラの動きの再生 (この G を白い枠で強調する)
+- カードの見出し
+  - `FOLLOWING`・G の番号・入口の関数・インスタンス。リークなら `GOROUTINE_LEAK` と確かさ。`Scheduler →`
+- Diagnosis (左の列)
+  - 主因と確かさ
+  - interval は調べる期間と、その決まり方 (from the log line ...)
+  - computed from は何から算出したか (`execution trace` / 1 分ごとの内訳 / スナップショット)。1 分ごとの内訳なら、期間を 1 分単位に合わせたことも出す
+  - stopped in・location・wait reason は、最も長く止まっていた関数・場所・待機理由と、その長さ
+  - woken by は、この G の待ちを終わらせて起こした G と、起こした場所・回数・待っていた時間。G を押すと、起こされた側が待っていた区間でその G を開く
+  - created by と leak
+  - 保持期間を過ぎて出せない欄は、隠さずに「保持期間を過ぎたため出せない」と出す
+- Time by state (右の列)
+  - 状態別の時間内訳を棒で。`not recorded` は、その期間に G が居なかったか状態が記録されていない時間
+  - その期間にこの G が書いたログ。押すと Logs でその行を開く
 
 ![Goroutine の GMP の再生](screenshots/15-goroutine-replay.png)
+
+再生の見出しに、追っている G が今の時点でどの状態か、いつからか (`FOLLOWING G30 IO_WAIT since ...`) と、その状態に入った瞬間へ移るボタンが出る。
 
 ### Issue の発生から入ったとき
 
 ![Issue の発生から入った Goroutine](screenshots/13-goroutine-from-issue.png)
 
-`LOCK_CONTENTION` の held by から開いた、バックアップの worker の G。期間は発生の前後 (`around the issue occurrence`) になる。時間の大半を `SYNC_WAIT` (次のバックアップまでの待ち) で過ごしているが、`SLEEP` の 1.5 秒が、ロックを持ったまま遅いディスクへの書き出しを待っていた時間にあたる。
+`LOCK_CONTENTION` の held by から開いた、バックアップのリクエストの G。期間は発生の前後 (`around the issue occurrence`) になる。主因は `SLEEP` で、止まっていた場所は遅いディスクへの書き出し (`backup_file_accessor.go:24`)。ロックを持ったまま 1.5 秒寝ていたことが分かる。
 
 ### リークした goroutine
 
 ![リークした Goroutine](screenshots/20-goroutine-leaked.png)
 
-- 主因は `SYNC_WAIT` (`chan send` で 20 秒待ち続けている)
-- **Leak** に `leaked`・「同じスタックの M 個のうち N 個がリーク」・確かさ (同じスタックの G がちょうどリークの件数だけあったので `FACT`)
+- 主因は `SYNC_WAIT` (`chan send` で待ち続けている)
+- カードの見出しに `GOROUTINE_LEAK` と確かさ、leak に「同じスタックの M 個のうち N 個がリーク」
 
 ### Scheduler の G から入ったとき
 
@@ -266,47 +290,49 @@ Scheduler で local run queue に並んでいた G を押して開いたもの�
 
 ![最新を追う Scheduler](screenshots/16-scheduler-live.png)
 
-- 期間を `latest 10s` などの相対にすると、最新を追う (右上の `live`)。新しいチャンクが届いたら SSE で受け取り、見ている窓の端まで再生し終えたところで続きをつなぐ
-- 上の操作
-  - 前の窓 (⏮)・前の変化 (◀)・再生と一時停止・次の変化 (▶)・次の窓 (⏭)・時刻のつまみ・今の時刻と窓の始まりからの経過・再生の速さ (既定は 1/100。スケジューラの動きは µs の単位なので引き延ばす)
-- 概念図
-  - global run queue
-    - グローバルの実行待ちキュー
-  - P0〜P7
-    - P ごとに、乗っている M、走っている G (緑)、local run queue
-  - in a syscall on an M without a P
-    - P を手放した M の上で syscall を続けている G
-  - waiting
-    - 待機中の G を、入口の関数 (分からなければ今いる関数) と待機理由ごとにまとめたもの
-  - G の色は主因の色。赤い枠はリークした G。マウスを載せると、入口・主因・待機理由・今いる関数・起こした G・リークが出る。押すと「[Goroutine](#goroutine)」へ
-- 下に、P ごとにどの G が走ったかの帯 (押した位置へ移る) と、直近の状態の変化の一覧
+- 期間を `latest 10s` などの相対にすると、最新を追う。新しいチャンクが届いたら SSE で受け取り、録れている中でいちばん新しい時点を見せる
+- 操作
+  - ⏮ ⏭ で前後の出来事 (G か P の状態が変わった瞬間) へ 1 つずつ進む。窓の端では、前後の窓へ移る
+  - ▶ で出来事を 1 つずつ自動で進める。❚❚ で止め、最新を追うのもやめる
+  - つまみで時刻を動かす
+- 凡例は、G の丸の色 (主因) と、リークの赤い輪
+- CPU slots (P) over time
+  - P ごとに、G が走った区間の帯。いちばん上の GC の段は concurrent mark (薄い) と stop-the-world (濃い)。右端は P が G を走らせていた割合
+  - 押すとその時刻へ移る
+- GMP
+  - P のカードに、乗っている M、走っている G、local run queue (待っている時間つき)
+  - global run queue は並んだ順に番号つき
+  - M in syscall, P released は、P を手放した M の上で syscall を続けている G
+  - PARKED は、止まっている G を待っている相手 (channel・lock / sync・network・timer・runtime) ごとに分け、その中を「関数 × 待機理由」でまとめたもの。リークした G は件数の印と赤い輪
+  - G のチップにマウスを載せると、入口・今いる関数・待機理由・起こした G・リークが出る。押すと「[Goroutine](#goroutine)」
 
 ### インスタンスを選ぶ
 
 ![インスタンスを選ぶメニュー](screenshots/17-scheduler-instance-menu.png)
 
-見出しの `Scheduler` から、インスタンスを選ぶ。緑の点は動いているインスタンス。
+見出しのピルから、インスタンスを選ぶ。Scheduler・Goroutine を見ている間は、ピルにインスタンスの名前も出る。
 
 ### CPU の取り合いの瞬間
 
 ![CPU_CONTENTION の瞬間の Scheduler](screenshots/18-scheduler-cpu-contention.png)
 
-`CPU_CONTENTION` の発生の前後を再生し、実行待ちが最も多い瞬間まで進めたもの。統計の計算で todo ごとに立てた goroutine が、P0・P5・P7 の local run queue に数千個並んでいる (先頭の 48 個だけを描き、残りは `+2367` のように数で出す)。
+統計を開いたときの 1 分を再生し、実行待ちが最も多い瞬間まで進めたもの。統計の計算で todo ごとに立てた goroutine が、P5 の local run queue に数千個並んでいる (先頭の 8 個だけを描き、残りは `+5709` のように数で出す)。CPU slots の黄色い帯は、同じころに走った GC。
 
 ### Issue の発生の前後に残した trace
 
 ![Issue の発生の前後の Scheduler](screenshots/21-scheduler-issue-window.png)
 
-Issue の詳細の `Replay the scheduler around it` から開いたもの。通常の execution trace が保持期間 (7 日) を過ぎたあとは、Issue の発生とエラーログの前後に残した trace から再生し、`from a kept trace` と示す。再生できない時刻では、その理由と、近くに残した trace へのリンクを出す。
+Issue の発生の行の `Scheduler →` から開いたもの。通常の execution trace が保持期間 (7 日) を過ぎたあとは、Issue の発生とエラーログの前後に残した trace から再生し、`from a kept trace` と示す。再生できない時刻では、その理由と、近くに残した trace へのリンクを出す。
 
 ## PoC で足りていないところ
 
 画面を作ってみて分かった、design.md との差と直したいところ。
 
-- 待たせていた側の goroutine は、起こされた側が待っていた区間ではなく、Issue の発生の前後の期間で開く (`?woken` の期間はまだ使っていない)
+- `CPU_CONTENTION` の発生の時刻が、実行待ちの山より遅れることがある。発生の前後 (±10 秒) で開くと山を外すことがあり、この PoC の画像は前後 1 分で開いて探した
 - `LOCK_CONTENTION` の「`Lock` を呼んだ関数」に、`sync.(*Mutex).Lock` そのものが出る。場所 (file:line) は呼んだ側だが、関数名は呼んだ側の関数にしたい (観測データの状態の変化に、利用者のコードの関数名を持たせる必要がある)
-- Goroutine の Woken by が長くなりすぎることがある (runtime の内部の G を含めて全部並べている)
-- 再生の waiting に `(unknown entry)` が残る。窓より前に作られ、窓の中でスタックが記録されなかった G は、入口も今いる関数も分からない
-- 時間の幅の広いグラフ (Issue の日ごとの発生) で、目盛りの文字が横に伸びる (SVG を枠に合わせて伸ばしているため)
+- 待たせていた側の goroutine は、起こされた側が待っていた区間ではなく、Issue の発生の前後の期間で開く
+- woken by に、runtime の内部の G (`sync.(*Cond).Broadcast` など) まで並ぶ (先頭の 8 件だけを出している)
+- 窓より前に作られ、窓の中でスタックが記録されなかった G は、入口が分からない (`entry unknown`)
+- Logs の一覧は古い順 (旧 PoC は新しい順だった)。続きを `newer lines` で取る
+- グラフの hover は区切りごとの帯で値を出すだけで、旧 PoC の縦線とドラッグでの拡大 (chart_sync) はまだ移していない
 - favicon がない
-- ログイン画面は、トークンを貼るだけの最小のもの (design.md ではログイン。SSO は前段のリバースプロキシに任せる想定)
