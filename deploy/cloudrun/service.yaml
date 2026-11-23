@@ -20,12 +20,29 @@ spec:
           image: example.com/api:latest
           ports:
             - containerPort: 8080
-          # pprof は localhost だけに公開する (agent は同じインスタンスから読む)
+          # pprof は localhost だけに公開する (agent は同じインスタンスから読む)。ログは共有ボリュームにも書く
           env:
             - {name: PPROF_ADDR, value: "localhost:6060"}
+            - {name: LOG_FILE, value: /var/log/app/app.log}
+          volumeMounts:
+            - {name: logs, mountPath: /var/log/app}
         - name: gorviz-agent
           image: ghcr.io/kakkky/gorviz:latest
-          # 名前は Cloud Run が入れるサービス名 (K_SERVICE) に、metadata server から取った instance ID を足したものになる
-          command: ["gorviz-agent", "-target", "http://localhost:6060", "-agent-addr", "10.0.0.10:7071", "-trace-buffer-mib", "64"]
+          command: ["gorviz-agent"]
+          env:
+            - {name: GORVIZ_AGENT_MODE, value: sidecar}
+            - {name: GORVIZ_SERVICE, value: api}
+            - {name: GORVIZ_PPROF_ADDR, value: "localhost:6060"}
+            # アプリと共有するボリューム (in-memory) のファイルから読む
+            - {name: GORVIZ_LOG_FILES, value: "/var/log/app/*.log"}
+            - {name: GORVIZ_SERVER_ADDR, value: "10.0.0.10:7071"}
+            - {name: GORVIZ_CA_FINGERPRINT, value: "<ca_sha256>"}
+            - name: GORVIZ_TOKEN
+              valueFrom: {secretKeyRef: {name: gorviz-token, key: latest}}
+          volumeMounts:
+            - {name: logs, mountPath: /var/log/app}
           resources:
             limits: {cpu: "1", memory: 256Mi}
+      volumes:
+        - name: logs
+          emptyDir: {medium: Memory}

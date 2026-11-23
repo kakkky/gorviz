@@ -10,7 +10,16 @@
       "image": "example.com/api:latest",
       "essential": true,
       "environment": [{"name": "PPROF_ADDR", "value": "localhost:6060"}],
-      "dockerLabels": {"gorviz.kakkky.dev/observe": "true"}
+      "logConfiguration": {
+        "logDriver": "awsfirelens",
+        "options": {"Name": "tcp", "Host": "127.0.0.1", "Port": "5170", "Format": "json_lines"}
+      }
+    },
+    {
+      "name": "log-router",
+      "image": "public.ecr.aws/aws-observability/aws-for-fluent-bit:stable",
+      "essential": true,
+      "firelensConfiguration": {"type": "fluentbit"}
     },
     {
       "name": "gorviz-agent",
@@ -18,7 +27,16 @@
       "essential": false,
       "cpu": 128,
       "memory": 160,
-      "command": ["gorviz-agent", "-target", "http://localhost:6060", "-agent-addr", "gorviz-server.internal:7071", "-trace-buffer-mib", "64"]
+      "command": ["gorviz-agent"],
+      "environment": [
+        {"name": "GORVIZ_AGENT_MODE", "value": "sidecar"},
+        {"name": "GORVIZ_SERVICE", "value": "api"},
+        {"name": "GORVIZ_PPROF_ADDR", "value": "localhost:6060"},
+        {"name": "GORVIZ_LOG_TCP_ADDR", "value": "127.0.0.1:5170"},
+        {"name": "GORVIZ_SERVER_ADDR", "value": "gorviz-server.internal:7071"},
+        {"name": "GORVIZ_CA_FINGERPRINT", "value": "<ca_sha256>"}
+      ],
+      "secrets": [{"name": "GORVIZ_TOKEN", "valueFrom": "arn:aws:secretsmanager:<region>:<account>:secret:gorviz-token"}]
     }
   ]
 }

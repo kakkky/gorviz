@@ -1,9 +1,11 @@
+# gorviz-server: クラスタの中に 1 つ置く。GUI と HTTP API は 7070、agent からの接続は 7071。保存先はローカルディスク (PersistentVolume) だけを使う
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: gorviz-server
 spec:
-  replicas: 1
+  replicas: 1 # 保存先を使う server は 1 つだけ (起動のときに lock を取る)
+  serviceName: gorviz-server
   selector:
     matchLabels: {app: gorviz-server}
   template:
@@ -13,15 +15,29 @@ spec:
       containers:
         - name: gorviz-server
           image: ghcr.io/kakkky/gorviz:latest # PoC: イメージはまだ公開していない
-          command: ["gorviz-server", "-addr", "0.0.0.0:7070", "-agent-addr", "0.0.0.0:7071", "-save-dir", "/data"]
+          command: ["gorviz-server"]
+          env:
+            - {name: GORVIZ_DATA_DIR, value: /data}
+            - {name: GORVIZ_HTTP_ADDR, value: ":7070"}
+            - {name: GORVIZ_AGENT_ADDR, value: ":7071"}
+            - {name: GORVIZ_PUBLIC_URL, value: "https://gorviz.example.internal:7070"}
+            # 証明書を用意しなければ、初回起動時に CA と証明書を作り、CA のハッシュ (ca_sha256) をログに出す
+            - {name: GORVIZ_TLS_HOSTS, value: "gorviz-server,gorviz-server.gorviz.svc,localhost"}
+            - name: GORVIZ_BOOTSTRAP_TOKEN
+              valueFrom: {secretKeyRef: {name: gorviz, key: token}}
+            - {name: GORVIZ_MAX_DISK_BYTES, value: "42949672960"} # 40GiB。下の容量より小さくする
           ports:
             - {name: http, containerPort: 7070}
             - {name: agents, containerPort: 7071}
           volumeMounts:
-            - {name: recordings, mountPath: /data}
-      volumes:
-        - name: recordings
-          emptyDir: {}
+            - {name: data, mountPath: /data}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 50Gi}
 ---
 apiVersion: v1
 kind: Service

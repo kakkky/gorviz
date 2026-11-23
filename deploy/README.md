@@ -1,23 +1,28 @@
-# Kubernetes・ECS・Cloud Run での設定例
+# Kubernetes・ECS・Cloud Run での配置の例
 
-docs/design.md の「agent の置き方」の例。どれも PoC で、実際のクラスタでは試していない。
+docs/design.md の「agent とアプリ」(3.2.2) の置き方の例。どれも PoC で、実際のクラスタでは試していない。
 
-- `kubernetes/server.yaml`: gorviz-server (GUI / API は 7070、agent の口は 7071)。クラスタの中に 1 つ置き、外からは port-forward などで見る
-- `kubernetes/daemonset.yaml`: daemon 型。ノードごとに gorviz-agent を 1 つ置き、同じノードの Pod の pprof を観測する
-- `kubernetes/sidecar.yaml`: sidecar 型。アプリと同じ Pod に gorviz-agent を並べる
-- `ecs/sidecar-task-definition.json`: sidecar 型 (Fargate)。アプリと同じタスクに gorviz-agent を並べる
-- `cloudrun/service.yaml`: sidecar 型 (Cloud Run)。アプリと同じサービスに gorviz-agent を並べる。GKE は `kubernetes/` をそのまま使う
-- ライブラリ型はアプリで `github.com/kakkky/gorviz` を import し、`gorviz.Start` で agent を埋め込む (example/library を参照)
+- `kubernetes/server.yaml`
+  - gorviz-server。クラスタの中に 1 つ置き、保存先は PersistentVolume (ローカルディスク) にする
+- `kubernetes/daemonset.yaml`
+  - daemon 型。ノードごとに gorviz-agent を 1 つ置き、annotation `gorviz/pprof-port` を付けた同じノードの Pod を観測する。ログはノードの `/var/log/pods` から読む
+- `kubernetes/sidecar.yaml`
+  - sidecar 型。アプリと同じ Pod に gorviz-agent を並べ、ログは共有ボリュームのファイルから読む
+- `ecs/sidecar-task-definition.json`
+  - sidecar 型 (Fargate)。ログは FireLens (Fluent Bit) から agent の tcp に送る
+- `cloudrun/service.yaml`
+  - sidecar 型 (Cloud Run)。ログは in-memory の共有ボリュームのファイルから読む
+- ライブラリ型はアプリで `github.com/kakkky/gorviz` を import し、`gorviz.Run` で agent を埋め込む (README を参照)
 
-agent は server へ外向きにつなぐので、アプリの Pod / タスクに外からの入口を開ける必要はない。
-観測するかどうかは対象側で明示的に許可する: daemon 型では、agent に渡す `-target` を、許可した Pod (annotation `gorviz.kakkky.dev/observe: "true"`) の pprof に限る。
-annotation から対象を自動で見つける仕組みは未実装で、今は `-target` を手で並べる。
+## 共通
 
-server は agent の名前ごとに束ねるので、レプリカの agent は別々の名前にする。`-name` を省くと hostname になり、Kubernetes (Pod 名) と Fargate (`ip-10-0-1-23.<region>.compute.internal` の形) ではレプリカごとに別になる。
-Cloud Run はどのインスタンスも hostname が `localhost` なので、agent がサービス名 (`K_SERVICE`) に metadata server の instance ID を足した名前を自分で作る。
+- agent は server へ外向きにつなぐので、アプリの Pod・タスクに外からの入口を開けなくてよい
+- トークンは Secret に入れ、server には `GORVIZ_BOOTSTRAP_TOKEN`、agent には `GORVIZ_TOKEN` で渡す
+- server が自分で作った CA を使うときは、server の起動ログに出る `ca_sha256` を agent の `GORVIZ_CA_FINGERPRINT` に渡す。手元の CA なら `GORVIZ_TLS_CERT_FILE`・`GORVIZ_TLS_KEY_FILE` (server) と `GORVIZ_CA_FILE` (agent)
+- 保存先の容量の上限 `GORVIZ_MAX_DISK_BYTES` は、ボリュームの大きさより小さくする
 
-Cloud Run での注意:
+## Cloud Run での注意
 
-- CPU を常に割り当てる (`run.googleapis.com/cpu-throttling: "false"`、インスタンス単位の課金)。既定ではリクエストを処理していない間 CPU がほぼ割り当てられず、agent が trace を取れず server へも送れない
-- gorviz-server は Cloud Run に置けない。Cloud Run が外から受け付けるのは HTTP (WebSocket・gRPC を含む) だけで、agent からの TCP (7071) を待ち受けられないため。server は GKE か GCE に置き、Cloud Run からは Direct VPC egress でつなぐ
-- サイドカーでは、外からのリクエストを受けるコンテナ (アプリ) のポートを明示する必要がある
+- CPU を常に割り当てる (`run.googleapis.com/cpu-throttling: "false"`)。既定ではリクエストを処理していない間 CPU がほぼ割り当てられず、agent が trace を取れず server へも送れない
+- gorviz-server は Cloud Run に置けない。Cloud Run が外から受け付けるのは HTTP だけで、agent からの TCP (7071) を待ち受けられないため。server は GKE か GCE に置き、Cloud Run からは Direct VPC egress でつなぐ
+- どのインスタンスも hostname が `localhost` になるので、インスタンスの名前が重なる。PoC では区別しない (今後、metadata server の instance ID を名前に使う)
