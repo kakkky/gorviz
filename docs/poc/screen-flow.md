@@ -261,13 +261,15 @@ URL に `?log={ID}` を付けると、その行を開いた状態で出す (共�
 
 ![Goroutine の GMP の再生](screenshots/15-goroutine-replay.png)
 
-再生の見出しに、追っている G が今の時点でどの状態か、いつからか (`FOLLOWING G30 IO_WAIT since ...`) と、その状態に入った瞬間へ移るボタンが出る。窓の頭より前からその状態なら、execution trace を 5 分さかのぼって入った時刻を探し、その時刻から始まる画面へ移るボタンを出す。5 分で見つからなければ、さかのぼった先の画面へ移るボタンを出す。それより前の trace が残っていなければ `no earlier trace is recorded` と出す。
+再生の見出しに、追っている G が今の時点でどの状態か、いつからか (`FOLLOWING G27 RUNNING since ...`) と、その状態に入った瞬間へ移るボタンが出る。窓の頭より前からその状態なら、execution trace を 5 分さかのぼって入った時刻を探し、その時刻から始まる画面へ移るボタンを出す。5 分で見つからなければ、さかのぼった先の画面へ移るボタンを出す。それより前の trace が残っていなければ `no earlier trace is recorded` と出す。
+
+CPU slots のレーンでは、追っている G が走っていた区間をほかの G より明るく光る緑で描き、凡例にも `G27 running` と出す。
 
 ### Issue の発生から入ったとき
 
 ![Issue の発生から入った Goroutine](screenshots/13-goroutine-from-issue.png)
 
-`LOCK_CONTENTION` の held by から開いた、バックアップのリクエストの G。期間は発生の前後 (`around the issue occurrence`) になる。主因は `SLEEP` で、止まっていた場所は遅いディスクへの書き出し (`backup_file_accessor.go:24`)。ロックを持ったまま 1.5 秒寝ていたことが分かる。
+`LOCK_CONTENTION` の held by から開いた、リクエストを処理する G。期間は発生の前後 (`around the issue occurrence`) になる。主因は次のリクエストを待つ `IO_WAIT` で、`LOCK_WAIT` は 1 秒ほど。woken by に、同じロックを外して起こした G (`sync.(*Mutex).Unlock`、`memstore/memstore.go:38`) が並ぶ。
 
 ### リークした goroutine
 
@@ -280,7 +282,7 @@ URL に `?log={ID}` を付けると、その行を開いた状態で出す (共�
 
 ![Scheduler から入った Goroutine](screenshots/19-goroutine-from-scheduler.png)
 
-Scheduler で local run queue に並んでいた G を押して開いたもの。期間は再生していた範囲になる。主因は `RUNNABLE` で、P を待たされていた時間が大半を占める。
+Scheduler で local run queue に並んでいた G を押して開いたもの。期間は再生していた範囲になる。並んでいたのは一瞬で、主因は次のリクエストを待つ `IO_WAIT`。
 
 ## Scheduler
 
