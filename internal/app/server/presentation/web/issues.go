@@ -158,7 +158,7 @@ func issueTrend(out usecase.ListIssuesUsecaseOutput) (int, []pages.IssueKindTota
 			ss = append(ss, series{label: string(k), class: class, bar: true, stack: true, values: v})
 		}
 	}
-	return total, kinds, buildChart(chartSpec{from: out.From, to: out.To, step: step, times: times, series: ss, format: count, threshold: math.NaN()})
+	return total, kinds, buildChart(chartSpec{from: out.From, to: out.To, step: step, times: times, series: ss, format: count, threshold: math.NaN(), zoom: true})
 }
 
 func instanceNames(is []observation.InstanceName) string {

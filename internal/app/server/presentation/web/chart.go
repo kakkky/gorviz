@@ -39,6 +39,8 @@ type chartSpec struct {
 	thLabel   string
 	marks     []chartMark
 	hoverURL  func(i int) string
+	// zoom はドラッグで選んだ範囲を画面の期間にする。グラフの期間が画面の期間と同じときだけ使う
+	zoom bool
 }
 
 func coord(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
@@ -183,6 +185,9 @@ func buildChart(c chartSpec) components.ChartViewModel {
 			h.URL = c.hoverURL(i)
 		}
 		vm.Hovers = append(vm.Hovers, h)
+	}
+	if c.zoom && c.step > 0 && len(c.times) > 0 {
+		vm.Zoom = &components.ChartZoomViewModel{From: c.from.UnixMilli(), To: c.to.UnixMilli(), First: c.times[0].UnixMilli(), Step: c.step.Milliseconds(), Steps: len(c.times)}
 	}
 	if !any {
 		vm.Empty = "no data in this period"

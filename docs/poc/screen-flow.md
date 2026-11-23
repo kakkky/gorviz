@@ -338,5 +338,5 @@ Issue の発生の行の `Scheduler →` から開いたもの。通常の execu
 - woken by に、runtime の内部の G (`sync.(*Cond).Broadcast` など) まで並ぶ (先頭の 8 件だけを出している)
 - 窓より前に作られ、窓の中でスタックが記録されなかった G は、入口が分からない (`entry unknown`)
 - Logs の一覧は古い順 (旧 PoC は新しい順だった)。続きを `newer lines` で取る
-- グラフの hover は区切りごとの帯で値を出すだけで、旧 PoC の縦線とドラッグでの拡大 (chart_sync) はまだ移していない
+- グラフの hover は区切りごとの帯で値を出すだけで、旧 PoC のすべてのグラフにそろえて出す縦線と値 (chart_sync) はまだ移していない。ドラッグでの拡大は Overview・Issues・Logs のグラフだけで、Issue の日ごとの発生のグラフは画面の期間と別の期間を描くので拡大しない
 - favicon がない

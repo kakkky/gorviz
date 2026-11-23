@@ -213,7 +213,7 @@ func logHistogram(s observation.ServiceName, counts usecase.CountLogsUsecaseOutp
 		}
 		ss = append(ss, series{label: l.label, class: "series-level-" + levelClass(l.level), bar: true, stack: true, values: v})
 	}
-	return buildChart(chartSpec{title: "Matching lines per " + duration(step), from: counts.From, to: counts.To, step: step, times: times, format: count, threshold: math.NaN(),
+	return buildChart(chartSpec{title: "Matching lines per " + duration(step), from: counts.From, to: counts.To, step: step, times: times, format: count, threshold: math.NaN(), zoom: true,
 		series: ss,
 		hoverURL: func(i int) string {
 			bq := cloneQuery(q)

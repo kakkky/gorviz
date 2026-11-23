@@ -1,7 +1,16 @@
 package components
 
+import (
+	"strconv"
+
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+)
+
 // ChartViewModel は server が座標まで決めた時系列のグラフ。プロットは viewBox (1000 × 160) の SVG、目盛りは HTML で置く (文字を伸ばさないため)。
-// Title・Note は画面がパネルの見出しに出す。Hovers は区切りごとの透明な帯で、title に値を出し、URL があればそこへ移る
+// Title・Note は画面がパネルの見出しに出す。Hovers は区切りごとの透明な帯で、title に値を出し、URL があればそこへ移る。
+// Zoom があれば、ドラッグで選んだ範囲を画面の期間にして開き直す
 type ChartViewModel struct {
 	Title          string
 	Note           string
@@ -17,6 +26,17 @@ type ChartViewModel struct {
 	ThresholdY     string
 	ThresholdLabel string
 	Empty          string
+	Zoom           *ChartZoomViewModel
+}
+
+// ChartZoomViewModel の From・To はグラフの横軸の端、First は最初の区切りの始まり、Step は区切りの長さ (どれも Unix ミリ秒)。
+// 区切りは軸の端に揃っていないことがあるので、選んだ範囲は First から Steps 個の区切りに揃える
+type ChartZoomViewModel struct {
+	From  int64
+	To    int64
+	First int64
+	Step  int64
+	Steps int
 }
 
 type ChartLegendViewModel struct {
@@ -59,7 +79,7 @@ type ChartHoverViewModel struct {
 }
 
 templ Chart(vm ChartViewModel) {
-	<div class="chart">
+	<div class="chart" { chartZoomAttrs(vm.Zoom)... }>
 		if len(vm.Legend) > 0 || vm.ThresholdLabel != "" {
 			<div class="legend">
 				for _, l := range vm.Legend {
@@ -80,7 +100,7 @@ templ Chart(vm ChartViewModel) {
 					<span style={ templ.SafeCSS("bottom:" + t.Pos) }>{ t.Label }</span>
 				}
 			</div>
-			<div class="chart-plot">
+			<div class="chart-plot" { chartZoomPlotAttrs(vm.Zoom)... }>
 				<svg viewBox="0 0 1000 160" preserveAspectRatio="none">
 					for _, y := range vm.GridY {
 						<line class="chart-grid" x1="0" y1={ y } x2="1000" y2={ y }></line>
@@ -120,4 +140,26 @@ templ Chart(vm ChartViewModel) {
 			}
 		</div>
 	</div>
+}
+
+func chartZoomAttrs(z *ChartZoomViewModel) stimulus.Attrs {
+	if z == nil {
+		return nil
+	}
+	name := assets.ChartZoomController.Name
+	attrs := stimulus.AttrControllers(name)
+	attrs = append(attrs, stimulus.AttrValue(name, "from", strconv.FormatInt(z.From, 10))...)
+	attrs = append(attrs, stimulus.AttrValue(name, "to", strconv.FormatInt(z.To, 10))...)
+	attrs = append(attrs, stimulus.AttrValue(name, "first", strconv.FormatInt(z.First, 10))...)
+	attrs = append(attrs, stimulus.AttrValue(name, "step", strconv.FormatInt(z.Step, 10))...)
+	return append(attrs, stimulus.AttrValue(name, "steps", strconv.Itoa(z.Steps))...)
+}
+
+func chartZoomPlotAttrs(z *ChartZoomViewModel) stimulus.Attrs {
+	if z == nil {
+		return nil
+	}
+	name := assets.ChartZoomController.Name
+	attrs := stimulus.AttrTargets(name, "plot")
+	return append(attrs, stimulus.AttrActions("pointerdown->"+name+"#down", "pointermove->"+name+"#move")...)
 }

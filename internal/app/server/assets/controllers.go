@@ -24,8 +24,14 @@ var RowDetailController = Controller{
 	Path: URLPrefix + "js/controllers/row_detail_controller.js",
 }
 
+// ChartZoomController はグラフをドラッグして選んだ範囲を、画面の期間にして開き直す
+var ChartZoomController = Controller{
+	Name: "chart-zoom",
+	Path: URLPrefix + "js/controllers/chart_zoom_controller.js",
+}
+
 // Controllers は layout.Base で読み込むすべての controller
-var Controllers = []Controller{TimeRangePickerController, RowLinkController, RowDetailController}
+var Controllers = []Controller{TimeRangePickerController, RowLinkController, RowDetailController, ChartZoomController}
 
 // Island は turbo-mount で載せる Preact のアイランド。Component は islands.ts で登録した名前、Controller はその controller の名前
 type Island struct {

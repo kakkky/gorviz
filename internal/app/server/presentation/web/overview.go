@@ -200,7 +200,7 @@ func overviewCharts(out usecase.GetOverviewUsecaseOutput, marks []chartMark) par
 		return vals(func(m domain.MetricSample) (float64, bool) { return f(m), m.Traced > 0 })
 	}
 	spec := func(title string, format func(float64) string, ss ...series) chartSpec {
-		return chartSpec{title: title, from: out.From, to: out.To, step: out.Step, times: times, series: ss, format: format, threshold: math.NaN(), marks: marks}
+		return chartSpec{title: title, from: out.From, to: out.To, step: out.Step, times: times, series: ss, format: format, threshold: math.NaN(), marks: marks, zoom: true}
 	}
 	logsURL := func(level string) func(i int) string {
 		return func(i int) string {
