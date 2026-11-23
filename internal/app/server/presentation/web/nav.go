@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	tabOverview = "Overview"
-	tabIssues   = "Issues"
-	tabLogs     = "Logs"
+	tabOverview  = "Overview"
+	tabIssues    = "Issues"
+	tabLogs      = "Logs"
+	tabScheduler = "Scheduler"
 )
 
 // navigator は見出しのサービスの切り替えと、インスタンスの一覧を組む。どの画面の handler も使う
@@ -32,7 +33,17 @@ func (n navigator) base(ctx context.Context, title string, s observation.Service
 	var current usecase.ServiceSummary
 	found := false
 	for _, svc := range out.Services {
-		vm.Services = append(vm.Services, layout.LinkViewModel{Label: string(svc.Name), URL: paths.Overview(svc.Name), Active: svc.Name == s})
+		g := layout.ServiceGroupViewModel{Name: string(svc.Name), URL: paths.Overview(svc.Name), Current: svc.Name == s}
+		instances := slices.Clone(svc.Instances)
+		slices.SortStableFunc(instances, func(a, b usecase.InstanceSummary) int { return boolFirst(a.Running, b.Running) })
+		for _, inst := range instances {
+			state := "ended"
+			if inst.Running {
+				state = "running"
+			}
+			g.Instances = append(g.Instances, layout.InstanceLinkViewModel{Label: string(inst.Name), URL: paths.Scheduler(svc.Name, inst.Name, time.Time{}, time.Time{}), Active: svc.Name == s && inst.Name == i, Running: inst.Running, State: state})
+		}
+		vm.Groups = append(vm.Groups, g)
 		if svc.Name == s {
 			current, found = svc, true
 		}
@@ -44,15 +55,25 @@ func (n navigator) base(ctx context.Context, title string, s observation.Service
 		}
 		return layout.BaseViewModel{}, usecase.ServiceSummary{}, domain.ErrNotFound.WithCandidates("no service named "+string(s), names)
 	}
+	scheduler := ""
+	for _, inst := range current.Instances {
+		if inst.Name == i {
+			vm.Running = inst.Running
+		}
+		if scheduler == "" || inst.Running {
+			scheduler = paths.Scheduler(s, inst.Name, time.Time{}, time.Time{})
+		}
+	}
+	if i != "" {
+		scheduler = paths.Scheduler(s, i, time.Time{}, time.Time{})
+	} else {
+		vm.Running = slices.ContainsFunc(current.Instances, func(inst usecase.InstanceSummary) bool { return inst.Running })
+	}
 	vm.Tabs = []layout.LinkViewModel{
 		{Label: tabOverview, URL: paths.Overview(s), Active: tab == tabOverview},
 		{Label: tabIssues, URL: servicePath(s, "issues"), Active: tab == tabIssues},
 		{Label: tabLogs, URL: servicePath(s, "logs"), Active: tab == tabLogs},
-	}
-	instances := slices.Clone(current.Instances)
-	slices.SortStableFunc(instances, func(a, b usecase.InstanceSummary) int { return boolFirst(a.Running, b.Running) })
-	for _, inst := range instances {
-		vm.Instances = append(vm.Instances, layout.InstanceLinkViewModel{Label: string(inst.Name), URL: paths.Scheduler(s, inst.Name, time.Time{}, time.Time{}), Active: inst.Name == i, Running: inst.Running})
+		{Label: tabScheduler, URL: scheduler, Active: tab == tabScheduler},
 	}
 	return vm, current, nil
 }

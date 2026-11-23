@@ -16,6 +16,8 @@ type series struct {
 	values []float64
 	dashed bool
 	bar    bool
+	// stack は棒を前の系列の上に積む
+	stack bool
 }
 
 type chartMark struct {
@@ -55,23 +57,35 @@ func niceMax(v float64) float64 {
 	return 10 * mag
 }
 
+const (
+	plotWidth  = 1000.0
+	plotHeight = 160.0
+)
+
+func pct(v float64) string { return strconv.FormatFloat(v*100, 'f', 2, 64) + "%" }
+
 func buildChart(c chartSpec) components.ChartViewModel {
 	vm := components.ChartViewModel{Title: c.title, Note: c.note}
 	span := c.to.Sub(c.from)
 	if span <= 0 {
 		span = time.Second
 	}
-	width := float64(components.ChartRight - components.ChartLeft)
-	height := float64(components.ChartBottom - components.ChartTop)
-	x := func(t time.Time) float64 {
-		return float64(components.ChartLeft) + width*float64(t.Sub(c.from))/float64(span)
-	}
+	frac := func(t time.Time) float64 { return float64(t.Sub(c.from)) / float64(span) }
+	x := func(t time.Time) float64 { return plotWidth * frac(t) }
 	top := 0.0
 	any := false
+	stacked := make([]float64, len(c.times))
 	for _, s := range c.series {
-		for _, v := range s.values {
-			if !math.IsNaN(v) {
-				top, any = math.Max(top, v), true
+		for i, v := range s.values {
+			if math.IsNaN(v) {
+				continue
+			}
+			any = true
+			if s.stack {
+				stacked[i] += v
+				top = math.Max(top, stacked[i])
+			} else {
+				top = math.Max(top, v)
 			}
 		}
 	}
@@ -79,9 +93,13 @@ func buildChart(c chartSpec) components.ChartViewModel {
 		top = math.Max(top, c.threshold)
 	}
 	top = niceMax(top * 1.05)
-	y := func(v float64) float64 { return float64(components.ChartBottom) - height*math.Min(v, top)/top }
-	for _, v := range []float64{0, top / 2, top} {
-		vm.YTicks = append(vm.YTicks, components.ChartTickViewModel{Pos: coord(y(v)), Label: c.format(v)})
+	y := func(v float64) float64 { return plotHeight - plotHeight*math.Min(v, top)/top }
+	for i := 0; i <= 4; i++ {
+		v := top * float64(i) / 4
+		vm.YTicks = append(vm.YTicks, components.ChartTickViewModel{Pos: pct(float64(i) / 4), Label: c.format(v)})
+		if i > 0 {
+			vm.GridY = append(vm.GridY, coord(y(v)))
+		}
 	}
 	for i := 0; i <= 4; i++ {
 		t := c.from.Add(span * time.Duration(i) / 4)
@@ -91,20 +109,28 @@ func buildChart(c chartSpec) components.ChartViewModel {
 		} else if span > 2*time.Hour {
 			label = t.Local().Format("15:04")
 		}
-		vm.XTicks = append(vm.XTicks, components.ChartTickViewModel{Pos: coord(math.Min(math.Max(x(t), components.ChartLeft+24), components.ChartRight-24)), Label: label})
+		vm.XTicks = append(vm.XTicks, components.ChartTickViewModel{Pos: pct(float64(i) / 4), Label: label})
+		if i > 0 && i < 4 {
+			vm.GridX = append(vm.GridX, coord(x(t)))
+		}
 	}
 	if !math.IsNaN(c.threshold) && c.threshold > 0 && c.threshold <= top {
-		vm.Threshold = &components.ChartTickViewModel{Pos: coord(y(c.threshold)), Label: c.thLabel}
+		vm.ThresholdY, vm.ThresholdLabel = coord(y(c.threshold)), c.thLabel
 	}
-	barW := width * float64(c.step) / float64(span)
+	barW := plotWidth * float64(c.step) / float64(span)
+	base := make([]float64, len(c.times))
 	for _, s := range c.series {
-		last := math.NaN()
 		if s.bar {
 			for i, v := range s.values {
 				if math.IsNaN(v) || v <= 0 {
 					continue
 				}
-				vm.Bars = append(vm.Bars, components.ChartBarViewModel{Class: s.class, X: coord(x(c.times[i])), Y: coord(y(v)), W: coord(math.Max(barW-0.5, 0.6)), H: coord(float64(components.ChartBottom) - y(v))})
+				bottom := 0.0
+				if s.stack {
+					bottom = base[i]
+					base[i] += v
+				}
+				vm.Bars = append(vm.Bars, components.ChartBarViewModel{Class: s.class, X: coord(x(c.times[i]) + 0.5), Y: coord(y(bottom + v)), W: coord(math.Max(barW-1, 0.8)), H: coord(y(bottom) - y(bottom+v))})
 			}
 		} else {
 			var b strings.Builder
@@ -123,13 +149,14 @@ func buildChart(c chartSpec) components.ChartViewModel {
 			}
 			vm.Lines = append(vm.Lines, components.ChartLineViewModel{Class: s.class, Path: strings.TrimSpace(b.String()), Dashed: s.dashed})
 		}
+		last := math.NaN()
 		for i := len(s.values) - 1; i >= 0; i-- {
 			if !math.IsNaN(s.values[i]) {
 				last = s.values[i]
 				break
 			}
 		}
-		value := "-"
+		value := ""
 		if !math.IsNaN(last) {
 			value = c.format(last)
 		}
@@ -151,7 +178,7 @@ func buildChart(c chartSpec) components.ChartViewModel {
 			}
 			title.WriteString("\n" + s.label + ": " + v)
 		}
-		h := components.ChartHoverViewModel{X: coord(x(t)), W: coord(math.Max(barW, 0.6)), Title: title.String()}
+		h := components.ChartHoverViewModel{X: coord(x(t)), W: coord(math.Max(barW, 0.8)), Title: title.String()}
 		if c.hoverURL != nil {
 			h.URL = c.hoverURL(i)
 		}

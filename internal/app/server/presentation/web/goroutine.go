@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
@@ -79,7 +80,7 @@ func goroutineView(base layout.BaseViewModel, p instancePath, g observation.Goro
 	vm := pages.GoroutineViewModel{Base: base, Goroutine: "G" + itoa(int(g)), Instance: string(i), Period: spanMilli(out.Period.From, out.Period.To), PeriodBy: periodByText[out.Period.By],
 		Found: out.Found, Entry: d.Entry, CreatedBy: d.CreatedBy.Function, Main: string(d.Main), MainCertainty: string(d.MainCertainty), MainNote: mainCertaintyNote(d.MainCertainty),
 		Source: sourceText[d.Source], SchedulerURL: paths.Scheduler(s, i, out.Period.From, out.Period.To), Picker: picker(self, nil, tr, out.Period.From, out.Period.To, nil, "")}
-	vm.Picker.Live, vm.Picker.Label = false, spanMilli(out.Period.From, out.Period.To)
+	vm.Picker.Live, vm.PeriodRange = false, rangeView(out.Period.From, out.Period.To)
 	if d.CreatedBy.Function != "" {
 		vm.CreatedByAt = d.CreatedBy.Location()
 	}
@@ -102,23 +103,13 @@ func goroutineView(base layout.BaseViewModel, p instancePath, g observation.Goro
 			vm.Unavailable = append(vm.Unavailable, u)
 		}
 	}
-	issuesAround := withQuery(servicePath(s, "issues"), rangeQuery(out.Period.From.Add(-time.Hour), out.Period.To.Add(time.Hour)))
-	switch d.Main {
-	case domain.CauseSyncWait:
-		vm.Hint = "It was waiting for another goroutine. The reason it was slow is on the side it waited for: open the goroutine that woke it (Woken by)."
-	case domain.CauseRunnable:
-		vm.Hint, vm.HintURL, vm.HintLabel = "It was waiting for a P. Look for CPU_CONTENTION in the same time.", issuesAround, "Issues around this period →"
-	case domain.CauseGC:
-		vm.Hint, vm.HintURL, vm.HintLabel = "GC stopped it or made it do mark assist. Look for GC_PRESSURE in the same time.", issuesAround, "Issues around this period →"
-	case domain.CauseLockWait:
-		vm.Hint, vm.HintURL, vm.HintLabel = "It waited on a lock. Look for LOCK_CONTENTION and the function that held the lock.", issuesAround, "Issues around this period →"
-	}
 	if b := d.Breakdown; b != nil {
-		bv := &components.BreakdownViewModel{}
+		bv := &pages.BreakdownViewModel{}
 		total := b.Total()
 		for _, c := range domain.MainCauses {
 			if dur := b.Durations[c]; dur > 0 && total > 0 {
-				bv.Segments = append(bv.Segments, components.BreakdownSegmentViewModel{Cause: string(c), Percent: percent(float64(dur) / float64(total)), Duration: duration(dur)})
+				share := float64(dur) / float64(total)
+				bv.Rows = append(bv.Rows, pages.BreakdownRowViewModel{Cause: string(c), Width: strconv.FormatFloat(share*100, 'f', 1, 64) + "%", Percent: percent(share), Duration: duration(dur)})
 			}
 		}
 		if b.Unrecorded > 0 {
@@ -130,14 +121,19 @@ func goroutineView(base layout.BaseViewModel, p instancePath, g observation.Goro
 		vm.Stop = &pages.StopViewModel{Cause: string(st.Cause), Function: st.Function, Location: st.Location, WaitReason: st.WaitReason, Duration: duration(st.Duration)}
 	}
 	vm.Leak = leakView(out.Leak)
-	for _, w := range d.Wakers {
+	const maxWakers = 8
+	for n, w := range d.Wakers {
+		if n == maxWakers {
+			vm.MoreWakers = len(d.Wakers) - maxWakers
+			break
+		}
 		vm.Wakers = append(vm.Wakers, pages.WakerViewModel{Goroutine: "G" + itoa(int(w.Goroutine)), Function: w.Function, Location: w.Location, Cause: string(w.Cause), Count: w.Count,
 			Waited: duration(w.Waited), URL: goroutineWoken(s, i, w.Goroutine, g, w.From, w.To)})
 	}
 	for _, l := range out.Logs {
 		lq := rangeQuery(l.At.Add(-5*time.Minute), l.At.Add(5*time.Minute))
 		lq.Set("log", string(l.ID()))
-		row := pages.LogRowViewModel{At: clockMilli(l.At), Level: string(l.Level), Message: l.Message, URL: withQuery(servicePath(s, "logs"), lq)}
+		row := pages.GoroutineLogViewModel{At: clockMilli(l.At), Level: levelText(l.Level), LevelClass: levelClass(l.Level), Message: l.Message, URL: withQuery(servicePath(s, "logs"), lq) + "#log-" + logAnchor(l.ID())}
 		if l.HasDuration {
 			row.Duration = duration(l.Duration)
 		}
@@ -145,7 +141,7 @@ func goroutineView(base layout.BaseViewModel, p instancePath, g observation.Goro
 	}
 	props := components.GMPReplayProps{FocusGoroutine: int64(g), GoroutineURL: goroutineTemplate(s, i)}
 	rv := replayView(p, chunks, props)
-	vm.ReplayRange, vm.Replay, vm.ReplayFrom, vm.ReplayGone, vm.Nearby, vm.LeakNote = rv.rangeText, rv.replay, chunks.FromPreserved, rv.unavailable, rv.nearby, rv.leakNote
+	vm.Replay, vm.ReplayFrom, vm.ReplayGone, vm.Nearby, vm.LeakNote = rv.replay, chunks.FromPreserved, rv.unavailable, rv.nearby, rv.leakNote
 	return vm
 }
 

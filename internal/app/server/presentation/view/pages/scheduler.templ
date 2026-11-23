@@ -12,7 +12,8 @@ type SchedulerViewModel struct {
 	Base          layout.BaseViewModel
 	Instance      string
 	Picker        components.TimeRangePickerViewModel
-	Range         string
+	Past          bool
+	LatestURL     string
 	Replay        *components.GMPReplayViewModel
 	StreamURL     string
 	FromPreserved bool
@@ -23,44 +24,41 @@ type SchedulerViewModel struct {
 
 templ Scheduler(vm SchedulerViewModel) {
 	@layout.Base(vm.Base) {
-		<div class="page-head">
-			<h1>Scheduler <span class="mono muted">{ vm.Instance }</span></h1>
+		<div class="overview-head">
+			<h2>Scheduler</h2>
+			if vm.Past {
+				<span class="muted">a past moment</span>
+				<a class="btn" href={ templ.SafeURL(vm.LatestURL) }>Latest</a>
+			}
 			@components.TimeRangePicker(vm.Picker)
 		</div>
-		@ReplayPanel(vm.Range, vm.Replay, vm.StreamURL, vm.FromPreserved, vm.Unavailable, vm.Nearby, vm.LeakNote)
+		@ReplayPanel(vm.Replay, vm.StreamURL, vm.Unavailable, vm.Nearby, vm.LeakNote)
 	}
 }
 
 // ReplayPanel は GMP の再生と、再生できないときの理由。Scheduler と Goroutine で使う
-templ ReplayPanel(rangeText string, replay *components.GMPReplayViewModel, streamURL string, fromPreserved bool, unavailable []components.UnavailableViewModel, nearby []components.LinkItemViewModel, leakNote string) {
-	<section class="panel replay-panel">
-		<h2>
-			GMP replay
-			<span class="muted mono">{ rangeText }</span>
-			if fromPreserved {
-				<span class="badge note" title="the full execution trace of this time is past its retention; this replays the trace kept around an issue occurrence or an error log">from a kept trace</span>
+templ ReplayPanel(replay *components.GMPReplayViewModel, streamURL string, unavailable []components.UnavailableViewModel, nearby []components.LinkItemViewModel, leakNote string) {
+	for _, u := range unavailable {
+		@components.Unavailable(u)
+	}
+	if len(nearby) > 0 {
+		<section class="panel">
+			<h2>Execution traces kept near this time <span class="muted">they stay after the full trace is gone</span></h2>
+			@components.LinkList(nearby)
+		</section>
+	}
+	if streamURL != "" {
+		@turbo.StreamSSESource("gmp-stream", streamURL)
+	}
+	if replay != nil {
+		@components.GMPReplay(*replay)
+		<p class="faint small replay-footnote">
+			The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded.
+			if leakNote != "" {
+				{ leakNote }
 			}
-		</h2>
-		for _, u := range unavailable {
-			@components.Unavailable(u)
-		}
-		if len(nearby) > 0 {
-			<div class="nearby">
-				<h3>Execution traces kept near this time</h3>
-				@components.LinkList(nearby)
-			</div>
-		}
-		if streamURL != "" {
-			@turbo.StreamSSESource("gmp-stream", streamURL)
-		}
-		if replay != nil {
-			@components.GMPReplay(*replay)
-			<p class="faint small">
-				The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded.
-				if leakNote != "" {
-					{ leakNote }
-				}
-			</p>
-		}
-	</section>
+		</p>
+	} else if len(unavailable) == 0 {
+		<section class="panel muted">no execution trace of this instance in this range</section>
+	}
 }

@@ -1,23 +1,31 @@
 package components
 
-// UnavailableViewModel は保持期間を過ぎた (または残っていない) ため出せない欄。Field は欄の名前、Text は理由、Since はいつ以降なら出せるか
+// UnavailableViewModel は保持期間を過ぎたか、記録されていなくて出せない欄
 type UnavailableViewModel struct {
 	Field string
 	Text  string
 	Since string
 }
 
-templ Unavailable(vm UnavailableViewModel) {
-	<div class="unavailable" role="note">
-		<strong>{ vm.Field }</strong>
-		<span>{ vm.Text }</span>
-		if vm.Since != "" {
-			<span class="faint">(retained since { vm.Since })</span>
-		}
+templ Notice() {
+	<div class="notice" role="status">
+		<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M8 7.25v3.75M8 4.9v.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+		<div class="notice-body">
+			{ children... }
+		</div>
 	</div>
 }
 
-// LinkItemViewModel はリンク 1 つと、その説明
+templ Unavailable(vm UnavailableViewModel) {
+	@Notice() {
+		<strong>{ vm.Field }</strong>
+		<span>{ vm.Text }</span>
+		if vm.Since != "" {
+			<span class="faint">(kept since <span class="mono">{ vm.Since }</span>)</span>
+		}
+	}
+}
+
 type LinkItemViewModel struct {
 	Label string
 	URL   string
@@ -25,14 +33,9 @@ type LinkItemViewModel struct {
 }
 
 templ LinkList(items []LinkItemViewModel) {
-	<ul class="links">
+	<div class="links">
 		for _, l := range items {
-			<li>
-				<a href={ templ.SafeURL(l.URL) }>{ l.Label }</a>
-				if l.Note != "" {
-					<span class="faint">{ l.Note }</span>
-				}
-			</li>
+			<a class="btn small" href={ templ.SafeURL(l.URL) } title={ l.Note }>{ l.Label }</a>
 		}
-	</ul>
+	</div>
 }

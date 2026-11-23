@@ -5,15 +5,13 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"time"
-
-	"github.com/kakkky/hotwire-go/turbo"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 	"github.com/kakkky/gorviz/internal/domain/observation"
 )
@@ -66,15 +64,6 @@ func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	s := observation.ServiceName(r.PathValue("service"))
 	q := r.URL.Query()
 	action := servicePath(s, "logs")
-	if turbo.FrameID(r) == partials.LogDetailFrame {
-		detail, err := h.detail(r, s, q, action, now)
-		if err != nil {
-			middleware.SetError(r, err)
-			return
-		}
-		render(rw, r, partials.LogDetail(detail))
-		return
-	}
 	tr, err := logsRange(q, now)
 	if err != nil {
 		middleware.SetError(r, err)
@@ -101,11 +90,6 @@ func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		middleware.SetError(r, err)
 		return
 	}
-	detail, err := h.detail(r, s, q, action, now)
-	if err != nil {
-		middleware.SetError(r, err)
-		return
-	}
 	keepFilter := url.Values{}
 	for _, k := range []string{"level", "instance", "attr", "q"} {
 		if vs := q[k]; len(vs) > 0 {
@@ -113,28 +97,34 @@ func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		}
 	}
 	vm := pages.LogsViewModel{Base: base, Picker: picker(action, keepFilter, tr, found.From, found.To, logsPresets, logsDefault), Total: counts.Total,
-		Histogram: logHistogram(s, counts, step, q), Detail: detail}
-	vm.Filter = pages.LogFilterViewModel{Action: action, Level: string(filter.Level), Instance: string(filter.Instance), Text: filter.Text,
-		Attrs: append(slices.DeleteFunc(slices.Clone(q["attr"]), func(a string) bool { return a == "" }), ""), ClearURL: withQuery(action, timeQuery(q))}
-	for k, vs := range timeQuery(q) {
-		vm.Filter.Keep = append(vm.Filter.Keep, components.KeptParamViewModel{Name: k, Value: vs[0]})
-	}
-	for _, i := range svc.Instances {
-		vm.Filter.Instances = append(vm.Filter.Instances, string(i.Name))
-	}
-	for _, c := range counts.Counts {
-		vm.Levels = append(vm.Levels, pages.LevelCountViewModel{Level: c.Value, Count: c.Count})
-	}
+		Chart: logHistogram(s, counts, step, q), Search: logsSearch(action, q, svc)}
 	if tr.From.Before(found.RetainedSince) {
 		vm.Retention = &components.UnavailableViewModel{Field: "logs before " + dateTime(found.RetainedSince), Text: pastRetention, Since: dateTime(found.RetainedSince)}
 	}
 	open := q.Get("log")
 	for _, l := range found.Logs {
-		rq := cloneQuery(q)
-		rq.Set("log", string(l.ID()))
-		row := pages.LogRowViewModel{At: clockMilli(l.At), Instance: string(l.Instance), Level: string(l.Level), Message: l.Message, URL: withQuery(action, rq), Open: string(l.ID()) == open}
+		id := l.ID()
+		row := pages.LogRowViewModel{ID: "log-" + logAnchor(id), At: clockMilli(l.At), Instance: string(l.Instance), Level: levelText(l.Level), LevelClass: levelClass(l.Level),
+			Message: l.Message, Exact: l.HasTraceSeq, OpenURL: servicePath(s, "logs/"+url.PathEscape(string(id))+"/goroutine"), Raw: l.Raw, Open: string(id) == open}
 		if l.HasDuration {
 			row.Duration = duration(l.Duration)
+		}
+		attrs := l.Attrs()
+		keys := make([]string, 0, len(attrs))
+		for k := range attrs {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		for _, k := range keys {
+			row.Fields = append(row.Fields, pages.KeyValueViewModel{Key: k, Value: attrs[k]})
+		}
+		if row.Open {
+			d, err := h.detail(r, s, id, now)
+			if err != nil {
+				middleware.SetError(r, err)
+				return
+			}
+			row.Detail = &d
 		}
 		vm.Rows = append(vm.Rows, row)
 	}
@@ -145,6 +135,47 @@ func (h *GetLogsHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		vm.NextURL = withQuery(action, nq)
 	}
 	render(rw, r, pages.Logs(vm))
+}
+
+func logsSearch(action string, q url.Values, svc usecase.ServiceSummary) components.SearchFormViewModel {
+	vm := components.SearchFormViewModel{Action: action, Query: q.Get("q"), Placeholder: "search text (e.g. a trace_id from your APM)"}
+	attr := ""
+	if vs := slices.DeleteFunc(slices.Clone(q["attr"]), func(a string) bool { return a == "" }); len(vs) > 0 {
+		attr = vs[0]
+	}
+	vm.Inputs = []components.SearchInputViewModel{{Name: "attr", Value: attr, Placeholder: "key=value", Title: "match a JSON key and value of the line (e.g. path=/todos)"}}
+	levels := components.SearchSelectViewModel{Name: "level", All: "all levels", Selected: q.Get("level")}
+	for _, l := range []observation.LogLevel{observation.LogLevelError, observation.LogLevelWarn, observation.LogLevelInfo, observation.LogLevelDebug} {
+		levels.Options = append(levels.Options, components.SearchOptionViewModel{Value: string(l), Label: string(l) + " and above"})
+	}
+	instances := components.SearchSelectViewModel{Name: "instance", All: "all instances", Selected: q.Get("instance")}
+	for _, i := range svc.Instances {
+		instances.Options = append(instances.Options, components.SearchOptionViewModel{Value: string(i.Name), Label: string(i.Name)})
+	}
+	vm.Selects = []components.SearchSelectViewModel{levels, instances}
+	for k, vs := range timeQuery(q) {
+		vm.Keep = append(vm.Keep, components.KeptParamViewModel{Name: k, Value: vs[0]})
+	}
+	return vm
+}
+
+// logAnchor は行の id 属性に使える形にする
+func logAnchor(id domain.LogID) string {
+	return strings.NewReplacer("~", "-", ".", "-", ":", "-").Replace(string(id))
+}
+
+func levelText(l observation.LogLevel) string {
+	if l == observation.LogLevelUnknown {
+		return "-"
+	}
+	return string(l)
+}
+
+func levelClass(l observation.LogLevel) string {
+	if l == observation.LogLevelUnknown {
+		return "unknown"
+	}
+	return strings.ToLower(string(l))
 }
 
 func cloneQuery(q url.Values) url.Values {
@@ -168,12 +199,22 @@ func timeQuery(q url.Values) url.Values {
 func logHistogram(s observation.ServiceName, counts usecase.CountLogsUsecaseOutput, step time.Duration, q url.Values) components.ChartViewModel {
 	n := len(counts.Buckets)
 	times := make([]time.Time, n)
-	all, errs := make([]float64, n), make([]float64, n)
 	for i, b := range counts.Buckets {
-		times[i], all[i], errs[i] = b.At, float64(b.Total), float64(b.Counts[string(observation.LogLevelError)])
+		times[i] = b.At
+	}
+	var ss []series
+	for _, l := range []struct {
+		level observation.LogLevel
+		label string
+	}{{observation.LogLevelError, "ERROR"}, {observation.LogLevelWarn, "WARN"}, {observation.LogLevelInfo, "INFO"}, {observation.LogLevelDebug, "DEBUG"}, {observation.LogLevelUnknown, "no level"}} {
+		v := make([]float64, n)
+		for i, b := range counts.Buckets {
+			v[i] = float64(b.Counts[string(l.level)])
+		}
+		ss = append(ss, series{label: l.label, class: "series-level-" + levelClass(l.level), bar: true, stack: true, values: v})
 	}
 	return buildChart(chartSpec{title: "Matching lines per " + duration(step), from: counts.From, to: counts.To, step: step, times: times, format: count, threshold: math.NaN(),
-		series: []series{{label: "lines", class: "s-muted", bar: true, values: all}, {label: "errors", class: "s-error", bar: true, values: errs}},
+		series: ss,
 		hoverURL: func(i int) string {
 			bq := cloneQuery(q)
 			bq.Del("cursor")
@@ -184,54 +225,67 @@ func logHistogram(s observation.ServiceName, counts usecase.CountLogsUsecaseOutp
 		}})
 }
 
-func (h *GetLogsHandler) detail(r *http.Request, s observation.ServiceName, q url.Values, action string, now time.Time) (partials.LogDetailViewModel, error) {
-	id := domain.LogID(q.Get("log"))
-	if id == "" {
-		return partials.LogDetailViewModel{}, nil
-	}
+func (h *GetLogsHandler) detail(r *http.Request, s observation.ServiceName, id domain.LogID, now time.Time) (pages.LogDetailViewModel, error) {
 	out, err := h.log.Exec(r.Context(), usecase.GetLogUsecaseInput{Service: s, Log: id, Now: now})
 	if err != nil {
-		return partials.LogDetailViewModel{}, err
+		return pages.LogDetailViewModel{}, err
 	}
 	l := out.Log
-	cq := cloneQuery(q)
-	cq.Del("log")
-	vm := partials.LogDetailViewModel{Open: true, At: dateTimeMilli(l.At), Instance: string(l.Instance), Level: string(l.Level), Message: l.Message, Source: string(l.Source),
-		Raw: l.Raw, Period: span(out.Period.From, out.Period.To), CloseURL: withQuery(action, cq)}
+	vm := pages.LogDetailViewModel{At: dateTimeMilli(l.At), Source: string(l.Source), Period: span(out.Period.From, out.Period.To), PeriodNote: "around the time it was written"}
 	if !l.TimeFromLog {
 		vm.TimeNote = "the line had no time; this is when the agent read it"
 	}
-	vm.PeriodNote = "around the time it was written"
 	if l.HasDuration {
-		vm.Duration = duration(l.Duration)
-		vm.PeriodNote = "the request it ended (took " + vm.Duration + ")"
+		vm.PeriodNote = "the request it ended (took " + duration(l.Duration) + ")"
 	}
-	keys := make([]string, 0, len(out.Attrs))
-	for k := range out.Attrs {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	for _, k := range keys {
-		vm.Attrs = append(vm.Attrs, partials.KeyValueViewModel{Key: k, Value: out.Attrs[k]})
-	}
-	vm.Writer.SchedulerURL = paths.Scheduler(s, l.Instance, out.Period.From, out.Period.To)
-	switch out.WriterStatus {
-	case usecase.WriterFound:
-		g := out.Writer.Goroutine
-		vm.Writer.Found, vm.Writer.Goroutine = true, "G"+itoa(int(g))
-		vm.Writer.Certainty, vm.Writer.CertaintyNote = string(out.Writer.Certainty), writerCertaintyNote(out.Writer.Certainty)
-		vm.Writer.URL = goroutineFromLog(s, l.Instance, g, l.ID())
-	case usecase.WriterUnknown:
-		vm.Writer.Note = "The goroutine that wrote it could not be told: the logger adapter numbered no line and more than one goroutine was running at that time."
-	case usecase.WriterPending:
-		vm.Writer.Note = "The writer is not matched yet; it is matched once the execution trace of that time arrives."
-	case usecase.WriterPastRetention:
-		vm.Writer.Unavailable = &components.UnavailableViewModel{Field: "writer goroutine", Text: pastRetention}
-	}
+	vm.Writer = logWriter(s, out)
 	for _, p := range out.Preserved {
 		vm.Preserved = append(vm.Preserved, components.LinkItemViewModel{Label: span(p.From, p.To), URL: paths.Scheduler(s, l.Instance, p.From, p.To), Note: "kept around error logs like this one"})
 	}
 	return vm, nil
+}
+
+func logWriter(s observation.ServiceName, out usecase.GetLogUsecaseOutput) pages.LogWriterViewModel {
+	l := out.Log
+	w := pages.LogWriterViewModel{SchedulerURL: paths.Scheduler(s, l.Instance, out.Period.From, out.Period.To)}
+	switch out.WriterStatus {
+	case usecase.WriterFound:
+		g := out.Writer.Goroutine
+		w.Found, w.Goroutine = true, "G"+itoa(int(g))
+		w.Certainty, w.CertaintyNote = string(out.Writer.Certainty), writerCertaintyNote(out.Writer.Certainty)
+		w.URL = goroutineFromLog(s, l.Instance, g, l.ID())
+	case usecase.WriterUnknown:
+		w.Note = "not told: the logger adapter numbered no line and more than one goroutine was running at that time"
+	case usecase.WriterPending:
+		w.Note = "not matched yet; it is matched once the execution trace of that time arrives"
+	case usecase.WriterPastRetention:
+		w.Unavailable = &components.UnavailableViewModel{Field: "writer goroutine", Text: pastRetention}
+	}
+	return w
+}
+
+// GetLogGoroutineHandler は一覧の行の Goroutine →。書いた goroutine が分かればその診断へ、分からなければその時刻の Scheduler へ移す
+type GetLogGoroutineHandler struct {
+	log *usecase.GetLogUsecase
+}
+
+func NewGetLogGoroutineHandler(log *usecase.GetLogUsecase) *GetLogGoroutineHandler {
+	return &GetLogGoroutineHandler{log: log}
+}
+
+func (h *GetLogGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	s := observation.ServiceName(r.PathValue("service"))
+	out, err := h.log.Exec(r.Context(), usecase.GetLogUsecaseInput{Service: s, Log: domain.LogID(r.PathValue("log")), Now: time.Now()})
+	if err != nil {
+		middleware.SetError(r, err)
+		return
+	}
+	w := logWriter(s, out)
+	to := w.SchedulerURL
+	if w.Found {
+		to = w.URL
+	}
+	http.Redirect(rw, r, to, http.StatusSeeOther)
 }
 
 func writerCertaintyNote(c domain.Certainty) string {

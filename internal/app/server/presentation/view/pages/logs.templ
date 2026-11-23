@@ -1,134 +1,154 @@
 package pages
 
 import (
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
 
 type LogsViewModel struct {
 	Base      layout.BaseViewModel
 	Picker    components.TimeRangePickerViewModel
-	Filter    LogFilterViewModel
-	Histogram components.ChartViewModel
+	Search    components.SearchFormViewModel
+	Chart     components.ChartViewModel
 	Total     int
-	Levels    []LevelCountViewModel
 	Rows      []LogRowViewModel
 	NextURL   string
 	Retention *components.UnavailableViewModel
-	Detail    partials.LogDetailViewModel
 }
 
-// LogFilterViewModel は絞り込みの入力欄。Keep は期間 (from・to) など、絞り込みを変えても残す query
-type LogFilterViewModel struct {
-	Action    string
-	Keep      []components.KeptParamViewModel
-	Level     string
-	Instance  string
-	Instances []string
-	Attrs     []string
-	Text      string
-	ClearURL  string
-}
-
-type LevelCountViewModel struct {
-	Level string
-	Count int
-}
-
+// LogRowViewModel は一覧の 1 行。Detail は開いた行 (URL の log) だけが持つ、書いた goroutine と残した trace
 type LogRowViewModel struct {
-	At       string
-	Instance string
-	Level    string
-	Message  string
-	Duration string
-	URL      string
-	Open     bool
+	ID         string
+	At         string
+	Instance   string
+	Level      string
+	LevelClass string
+	Message    string
+	Duration   string
+	Exact      bool
+	OpenURL    string
+	Fields     []KeyValueViewModel
+	Raw        string
+	Open       bool
+	Detail     *LogDetailViewModel
 }
 
-var logLevels = []string{"", "DEBUG", "INFO", "WARN", "ERROR"}
+type KeyValueViewModel struct {
+	Key   string
+	Value string
+}
 
-func levelLabel(l string) string {
-	if l == "" {
-		return "any level"
-	}
-	return l + " and above"
+type LogDetailViewModel struct {
+	At          string
+	TimeNote    string
+	Source      string
+	Period      string
+	PeriodNote  string
+	Writer      LogWriterViewModel
+	Preserved   []components.LinkItemViewModel
+}
+
+type LogWriterViewModel struct {
+	Found         bool
+	Goroutine     string
+	Certainty     string
+	CertaintyNote string
+	URL           string
+	SchedulerURL  string
+	Note          string
+	Unavailable   *components.UnavailableViewModel
 }
 
 templ Logs(vm LogsViewModel) {
 	@layout.Base(vm.Base) {
-		<div class="page-head">
-			<h1>Logs</h1>
+		<div class="overview-head">
+			<h2>Logs</h2>
+			<span class="muted">click a line to see its fields · Goroutine → opens the goroutine that wrote it</span>
 			@components.TimeRangePicker(vm.Picker)
 		</div>
-		<form class="panel filters" method="get" action={ templ.SafeURL(vm.Filter.Action) }>
-			for _, k := range vm.Filter.Keep {
-				<input type="hidden" name={ k.Name } value={ k.Value }/>
+		<div class="logs-page">
+			@components.SearchForm(vm.Search)
+			if vm.Retention != nil {
+				@components.Unavailable(*vm.Retention)
 			}
-			<label>
-				<span>level</span>
-				<select name="level">
-					for _, l := range logLevels {
-						<option value={ l } selected?={ l == vm.Filter.Level }>{ levelLabel(l) }</option>
+			<section class="panel">
+				@components.Chart(vm.Chart)
+			</section>
+			<section class="panel logs-list">
+				<p class="muted log-count">{ len(vm.Rows) } of { vm.Total } lines, oldest first</p>
+				<table class="log-table" { stimulus.AttrControllers(assets.RowDetailController.Name)... }>
+					for _, l := range vm.Rows {
+						<tr id={ l.ID } class={ "openable", templ.KV("is-open", l.Open) } { stimulus.AttrActions("click->" + assets.RowDetailController.Name + "#toggleRow")... }>
+							<td class="log-toggle"><button type="button" class="row-toggle" aria-expanded={ boolText(l.Open) } title="show the line as it was logged" { stimulus.AttrActions("click->" + assets.RowDetailController.Name + "#toggle")... }></button></td>
+							<td class="log-time">{ l.At }</td>
+							<td><span class={ "level " + l.LevelClass }>{ l.Level }</span></td>
+							<td class="log-message">{ l.Message }</td>
+							<td class="side mono">{ l.Instance }</td>
+							<td class="side num mono">{ l.Duration }</td>
+							<td class="side log-open">
+								<a class="btn small" href={ templ.SafeURL(l.OpenURL) } title="open the goroutine that wrote this line (the scheduler at that time when the goroutine is unknown)">
+									Goroutine
+									if !l.Exact {
+										<span class="badge inference" title="the line has no number from the logger adapter, so the goroutine is inferred from the time (only when one goroutine was running)">?</span>
+									}
+									→
+								</a>
+							</td>
+						</tr>
+						<tr class="log-detail" hidden?={ !l.Open } data-open?={ l.Open }>
+							<td></td>
+							<td colspan="6">
+								if l.Detail != nil {
+									@logDetail(*l.Detail)
+								}
+								if len(l.Fields) > 0 {
+									<table class="log-fields">
+										for _, f := range l.Fields {
+											<tr><th>{ f.Key }</th><td>{ f.Value }</td></tr>
+										}
+									</table>
+								} else {
+									<pre>{ l.Raw }</pre>
+								}
+							</td>
+						</tr>
 					}
-				</select>
-			</label>
-			<label>
-				<span>instance</span>
-				<select name="instance">
-					<option value="">all instances</option>
-					for _, i := range vm.Filter.Instances {
-						<option value={ i } selected?={ i == vm.Filter.Instance }>{ i }</option>
-					}
-				</select>
-			</label>
-			for _, a := range vm.Filter.Attrs {
-				<label><span>key=value</span><input type="text" name="attr" value={ a } placeholder="path=/todos" class="mono"/></label>
-			}
-			<label class="grow"><span>text</span><input type="search" name="q" value={ vm.Filter.Text } placeholder="contains…"/></label>
-			<button type="submit" class="btn primary">Filter</button>
-			<a class="btn ghost" href={ templ.SafeURL(vm.Filter.ClearURL) }>Clear</a>
-		</form>
-		if vm.Retention != nil {
-			@components.Unavailable(*vm.Retention)
-		}
-		<section class="panel">
-			@components.Chart(vm.Histogram)
-			<p class="level-counts">
-				<span class="mono">{ vm.Total } lines</span>
-				for _, l := range vm.Levels {
-					<span class={ "level", "level-" + l.Level }>{ l.Level }</span>
-					<span class="mono">{ l.Count }</span>
-				}
-			</p>
-		</section>
-		<div class="split">
-			<section class="panel log-list">
-				if len(vm.Rows) == 0 {
-					<p class="muted">No log line matches in this period.</p>
-				} else {
-					<table class="logs">
-						<thead><tr><th>time</th><th>instance</th><th>level</th><th>message</th><th class="num">took</th></tr></thead>
-						<tbody>
-							for _, row := range vm.Rows {
-								<tr class={ templ.KV("open", row.Open) }>
-									<td class="mono"><a href={ templ.SafeURL(row.URL) } data-turbo-frame={ partials.LogDetailFrame } data-turbo-action="advance">{ row.At }</a></td>
-									<td class="mono small">{ row.Instance }</td>
-									<td><span class={ "level", "level-" + row.Level }>{ row.Level }</span></td>
-									<td class="wrap message"><a href={ templ.SafeURL(row.URL) } data-turbo-frame={ partials.LogDetailFrame } data-turbo-action="advance">{ row.Message }</a></td>
-									<td class="num mono">{ row.Duration }</td>
-								</tr>
-							}
-						</tbody>
-					</table>
-				}
+				</table>
 				if vm.NextURL != "" {
-					<p><a class="btn" href={ templ.SafeURL(vm.NextURL) }>Later lines →</a></p>
+					<p><a class="btn" href={ templ.SafeURL(vm.NextURL) }>newer lines</a></p>
 				}
 			</section>
-			<aside class="detail-side">
-				@partials.LogDetail(vm.Detail)
-			</aside>
 		</div>
 	}
+}
+
+templ logDetail(d LogDetailViewModel) {
+	<table class="kv log-detail-kv">
+		<tr><th>written at</th><td class="mono">{ d.At } <span class="faint">{ d.TimeNote }</span></td></tr>
+		<tr><th>read from</th><td>{ d.Source }</td></tr>
+		<tr>
+			<th>written by</th>
+			<td>
+				if d.Writer.Found {
+					<a class="gchip" href={ templ.SafeURL(d.Writer.URL) } title="open the goroutine over the period below"><span class="gdot cause-bg-RUNNING"></span>{ d.Writer.Goroutine }</a>
+					@components.CertaintyBadge(d.Writer.Certainty, d.Writer.CertaintyNote)
+				} else if d.Writer.Unavailable != nil {
+					<span class="muted">{ d.Writer.Unavailable.Text }</span>
+				} else {
+					<span class="muted">{ d.Writer.Note }</span>
+					<a class="btn small" href={ templ.SafeURL(d.Writer.SchedulerURL) }>Scheduler at that time →</a>
+				}
+			</td>
+		</tr>
+		<tr><th>period to look at</th><td><span class="mono">{ d.Period }</span> <span class="faint">{ d.PeriodNote }</span></td></tr>
+		if len(d.Preserved) > 0 {
+			<tr>
+				<th title="execution traces kept around error logs like this one; they stay after the full trace is gone">kept traces</th>
+				<td>@components.LinkList(d.Preserved)</td>
+			</tr>
+		}
+	</table>
 }

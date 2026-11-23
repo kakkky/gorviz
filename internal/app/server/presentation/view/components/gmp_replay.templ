@@ -15,8 +15,8 @@ type GMPReplayViewModel struct {
 }
 
 templ GMPReplay(vm GMPReplayViewModel) {
-	<div
-		class="gmp-replay"
+	<section
+		class="panel replay"
 		{ stimulus.AttrControllers(assets.GMPReplayIsland.Controller)... }
 		{ stimulus.AttrValue(assets.GMPReplayIsland.Controller, "component", assets.GMPReplayIsland.Component)... }
 		{ stimulus.AttrValue(assets.GMPReplayIsland.Controller, "props", vm.Props)... }
@@ -27,7 +27,7 @@ templ GMPReplay(vm GMPReplayViewModel) {
 				@ReplayWindowScript(vm.Window)
 			}
 		</div>
-	</div>
+	</section>
 }
 
 // ReplayWindowScript は再生する窓 1 つ。アイランドの controller が target として受け取り、読んだら外す

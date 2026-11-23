@@ -43,7 +43,7 @@ func NoService() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"panel narrow\"><h1>gorviz</h1><p>No agent has sent observations yet. Start gorviz-agent (or gorviz-launcher) next to your app; its service appears here as soon as the first batch arrives.</p><p><a class=\"btn\" href=\"/\">Reload</a></p></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"panel login\"><h2>Waiting for agents</h2><p class=\"muted\">No agent has sent observations yet. Start gorviz-agent (or gorviz-launcher) next to your app; its service appears here as soon as the first batch arrives.</p><p><a class=\"btn\" href=\"/\">Reload</a></p></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

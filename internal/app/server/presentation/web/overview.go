@@ -108,7 +108,7 @@ func (h *GetOverviewStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Req
 
 func overviewBody(out usecase.GetOverviewUsecaseOutput, svc usecase.ServiceSummary, now time.Time) partials.OverviewBodyViewModel {
 	s := out.Service
-	vm := partials.OverviewBodyViewModel{Range: span(out.From, out.To), UpdatedAt: clock(now), IssuesURL: servicePath(s, "issues")}
+	vm := partials.OverviewBodyViewModel{IssuesURL: servicePath(s, "issues"), Goroutines: "-", Threads: "-"}
 	for _, is := range out.OngoingIssues {
 		var inst []string
 		for _, i := range is.OngoingInstances {
@@ -119,6 +119,18 @@ func overviewBody(out usecase.GetOverviewUsecaseOutput, svc usecase.ServiceSumma
 	}
 	if out.From.Before(out.RetainedSince) {
 		vm.Retention = &components.UnavailableViewModel{Field: "metrics before " + dateTime(out.RetainedSince), Text: pastRetention, Since: dateTime(out.RetainedSince)}
+	}
+	for i := len(out.Points) - 1; i >= 0; i-- {
+		if p := out.Points[i]; p.HasGoroutines {
+			vm.Goroutines, vm.GoroutinesAt = itoa(p.Goroutines), " at "+clock(p.At)
+			break
+		}
+	}
+	for i := len(out.Points) - 1; i >= 0; i-- {
+		if p := out.Points[i]; p.Traced > 0 {
+			vm.Threads = itoa(p.Threads)
+			break
+		}
 	}
 	var marks []chartMark
 	for _, e := range out.Lifecycle {
@@ -137,6 +149,7 @@ func overviewBody(out usecase.GetOverviewUsecaseOutput, svc usecase.ServiceSumma
 		state := "ended"
 		if i.Running {
 			state = "running"
+			vm.Running++
 		}
 		if n := len(i.Incarnations); n > 0 {
 			last := i.Incarnations[n-1]
@@ -166,7 +179,7 @@ func countRestarts(incs []domain.Incarnation) int {
 	return n
 }
 
-func overviewCharts(out usecase.GetOverviewUsecaseOutput, marks []chartMark) []components.ChartViewModel {
+func overviewCharts(out usecase.GetOverviewUsecaseOutput, marks []chartMark) partials.OverviewChartsViewModel {
 	n := len(out.Points)
 	times := make([]time.Time, n)
 	vals := func(f func(m domain.MetricSample) (float64, bool)) []float64 {
@@ -199,44 +212,39 @@ func overviewCharts(out usecase.GetOverviewUsecaseOutput, marks []chartMark) []c
 		}
 	}
 
-	goroutines := spec("Goroutines", count, series{label: "goroutines", class: "s1", values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.Goroutines), m.HasGoroutines })})
-	goroutines.note = "summed over instances"
+	goroutines := spec("Goroutines", count, series{label: "goroutines", class: "series-1", values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.Goroutines), m.HasGoroutines })})
 
 	errors := spec("Logs and errors", count,
-		series{label: "logs", class: "s-muted", bar: true, values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.Logs), true })},
-		series{label: "errors", class: "s-error", bar: true, values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.Errors), true })})
+		series{label: "other lines", class: "series-level-info", bar: true, stack: true, values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.Logs - m.Errors), true })},
+		series{label: "errors", class: "series-level-error", bar: true, stack: true, values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.Errors), true })})
 	errors.hoverURL = logsURL("")
-	errors.note = "click a bar to open the logs of that time"
 
 	cpu := spec("CPU wait: RUNNABLE → RUNNING p99", func(v float64) string { return duration(time.Duration(v)) },
-		series{label: "p99", class: "s2", values: vals(func(m domain.MetricSample) (float64, bool) {
+		series{label: "p99", class: "series-2", values: vals(func(m domain.MetricSample) (float64, bool) {
 			d, ok := m.SchedP99()
 			return float64(d), ok && m.Traced > 0
 		})})
 	cpu.threshold, cpu.thLabel = float64(time.Millisecond), "CPU_CONTENTION: p99 ≥ 1ms"
 
-	runnable := spec("Share of goroutine time spent RUNNABLE", percent,
-		series{label: "runnable", class: "s2", values: traced(func(m domain.MetricSample) float64 { return m.RunnableShare() })})
+	runnable := spec("Waiting for P", func(v float64) string { return trimFloat(v, 2) },
+		series{label: "goroutines waiting", class: "series-2", values: traced(func(m domain.MetricSample) float64 { return float64(m.Runnable) / float64(m.Traced) })})
 
 	heap := spec("Heap", func(v float64) string { return bytesOf(v) },
-		series{label: "heap", class: "s3", values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.HeapBytes), m.HeapBytes > 0 })},
-		series{label: "goal", class: "s3", dashed: true, values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.HeapGoalBytes), m.HeapGoalBytes > 0 })})
+		series{label: "heap", class: "series-3", values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.HeapBytes), m.HeapBytes > 0 })},
+		series{label: "goal", class: "series-3", dashed: true, values: vals(func(m domain.MetricSample) (float64, bool) { return float64(m.HeapGoalBytes), m.HeapGoalBytes > 0 })})
 
-	gc := spec("GC CPU share", percent,
-		series{label: "GC", class: "s4", values: traced(func(m domain.MetricSample) float64 { return m.GCShare() })},
-		series{label: "mark assist", class: "s5", values: traced(func(m domain.MetricSample) float64 { return m.MarkAssistShare() })})
-	gc.threshold, gc.thLabel = 0.05, "GC_PRESSURE: mark assist > 5% (GC ≥ 50% is FACT)"
+	gc := spec("GC", percent, series{label: "GC", class: "series-4", values: traced(func(m domain.MetricSample) float64 { return m.GCShare() })})
+	gc.threshold, gc.thLabel = 0.5, "GC_PRESSURE (FACT): GC ≥ 50%"
+	assist := spec("Mark assist", percent, series{label: "mark assist", class: "series-5", values: traced(func(m domain.MetricSample) float64 { return m.MarkAssistShare() })})
+	assist.threshold, assist.thLabel = 0.05, "GC_PRESSURE: mark assist > 5%"
 
 	lock := spec("Lock wait per running time", percent,
-		series{label: "lock wait / running", class: "s6", values: vals(func(m domain.MetricSample) (float64, bool) { return m.LockWaitRatio(), m.Traced > 0 && m.Running > 0 })})
+		series{label: "lock wait / running", class: "series-6", values: vals(func(m domain.MetricSample) (float64, bool) { return m.LockWaitRatio(), m.Traced > 0 && m.Running > 0 })})
 	lock.threshold, lock.thLabel = 1, "LOCK_CONTENTION: lock wait > running"
 
-	threads := spec("OS threads", count, series{label: "threads", class: "s1", values: traced(func(m domain.MetricSample) float64 { return float64(m.Threads) })})
+	threads := spec("OS threads", count, series{label: "threads", class: "series-1", values: traced(func(m domain.MetricSample) float64 { return float64(m.Threads) })})
 	threads.threshold, threads.thLabel = 5000, "THREAD_EXPLOSION: more than half of the 10,000 limit"
 
-	out2 := []components.ChartViewModel{}
-	for _, c := range []chartSpec{goroutines, errors, cpu, runnable, heap, gc, lock, threads} {
-		out2 = append(out2, buildChart(c))
-	}
-	return out2
+	return partials.OverviewChartsViewModel{Goroutines: buildChart(goroutines), Logs: buildChart(errors), Heap: buildChart(heap), GC: buildChart(gc), MarkAssist: buildChart(assist),
+		WaitToRun: buildChart(cpu), Runnable: buildChart(runnable), LockWait: buildChart(lock), Threads: buildChart(threads)}
 }

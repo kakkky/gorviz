@@ -10,6 +10,7 @@ export default class extends Controller<HTMLDetailsElement> {
   declare readonly toInputTarget: HTMLInputElement
   declare readonly fromValueTarget: HTMLInputElement
   declare readonly toValueTarget: HTMLInputElement
+  declare readonly hasFromInputTarget: boolean
   declare readonly fromValue: string
   declare readonly toValue: string
 
@@ -20,9 +21,12 @@ export default class extends Controller<HTMLDetailsElement> {
     if (e.key === "Escape" && this.element.open) this.close()
   }
 
+  // 見出しのサービスの切り替えも同じ <details> の開け閉めだけを使うので、入力欄がなくても動く
   connect() {
-    this.fromInputTarget.value = toLocalInput(this.fromValue)
-    this.toInputTarget.value = toLocalInput(this.toValue)
+    if (this.hasFromInputTarget) {
+      this.fromInputTarget.value = toLocalInput(this.fromValue)
+      this.toInputTarget.value = toLocalInput(this.toValue)
+    }
     document.addEventListener("click", this.onClick)
     document.addEventListener("keydown", this.onKey)
   }

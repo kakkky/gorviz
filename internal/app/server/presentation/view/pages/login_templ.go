@@ -49,7 +49,7 @@ func Login(vm LoginViewModel) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"panel narrow login\"><h1>gorviz</h1><p class=\"muted\">Log in with a token issued by gorviz-server (the launcher prints it as GORVIZ_TOKEN).</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"panel login\"><h2>Log in</h2><p class=\"muted\">Log in with a token issued by gorviz-server (the launcher prints it as GORVIZ_TOKEN).</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -85,7 +85,7 @@ func Login(vm LoginViewModel) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"> <label class=\"field\"><span>Token</span> <input type=\"password\" name=\"token\" autofocus autocomplete=\"current-password\" required></label> <button type=\"submit\" class=\"btn primary\">Log in</button></form></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"> <label class=\"field\"><span>Token</span> <input type=\"password\" name=\"token\" autofocus autocomplete=\"current-password\" required></label> <button type=\"submit\" class=\"primary\">Log in</button></form></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

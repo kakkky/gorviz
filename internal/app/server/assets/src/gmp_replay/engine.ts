@@ -10,6 +10,8 @@ export interface GoroutineState {
   cause: MainCause | ""
   wokenBy: number
   seq: number
+  // since は今の置き場所に入った時刻。trace は置き場所が変わらなくても書き直すので、同じ置き場所なら前の時刻を保つ
+  since: number
 }
 
 export interface ProcView {
@@ -70,16 +72,20 @@ export class Replay {
 
   private apply(ev: ReplayEvent, seq: number) {
     const w = this.window
+    const prev = this.goroutines.get(ev.g)
+    const place = PLACE_KINDS[ev.k] ?? "waiting"
+    const same = prev !== undefined && prev.place === place && prev.proc === ev.p
     this.goroutines.set(ev.g, {
       g: ev.g,
-      place: PLACE_KINDS[ev.k] ?? "waiting",
+      place,
       proc: ev.p,
       thread: ev.m,
       reason: ev.r >= 0 ? w.reasons[ev.r] ?? "" : "",
-      fn: ev.f >= 0 ? w.functions[ev.f] ?? "" : "",
+      fn: ev.f >= 0 ? w.functions[ev.f] ?? "" : prev?.fn ?? "",
       cause: ev.c >= 0 ? MAIN_CAUSES[ev.c] ?? "" : "",
       wokenBy: ev.w ?? 0,
       seq,
+      since: same ? prev.since : ev.t,
     })
   }
 
@@ -163,7 +169,7 @@ export class Replay {
           global.push(g)
           break
         case "waiting": {
-          const entry = this.entryOf(g.g) || g.fn
+          const entry = this.entryOf(g.g) || g.fn || "entry unknown"
           const key = `${entry}\u0000${g.reason}`
           let grp = waiting.get(key)
           if (!grp) {
@@ -207,4 +213,31 @@ export class Replay {
       live,
     }
   }
+}
+
+// Segment は 1 つの G が同じ主因でいた区間
+export interface Segment {
+  start: number
+  end: number
+  cause: string
+  reason: string
+}
+
+// segmentsOf は窓の中の G の状態の推移を区間に分ける。同じ主因・同じ理由が隙間なく続くところはつなげる
+export function segmentsOf(w: ReplayWindow, g: number): Segment[] {
+  const out: Segment[] = []
+  let open: Segment | null = null
+  for (const ev of w.events) {
+    if (ev.g !== g) continue
+    const cause = PLACE_KINDS[ev.k] === "dead" ? "EXITED" : ev.c >= 0 ? MAIN_CAUSES[ev.c] ?? "" : ""
+    const reason = PLACE_KINDS[ev.k] === "waiting" && ev.r >= 0 ? w.reasons[ev.r] ?? "" : ""
+    if (open && open.cause === cause && open.reason === reason) continue
+    if (open) {
+      open.end = ev.t
+      if (open.end > open.start) out.push(open)
+    }
+    open = cause ? { start: ev.t, end: w.durationNs, cause, reason } : null
+  }
+  if (open && open.end > open.start) out.push(open)
+  return out
 }

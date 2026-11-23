@@ -18,13 +18,13 @@ type OverviewViewModel struct {
 
 templ Overview(vm OverviewViewModel) {
 	@layout.Base(vm.Base) {
-		<div class="page-head">
-			<h1>Overview</h1>
-			@components.TimeRangePicker(vm.Picker)
-		</div>
 		if vm.StreamURL != "" {
 			@turbo.StreamSSESource("overview-stream", vm.StreamURL)
 		}
+		<div class="overview-head">
+			<h2>Overview</h2>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
 		<div id="overview-body" class="stack">
 			@partials.OverviewBody(vm.Body)
 		</div>

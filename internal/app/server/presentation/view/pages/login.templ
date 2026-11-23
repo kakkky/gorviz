@@ -10,8 +10,8 @@ type LoginViewModel struct {
 
 templ Login(vm LoginViewModel) {
 	@layout.Bare("log in") {
-		<section class="panel narrow login">
-			<h1>gorviz</h1>
+		<section class="panel login">
+			<h2>Log in</h2>
 			<p class="muted">Log in with a token issued by gorviz-server (the launcher prints it as GORVIZ_TOKEN).</p>
 			if vm.Message != "" {
 				<p class="error" role="alert">{ vm.Message }</p>
@@ -22,7 +22,7 @@ templ Login(vm LoginViewModel) {
 					<span>Token</span>
 					<input type="password" name="token" autofocus autocomplete="current-password" required/>
 				</label>
-				<button type="submit" class="btn primary">Log in</button>
+				<button type="submit" class="primary">Log in</button>
 			</form>
 		</section>
 	}

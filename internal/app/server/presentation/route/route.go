@@ -25,6 +25,7 @@ type GUI struct {
 	Issues          http.Handler
 	Issue           http.Handler
 	Logs            http.Handler
+	LogGoroutine    http.Handler
 	Scheduler       http.Handler
 	SchedulerStream http.Handler
 	Goroutine       http.Handler
@@ -53,6 +54,7 @@ func NewMux(mw *middleware.Middleware, api map[string]http.Handler, login Login,
 		"GET /services/{service}/issues":                                      gui.Issues,
 		"GET /services/{service}/issues/{issue}":                              gui.Issue,
 		"GET /services/{service}/logs":                                        gui.Logs,
+		"GET /services/{service}/logs/{log}/goroutine":                        gui.LogGoroutine,
 		"GET /services/{service}/instances/{instance}/scheduler":              gui.Scheduler,
 		"GET /services/{service}/instances/{instance}/scheduler/stream":       gui.SchedulerStream,
 		"GET /services/{service}/instances/{instance}/goroutines/{goroutine}": gui.Goroutine,

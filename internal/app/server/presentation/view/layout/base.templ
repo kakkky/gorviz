@@ -7,14 +7,20 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/assets"
 )
 
-// BaseViewModel は全画面の外枠。Services は見出しで切り替えるサービス、Tabs は見ているサービスの画面、
-// Instances は Scheduler を開くインスタンス (見ているインスタンスが Active)
+// BaseViewModel は全画面の外枠。見出しのピルは見ているサービスとインスタンスで、開くとサービスごとのインスタンスを並べる
 type BaseViewModel struct {
-	Title     string
-	Service   string
-	Instance  string
-	Services  []LinkViewModel
-	Tabs      []LinkViewModel
+	Title    string
+	Service  string
+	Instance string
+	Running  bool
+	Groups   []ServiceGroupViewModel
+	Tabs     []LinkViewModel
+}
+
+type ServiceGroupViewModel struct {
+	Name      string
+	URL       string
+	Current   bool
 	Instances []InstanceLinkViewModel
 }
 
@@ -29,6 +35,7 @@ type InstanceLinkViewModel struct {
 	URL     string
 	Active  bool
 	Running bool
+	State   string
 }
 
 func controllerPaths() []string {
@@ -58,44 +65,39 @@ templ Base(vm BaseViewModel) {
 		@head(vm.Title)
 		<body>
 			<header class="app">
-				<a class="brand" href="/">gorviz</a>
-				<details class="menu service-switcher">
-					<summary title="switch the service">
-						<span class="menu-label">service</span>
+				<h1><a href="/">gorviz</a></h1>
+				<details class="trp agent-menu" { stimulus.AttrControllers(assets.TimeRangePickerController.Name)... }>
+					<summary class="agent-switch" title="switch the service and instance to look at">
+						<span class={ "agent-dot", templ.KV("connected", vm.Running) }></span>
 						<strong>{ vm.Service }</strong>
+						if vm.Instance != "" {
+							<span class="sep">·</span>
+							<span class="mono">{ vm.Instance }</span>
+						}
+						<span class="trp-caret" aria-hidden="true"></span>
 					</summary>
-					<div class="menu-pop">
-						for _, s := range vm.Services {
-							<a href={ templ.SafeURL(s.URL) } class={ templ.KV("active", s.Active) }>{ s.Label }</a>
+					<div class="trp-pop agent-pop">
+						for _, g := range vm.Groups {
+							<div class="agent-group">
+								<a class={ "agent-group-head", templ.KV("current", g.Current) } href={ templ.SafeURL(g.URL) }>{ g.Name }</a>
+								for _, i := range g.Instances {
+									<a class={ "agent-item", templ.KV("current", i.Active) } href={ templ.SafeURL(i.URL) }>
+										<span class={ "agent-dot", templ.KV("connected", i.Running) }></span>
+										<span class="mono">{ i.Label }</span>
+										<span class="faint">{ i.State }</span>
+									</a>
+								}
+							</div>
 						}
 					</div>
 				</details>
-				<nav class="tabs">
+				<nav>
 					for _, t := range vm.Tabs {
 						<a href={ templ.SafeURL(t.URL) } class={ templ.KV("active", t.Active) }>{ t.Label }</a>
 					}
-					<details class={ "menu", templ.KV("active", vm.Instance != "") }>
-						<summary title="open the Scheduler of an instance">
-							Scheduler
-							if vm.Instance != "" {
-								<span class="mono">{ vm.Instance }</span>
-							}
-						</summary>
-						<div class="menu-pop">
-							for _, i := range vm.Instances {
-								<a href={ templ.SafeURL(i.URL) } class={ templ.KV("active", i.Active) }>
-									<span class={ "dot", templ.KV("running", i.Running) } title={ runningTitle(i.Running) }></span>
-									{ i.Label }
-								</a>
-							}
-							if len(vm.Instances) == 0 {
-								<span class="faint">no instance</span>
-							}
-						</div>
-					</details>
 				</nav>
 				<form method="post" action="/logout" class="logout" data-turbo="false">
-					<button type="submit" class="btn ghost">Log out</button>
+					<button type="submit" class="logout-button" title="log out">Log out</button>
 				</form>
 			</header>
 			<main>
@@ -105,19 +107,15 @@ templ Base(vm BaseViewModel) {
 	</html>
 }
 
-func runningTitle(running bool) string {
-	if running {
-		return "running"
-	}
-	return "ended"
-}
-
 // Bare はサービスを選ぶ前の画面 (ログイン・サービスがまだないとき) の外枠
 templ Bare(title string) {
 	<!DOCTYPE html>
 	<html lang="ja">
 		@head(title)
 		<body class="bare">
+			<header class="app">
+				<h1>gorviz</h1>
+			</header>
 			<main>
 				{ children... }
 			</main>

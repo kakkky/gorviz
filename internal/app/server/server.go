@@ -120,6 +120,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		Issues:          web.NewGetIssuesHandler(services, uc.NewListIssuesUsecase()),
 		Issue:           web.NewGetIssueHandler(services, uc.NewGetIssueUsecase()),
 		Logs:            web.NewGetLogsHandler(services, uc.NewSearchLogsUsecase(), uc.NewCountLogsUsecase(), uc.NewGetLogUsecase()),
+		LogGoroutine:    web.NewGetLogGoroutineHandler(uc.NewGetLogUsecase()),
 		Scheduler:       web.NewGetSchedulerHandler(services, chunks),
 		SchedulerStream: web.NewGetSchedulerStreamHandler(chunks),
 		Goroutine:       web.NewGetGoroutineHandler(services, uc.NewDiagnoseGoroutineUsecase(), chunks),

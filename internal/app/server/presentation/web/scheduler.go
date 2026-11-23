@@ -52,7 +52,7 @@ func (h *GetSchedulerHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		middleware.SetError(r, err)
 		return
 	}
-	base, _, err := h.nav.base(r.Context(), "Scheduler "+string(p.instance), p.service, p.instance, "")
+	base, _, err := h.nav.base(r.Context(), "Scheduler "+string(p.instance), p.service, p.instance, tabScheduler)
 	if err != nil {
 		middleware.SetError(r, err)
 		return
@@ -75,7 +75,7 @@ func (h *GetSchedulerHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		}
 	}
 	action := paths.Scheduler(p.service, p.instance, time.Time{}, time.Time{})
-	vm := pages.SchedulerViewModel{Base: base, Instance: string(p.instance), Picker: picker(action, nil, tr, out.From, out.To, schedulerPresets, schedulerDefault)}
+	vm := pages.SchedulerViewModel{Base: base, Instance: string(p.instance), Picker: picker(action, nil, tr, out.From, out.To, schedulerPresets, schedulerDefault), Past: !live, LatestURL: action}
 	props := components.GMPReplayProps{Live: live, GoroutineURL: goroutineTemplate(p.service, p.instance), Autoplay: q.Get("autoplay") == "1"}
 	if !live {
 		length := out.To.Sub(out.From)
@@ -83,7 +83,7 @@ func (h *GetSchedulerHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		props.PrevURL = withQuery(action, shiftQuery(out.From, out.To, -length))
 	}
 	view := replayView(p, out, props)
-	vm.Range, vm.Replay, vm.FromPreserved, vm.Unavailable, vm.Nearby, vm.LeakNote = view.rangeText, view.replay, out.FromPreserved, view.unavailable, view.nearby, view.leakNote
+	vm.Replay, vm.FromPreserved, vm.Unavailable, vm.Nearby, vm.LeakNote = view.replay, out.FromPreserved, view.unavailable, view.nearby, view.leakNote
 	if live && out.Found {
 		vm.StreamURL = withQuery(action+"/stream", url.Values{"after": {rfc(out.Chunk.EndedAt())}})
 	}
@@ -91,7 +91,6 @@ func (h *GetSchedulerHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 }
 
 type replayParts struct {
-	rangeText   string
 	replay      *components.GMPReplayViewModel
 	unavailable []components.UnavailableViewModel
 	nearby      []components.LinkItemViewModel
@@ -99,7 +98,7 @@ type replayParts struct {
 }
 
 func replayView(p instancePath, out usecase.ListTraceChunksUsecaseOutput, props components.GMPReplayProps) replayParts {
-	v := replayParts{rangeText: spanMilli(out.From, out.To), unavailable: unavailableViews(out.Unavailable), nearby: nearbyLinks(p.service, p.instance, out.NearbyTraces)}
+	v := replayParts{unavailable: unavailableViews(out.Unavailable), nearby: nearbyLinks(p.service, p.instance, out.NearbyTraces)}
 	if out.FromPreserved {
 		v.unavailable = nil
 	}

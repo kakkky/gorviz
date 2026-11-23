@@ -44,17 +44,30 @@ func (h *GetIssuesHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		middleware.SetError(r, err)
 		return
 	}
-	out, err := h.issues.Exec(r.Context(), usecase.ListIssuesUsecaseInput{Service: s, From: tr.From, To: tr.To, Cursor: domain.PageCursor(q.Get("cursor")), Now: now})
+	kind := domain.IssueKind(q.Get("kind"))
+	out, err := h.issues.Exec(r.Context(), usecase.ListIssuesUsecaseInput{Service: s, From: tr.From, To: tr.To, Cursor: domain.PageCursor(q.Get("cursor")), Query: q.Get("q"), Kind: kind, Now: now})
 	if err != nil {
 		middleware.SetError(r, err)
 		return
 	}
 	action := servicePath(s, "issues")
-	vm := pages.IssuesViewModel{Base: base, Picker: picker(action, nil, tr, out.From, out.To, issuesPresets, issuesDefault),
-		Retention: "Issues are kept since " + dateTime(out.RetainedSince) + "."}
+	keep := url.Values{}
+	for _, k := range []string{"q", "kind"} {
+		if v := q.Get(k); v != "" {
+			keep.Set(k, v)
+		}
+	}
+	vm := pages.IssuesViewModel{Base: base, Picker: picker(action, keep, tr, out.From, out.To, issuesPresets, issuesDefault),
+		Search: issuesSearch(action, tr, q), Filtered: q.Get("q") != "" || kind != "", Retention: "kept since " + dateTime(out.RetainedSince)}
+	vm.Total, vm.Kinds, vm.Chart = issueTrend(out)
 	for _, is := range out.Issues {
+		summary := "not going on"
+		if is.Ongoing {
+			summary = "going on in " + instanceNames(is.OngoingInstances)
+		}
 		vm.Rows = append(vm.Rows, pages.IssueRowViewModel{Kind: string(is.Kind), Subject: is.Subject, Certainty: string(is.Certainty), CertaintyNote: certaintyNote(is.Certainty),
-			Occurrences: is.Occurrences, Last: dateTime(is.LastOccurredAt), Ongoing: is.Ongoing, Instances: instanceNames(is.OngoingInstances), URL: issueURL(s, is.Name, tr)})
+			Summary: summary, Ongoing: is.Ongoing, Count: is.Occurrences, Trend: trendBars(is.StartedAt, out.From, out.To), FirstSeen: dateTime(is.FirstOccurredAt), LastSeen: dateTime(is.LastOccurredAt),
+			URL: issueURL(s, is.Name, tr)})
 	}
 	if out.Next != "" {
 		nq := url.Values{}
@@ -65,6 +78,87 @@ func (h *GetIssuesHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		vm.NextURL = withQuery(action, nq)
 	}
 	render(rw, r, pages.Issues(vm))
+}
+
+func issuesSearch(action string, tr timeRange, q url.Values) components.SearchFormViewModel {
+	vm := components.SearchFormViewModel{Action: action, Query: q.Get("q"), Placeholder: "search the subject (e.g. a function name)"}
+	sel := components.SearchSelectViewModel{Name: "kind", All: "all kinds", Selected: q.Get("kind")}
+	for _, k := range domain.IssueKinds {
+		sel.Options = append(sel.Options, components.SearchOptionViewModel{Value: string(k), Label: string(k)})
+	}
+	vm.Selects = []components.SearchSelectViewModel{sel}
+	for k, v := range map[string]string{"from": tr.FromRaw, "to": tr.ToRaw} {
+		if v != "" {
+			vm.Keep = append(vm.Keep, components.KeptParamViewModel{Name: k, Value: v})
+		}
+	}
+	return vm
+}
+
+const trendBuckets = 24
+
+// trendBars は期間を区切り、区切りごとの発生の数を、いちばん多い区切りに対する高さにする
+func trendBars(starts []time.Time, from, to time.Time) []string {
+	counts := make([]int, trendBuckets)
+	span := to.Sub(from)
+	top := 0
+	for _, t := range starts {
+		if span <= 0 || t.Before(from) || t.After(to) {
+			continue
+		}
+		i := min(int(float64(trendBuckets)*float64(t.Sub(from))/float64(span)), trendBuckets-1)
+		counts[i]++
+		top = max(top, counts[i])
+	}
+	out := make([]string, trendBuckets)
+	for i, c := range counts {
+		out[i] = "0%"
+		if top > 0 {
+			out[i] = itoa(c*100/top) + "%"
+		}
+	}
+	return out
+}
+
+// issueTrend は種類ごとの発生の数と、区切りごとに種類で積み上げた発生の推移
+func issueTrend(out usecase.ListIssuesUsecaseOutput) (int, []pages.IssueKindTotalViewModel, components.ChartViewModel) {
+	const buckets = 48
+	span := out.To.Sub(out.From)
+	step := max(span/buckets, time.Second)
+	times := make([]time.Time, buckets)
+	for i := range times {
+		times[i] = out.From.Add(step * time.Duration(i))
+	}
+	byKind := map[domain.IssueKind][]float64{}
+	totals := map[domain.IssueKind]int{}
+	total := 0
+	for _, is := range out.Issues {
+		v, ok := byKind[is.Kind]
+		if !ok {
+			v = make([]float64, buckets)
+			byKind[is.Kind] = v
+		}
+		for _, t := range is.StartedAt {
+			if t.Before(out.From) || t.After(out.To) {
+				continue
+			}
+			v[min(int(t.Sub(out.From)/step), buckets-1)]++
+			totals[is.Kind]++
+			total++
+		}
+	}
+	var kinds []pages.IssueKindTotalViewModel
+	var ss []series
+	for n, k := range domain.IssueKinds {
+		class := "series-" + itoa(n%6+1)
+		if totals[k] > 0 {
+			kinds = append(kinds, pages.IssueKindTotalViewModel{Kind: string(k), Count: totals[k], Percent: itoa(totals[k]*100/total) + "%", Class: class})
+		}
+		if v, ok := byKind[k]; ok {
+			ss = append(ss, series{label: string(k), class: class, bar: true, stack: true, values: v})
+		}
+	}
+	return total, kinds, buildChart(chartSpec{from: out.From, to: out.To, step: step, times: times, series: ss, format: count, threshold: math.NaN()})
 }
 
 func instanceNames(is []observation.InstanceName) string {
@@ -129,15 +223,26 @@ func issueView(base layout.BaseViewModel, s observation.ServiceName, tr timeRang
 	}
 	vm := pages.IssueViewModel{Base: base, Picker: picker(paths.Issue(s, sum.Name), nil, tr, from, to, issuesPresets, issuesDefault),
 		Kind: string(sum.Kind), Subject: sum.Subject, Certainty: string(sum.Certainty), CertaintyNote: certaintyNote(sum.Certainty),
-		Ongoing: sum.Ongoing, Instances: instanceNames(sum.OngoingInstances), NextAction: sum.NextAction,
-		Counts:    issueCounts(out.CountsByDay),
-		Retention: "Issues are kept since " + dateTime(out.RetainedSince) + "."}
+		Ongoing: sum.Ongoing, Instances: instanceNames(sum.OngoingInstances), LastSeen: dateTime(sum.LastOccurredAt), FirstSeen: dateTime(sum.FirstOccurredAt), Total: sum.Occurrences,
+		Counts: issueCounts(out.CountsByDay), Retention: dateTime(out.RetainedSince), IssuesURL: issueListURL(s, tr)}
 	occs := slices.Clone(out.Occurrences)
 	slices.Reverse(occs)
 	for i, o := range occs {
 		vm.Occurrences = append(vm.Occurrences, occurrenceView(s, sum, o, i == 0))
 	}
 	return vm
+}
+
+// issueListURL は Issues の一覧。詳細で選んでいた期間を引き継ぐ
+func issueListURL(s observation.ServiceName, tr timeRange) string {
+	q := url.Values{}
+	if tr.FromRaw != "" {
+		q.Set("from", tr.FromRaw)
+	}
+	if tr.ToRaw != "" {
+		q.Set("to", tr.ToRaw)
+	}
+	return withQuery(servicePath(s, "issues"), q)
 }
 
 func issueCounts(days []usecase.DayCount) components.ChartViewModel {
@@ -157,7 +262,7 @@ func issueCounts(days []usecase.DayCount) components.ChartViewModel {
 		from = to.Add(-7 * 24 * time.Hour)
 	}
 	return buildChart(chartSpec{title: "Occurrences per day", from: from, to: to, step: 24 * time.Hour, times: times, format: count, threshold: math.NaN(),
-		series: []series{{label: "occurrences", class: "s-error", bar: true, values: values}}})
+		series: []series{{label: "occurrences", class: "series-level-error", bar: true, values: values}}})
 }
 
 var impactTitles = map[domain.IssueKind]string{

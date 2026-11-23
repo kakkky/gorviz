@@ -1,11 +1,13 @@
 package pages
 
 import (
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 )
 
-// GoroutineViewModel は 1 つの goroutine の診断と根拠。Replay とその周り (ReplayRange など) は調べる期間の GMP の再生
 type GoroutineViewModel struct {
 	Base          layout.BaseViewModel
 	Goroutine     string
@@ -20,19 +22,17 @@ type GoroutineViewModel struct {
 	Main          string
 	MainCertainty string
 	MainNote      string
-	Hint          string
-	HintURL       string
-	HintLabel     string
-	Breakdown     *components.BreakdownViewModel
+	Breakdown     *BreakdownViewModel
 	Stop          *StopViewModel
 	Leak          LeakViewModel
 	Wakers        []WakerViewModel
-	Logs          []LogRowViewModel
+	Logs          []GoroutineLogViewModel
+	MoreWakers    int
 	Source        string
 	SourceNote    string
 	Unavailable   []components.UnavailableViewModel
 	SchedulerURL  string
-	ReplayRange   string
+	PeriodRange   components.TimeRangeViewModel
 	Replay        *components.GMPReplayViewModel
 	ReplayFrom    bool
 	ReplayGone    []components.UnavailableViewModel
@@ -67,136 +67,162 @@ type WakerViewModel struct {
 	URL       string
 }
 
+// BreakdownViewModel は状態別の時間内訳。Width は棒の長さ
+type BreakdownViewModel struct {
+	Rows       []BreakdownRowViewModel
+	Unrecorded string
+}
+
+type BreakdownRowViewModel struct {
+	Cause    string
+	Width    string
+	Percent  string
+	Duration string
+}
+
+type GoroutineLogViewModel struct {
+	At         string
+	Level      string
+	LevelClass string
+	Message    string
+	Duration   string
+	URL        string
+}
+
 templ Goroutine(vm GoroutineViewModel) {
 	@layout.Base(vm.Base) {
-		<div class="page-head">
-			<h1>Goroutine <span class="mono">{ vm.Goroutine }</span> <span class="mono muted">{ vm.Instance }</span></h1>
+		<div class="overview-head">
+			<h2>Goroutine</h2>
 			@components.TimeRangePicker(vm.Picker)
 		</div>
-		<section class="panel summary">
-			<dl class="facts">
-				<div><dt>period</dt><dd><span class="mono">{ vm.Period }</span> <span class="faint">{ vm.PeriodBy }</span></dd></div>
-				<div><dt>entry</dt><dd><code>{ vm.Entry }</code></dd></div>
-				<div>
-					<dt>created by</dt>
-					<dd>
-						if vm.CreatedBy != "" {
-							<code>{ vm.CreatedBy }</code> <span class="loc">{ vm.CreatedByAt }</span>
-						} else {
-							<span class="faint">not recorded</span>
-						}
-					</dd>
-				</div>
-				<div>
-					<dt>computed from</dt>
-					<dd>{ vm.Source } <span class="faint">{ vm.SourceNote }</span></dd>
-				</div>
-			</dl>
-			for _, u := range vm.Unavailable {
-				@components.Unavailable(u)
-			}
-		</section>
-		if !vm.Found {
-			<section class="panel">
-				<p class="muted">This goroutine does not appear in any data kept for this period.</p>
-			</section>
-		} else {
-			<div class="grid-2">
-				<section class="panel">
-					<h2>Main cause</h2>
-					<p class="main-cause">
-						@components.CauseBadge(vm.Main)
-						@components.CertaintyBadge(vm.MainCertainty, vm.MainNote)
-						<span class="faint small">{ vm.MainNote }</span>
-					</p>
-					if vm.Hint != "" {
-						<p class="hint-box">
-							{ vm.Hint }
-							if vm.HintURL != "" {
-								<a href={ templ.SafeURL(vm.HintURL) }>{ vm.HintLabel }</a>
-							}
-						</p>
-					}
-					<h3>Time by state</h3>
-					if vm.Breakdown != nil {
-						@components.Breakdown(*vm.Breakdown)
-					} else {
-						<p class="faint">Only a snapshot is kept for this period, so the time by state cannot be told; the main cause comes from the state at that moment.</p>
-					}
-				</section>
-				<section class="panel">
-					<h2>Stopped at</h2>
-					if vm.Stop != nil {
-						<p>
-							@components.CauseBadge(vm.Stop.Cause)
-							<span class="mono">{ vm.Stop.Duration }</span>
-							if vm.Stop.WaitReason != "" {
-								<span class="muted">waiting on <span class="mono">{ vm.Stop.WaitReason }</span></span>
-							}
-						</p>
-						<p><code>{ vm.Stop.Function }</code></p>
-						<p class="loc">{ vm.Stop.Location }</p>
-					} else {
-						<p class="faint">It did not stop anywhere in this period.</p>
-					}
-					<h3>Leak</h3>
-					<p>
-						if vm.Leak.Leaked {
-							<span class="badge leak">leaked</span>
-						}
-						{ vm.Leak.State }
-						@components.CertaintyBadge(vm.Leak.Certainty, vm.Leak.CertaintyNote)
-					</p>
-					if vm.Leak.CertaintyNote != "" {
-						<p class="faint small">{ vm.Leak.CertaintyNote }</p>
-					}
-					if vm.Leak.CheckedAt != "" {
-						<p class="faint small">leak check at { vm.Leak.CheckedAt }</p>
-					}
-				</section>
-			</div>
-			<section class="panel">
-				<h2>Woken by <span class="faint">goroutines that ended its waits; open one to see why it made this one wait</span></h2>
-				if len(vm.Wakers) == 0 {
-					<p class="faint">No other goroutine woke it in this period (or the execution trace is not kept).</p>
-				} else {
-					<table>
-						<thead><tr><th>goroutine</th><th>where it woke this one</th><th>wait</th><th class="num">times</th><th class="num">waited</th></tr></thead>
-						<tbody>
-							for _, w := range vm.Wakers {
-								<tr>
-									<td class="mono"><a href={ templ.SafeURL(w.URL) }>{ w.Goroutine }</a></td>
-									<td class="wrap"><code>{ w.Function }</code><div class="loc">{ w.Location }</div></td>
-									<td>@components.CauseBadge(w.Cause)</td>
-									<td class="num mono">{ w.Count }</td>
-									<td class="num mono">{ w.Waited }</td>
-								</tr>
-							}
-						</tbody>
-					</table>
+		<section class="panel goroutine-card">
+			<div class="goroutine-card-head">
+				<span class="following-label" title="this goroutine is followed in the replay below">following</span>
+				<strong class="mono">{ vm.Goroutine }</strong>
+				<span class="goroutine-entry" title={ vm.Entry }>{ components.ShortPath(vm.Entry) }</span>
+				<span class="mono faint">{ vm.Instance }</span>
+				if vm.Leak.Leaked {
+					<span class="badge kind">GOROUTINE_LEAK</span>
+					@components.CertaintyBadge(vm.Leak.Certainty, vm.Leak.CertaintyNote)
 				}
-			</section>
-		}
-		<section class="panel">
-			<h2>Logs written in the period <span class="count">{ len(vm.Logs) }</span></h2>
-			if len(vm.Logs) == 0 {
-				<p class="faint">No log line written by this goroutine in the period is matched.</p>
-			} else {
-				<table class="logs">
-					<tbody>
-						for _, row := range vm.Logs {
-							<tr>
-								<td class="mono"><a href={ templ.SafeURL(row.URL) }>{ row.At }</a></td>
-								<td><span class={ "level", "level-" + row.Level }>{ row.Level }</span></td>
-								<td class="wrap message"><a href={ templ.SafeURL(row.URL) }>{ row.Message }</a></td>
-								<td class="num mono">{ row.Duration }</td>
-							</tr>
+				<div class="actions">
+					<a class="btn" href={ templ.SafeURL(vm.SchedulerURL) } title="replay this period in the Scheduler">Scheduler →</a>
+				</div>
+			</div>
+			<div class="goroutine-card-body">
+				<div class="goroutine-card-col">
+					<h3>Diagnosis <span class="faint">over the interval below</span></h3>
+					if !vm.Found {
+						<p class="muted">no record of this goroutine in the interval (not in the recorded trace, the per-minute breakdowns nor the snapshots)</p>
+					} else if vm.Main != "" {
+						<p>
+							@components.CauseBadge(vm.Main)
+							@components.CertaintyBadge(vm.MainCertainty, vm.MainNote)
+						</p>
+					}
+					for _, u := range vm.Unavailable {
+						@components.Unavailable(u)
+					}
+					<table class="kv">
+						<tr><th>interval</th><td>@components.TimeRange(vm.PeriodRange)<div class="faint">{ vm.PeriodBy }</div></td></tr>
+						<tr>
+							<th title="the finest data kept for the interval: the execution trace, the per-minute breakdowns, or the snapshots">computed from</th>
+							<td>{ vm.Source }
+								if vm.SourceNote != "" {
+									<div class="faint">{ vm.SourceNote }</div>
+								}
+							</td>
+						</tr>
+						if vm.Stop != nil {
+							<tr><th>stopped in</th><td class="origin" title={ vm.Stop.Function }>{ components.ShortPath(vm.Stop.Function) }</td></tr>
+							<tr><th>location</th><td class="origin" title={ vm.Stop.Location }>{ components.ShortPath(vm.Stop.Location) }</td></tr>
+							<tr><th>wait reason</th><td>{ vm.Stop.WaitReason } <span class="mono faint">{ vm.Stop.Duration } as { vm.Stop.Cause }</span></td></tr>
 						}
-					</tbody>
-				</table>
-			}
+						<tr>
+							<th title="goroutines that ended this one's waits in the interval">woken by</th>
+							<td>
+								if len(vm.Wakers) == 0 {
+									<span class="faint">-</span>
+								} else {
+									<dl class="wake">
+										for _, w := range vm.Wakers {
+											<dt>
+												<a class="gchip" href={ templ.SafeURL(w.URL) } title="open this goroutine over the wait"><span class={ "gdot", "cause-bg-" + w.Cause }></span>{ w.Goroutine }</a>
+											</dt>
+											<dd>
+												<span class="origin" title={ w.Function + " " + w.Location }>{ components.ShortPath(w.Function) }</span>
+												<span class="origin faint">{ components.ShortPath(w.Location) }</span>
+												<span class="mono faint">×{ w.Count } · { w.Waited }</span>
+											</dd>
+										}
+									</dl>
+									if vm.MoreWakers > 0 {
+										<div class="faint">and { vm.MoreWakers } more</div>
+									}
+								}
+							</td>
+						</tr>
+						<tr><th>created by</th><td class="origin" title={ vm.CreatedBy + " " + vm.CreatedByAt }>{ components.ShortPath(vm.CreatedBy) } <span class="faint">{ components.ShortPath(vm.CreatedByAt) }</span></td></tr>
+						<tr>
+							<th>leak</th>
+							<td>
+								{ vm.Leak.State }
+								if vm.Leak.Certainty != "" {
+									@components.CertaintyBadge(vm.Leak.Certainty, vm.Leak.CertaintyNote)
+								}
+								if vm.Leak.CheckedAt != "" {
+									<div class="faint">leak check at <span class="mono">{ vm.Leak.CheckedAt }</span></div>
+								}
+							</td>
+						</tr>
+					</table>
+				</div>
+				<div class="goroutine-card-col">
+					<h3>Time by state <span class="faint">in the interval</span></h3>
+					if vm.Breakdown == nil {
+						<p class="muted">no state of { vm.Goroutine } is kept for the interval</p>
+					} else {
+						<div class="gmp-breakdown">
+							for _, r := range vm.Breakdown.Rows {
+								<div class="row">
+									<span class={ "cause-dot", "cause-bg-" + r.Cause }></span>
+									<span class="name">{ r.Cause }</span>
+									<span class="bar"><span class={ "cause-bg-" + r.Cause } style={ templ.SafeCSS("width:" + r.Width) }></span></span>
+									<span class="num">{ r.Duration }</span>
+									<span class="num muted">{ r.Percent }</span>
+								</div>
+							}
+							if vm.Breakdown.Unrecorded != "" {
+								<div class="row" title="time in the interval when the goroutine did not exist or had no recorded state">
+									<span class="cause-dot cause-bg-UNRECORDED"></span>
+									<span class="name">not recorded</span>
+									<span class="bar"></span>
+									<span class="num">{ vm.Breakdown.Unrecorded }</span>
+									<span class="num muted"></span>
+								</div>
+							}
+						</div>
+					}
+					<div class="gmp-logs">
+						<div class="caption">logs written by { vm.Goroutine } in the interval</div>
+						if len(vm.Logs) == 0 {
+							<p class="faint">no log written by { vm.Goroutine } in the interval</p>
+						} else {
+							<table class="log-table" { stimulus.AttrControllers(assets.RowLinkController.Name)... }>
+								for _, l := range vm.Logs {
+									<tr class="clickable" data-href={ l.URL } title="open this line in Logs">
+										<td class="log-time">{ l.At }</td>
+										<td><span class={ "level " + l.LevelClass }>{ l.Level }</span></td>
+										<td class="log-message">{ l.Message }</td>
+										<td class="side num mono">{ l.Duration }</td>
+									</tr>
+								}
+							</table>
+						}
+					</div>
+				</div>
+			</div>
 		</section>
-		@ReplayPanel(vm.ReplayRange, vm.Replay, "", vm.ReplayFrom, vm.ReplayGone, vm.Nearby, vm.LeakNote)
-		<p><a class="btn" href={ templ.SafeURL(vm.SchedulerURL) }>Open this period in the Scheduler</a></p>
+		@ReplayPanel(vm.Replay, "", vm.ReplayGone, vm.Nearby, vm.LeakNote)
 	}
 }
