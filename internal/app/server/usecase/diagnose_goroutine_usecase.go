@@ -11,6 +11,9 @@ import (
 // leakLookback はリーク判定をさかのぼって探す長さ。goroutineleak プロファイルは間を空けて取るため
 const leakLookback = time.Hour
 
+// stateLookback は期間の頭の状態に入った時刻を探して、execution trace をさかのぼる長さ。trace は重いので短く区切り、続きは画面からさらにさかのぼる
+const stateLookback = 5 * time.Minute
+
 type DiagnoseGoroutineUsecaseInput struct {
 	Service   observation.ServiceName
 	Instance  observation.InstanceName
@@ -42,6 +45,15 @@ type DiagnoseGoroutineUsecaseOutput struct {
 	Logs               []domain.StoredLog
 	Unavailable        []Unavailable
 	NearbyTraces       []domain.PreservedTrace
+	StateBefore        *StateBefore
+}
+
+// StateBefore は期間の頭で g がいた状態と、それに入った時刻。Began が false なら、さかのぼった trace の頭 (RecordedFrom) より前から続いている。
+// Earlier はそれより前の trace も残っているかもしれないこと (さかのぼる長さで区切った)
+type StateBefore struct {
+	domain.StateSince
+	RecordedFrom time.Time
+	Earlier      bool
 }
 
 type DiagnoseGoroutineUsecase struct {
@@ -79,6 +91,12 @@ func (u *DiagnoseGoroutineUsecase) Exec(ctx context.Context, in DiagnoseGoroutin
 	if ok {
 		out.Diagnosis, out.Found = domain.DiagnoseTrace(joined, g, p.From, p.To)
 		out.TraceFromPreserved = preserved
+	}
+	if out.Found && out.Diagnosis.Source == domain.SourceExecutionTrace {
+		out.StateBefore, err = u.stateBefore(ctx, s, i, g, p.From)
+		if err != nil {
+			return DiagnoseGoroutineUsecaseOutput{}, err
+		}
 	}
 	if !out.Found || preserved {
 		out.Unavailable = append(out.Unavailable, u.unavailable("schedulerReplay", domain.DataExecutionTraces, p.From, in.Now))
@@ -121,6 +139,19 @@ func (u *DiagnoseGoroutineUsecase) Exec(ctx context.Context, in DiagnoseGoroutin
 	}
 	out.Logs = logs
 	return out, nil
+}
+
+func (u *DiagnoseGoroutineUsecase) stateBefore(ctx context.Context, s observation.ServiceName, i observation.InstanceName, g observation.GoroutineID, at time.Time) (*StateBefore, error) {
+	from := at.Add(-stateLookback)
+	joined, _, ok, err := u.source.trace(ctx, s, i, from, at)
+	if err != nil || !ok {
+		return nil, err
+	}
+	st, ok := domain.StateSinceAt(joined, g)
+	if !ok {
+		return nil, nil
+	}
+	return &StateBefore{StateSince: st, RecordedFrom: joined.StartedAt, Earlier: !joined.StartedAt.After(from)}, nil
 }
 
 func (u *DiagnoseGoroutineUsecase) unavailable(field string, k domain.DataKind, at, now time.Time) Unavailable {

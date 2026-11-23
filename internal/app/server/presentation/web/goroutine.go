@@ -139,10 +139,32 @@ func goroutineView(base layout.BaseViewModel, p instancePath, g observation.Goro
 		}
 		vm.Logs = append(vm.Logs, row)
 	}
-	props := components.GMPReplayProps{FocusGoroutine: int64(g), GoroutineURL: goroutineTemplate(s, i)}
+	props := components.GMPReplayProps{FocusGoroutine: int64(g), FocusBefore: stateBeforeView(p, g, out.Period, out.StateBefore), GoroutineURL: goroutineTemplate(s, i)}
 	rv := replayView(p, chunks, props)
 	vm.Replay, vm.ReplayFrom, vm.ReplayGone, vm.Nearby, vm.LeakNote = rv.replay, chunks.FromPreserved, rv.unavailable, rv.nearby, rv.leakNote
 	return vm
+}
+
+// stateBeforeView の URL は、今と同じ長さの期間を、状態に入った直前 (見つからなければ、さかのぼった trace の頭) から始める。
+// 頭を前にずらしすぎると、寝起きを繰り返す G では手前の同じ状態の区間を先に見せてしまう
+func stateBeforeView(p instancePath, g observation.GoroutineID, period domain.Period, st *usecase.StateBefore) *components.ReplayStateBefore {
+	if st == nil {
+		return nil
+	}
+	v := &components.ReplayStateBefore{Cause: st.Cause, RecordedFromMs: unixMilli(st.RecordedFrom)}
+	from := st.RecordedFrom
+	if st.Began {
+		v.SinceMs = unixMilli(st.Since)
+		from = st.Since.Add(-time.Millisecond)
+	} else if !st.Earlier {
+		return v
+	}
+	v.URL = paths.Goroutine(p.service, p.instance, g, from, from.Add(period.To.Sub(period.From)))
+	return v
+}
+
+func unixMilli(t time.Time) float64 {
+	return float64(t.UnixNano()) / 1e6
 }
 
 func leakView(l domain.LeakStatus) pages.LeakViewModel {

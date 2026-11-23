@@ -9,12 +9,23 @@ import (
 // GoroutineURL は G を選んだときに開く Goroutine の URL で、{goroutine} を G の番号に、from・to を見ている窓に置き換えて使う。
 // NextURL は見ている範囲の続きの Scheduler (最新を追っているときは空)
 type GMPReplayProps struct {
-	Live           bool   `json:"live"`
-	FocusGoroutine int64  `json:"focusGoroutine"`
-	GoroutineURL   string `json:"goroutineUrl"`
-	NextURL        string `json:"nextUrl"`
-	PrevURL        string `json:"prevUrl"`
-	Autoplay       bool   `json:"autoplay"`
+	Live           bool               `json:"live"`
+	FocusGoroutine int64              `json:"focusGoroutine"`
+	FocusBefore    *ReplayStateBefore `json:"focusBefore,omitempty"`
+	GoroutineURL   string             `json:"goroutineUrl"`
+	NextURL        string             `json:"nextUrl"`
+	PrevURL        string             `json:"prevUrl"`
+	Autoplay       bool               `json:"autoplay"`
+}
+
+// ReplayStateBefore は追っている G が最初の窓の頭でいた状態と、窓の頭から execution trace をさかのぼって見つけた、それに入った時刻 (unix ms)。
+// SinceMs が 0 なら、さかのぼった trace の頭 (RecordedFromMs) より前から続いている。URL はその時刻から始まる Goroutine の画面で、
+// それより前の trace が残っていなければ空
+type ReplayStateBefore struct {
+	Cause          domain.MainCause `json:"cause"`
+	SinceMs        float64          `json:"sinceMs"`
+	RecordedFromMs float64          `json:"recordedFromMs"`
+	URL            string           `json:"url"`
 }
 
 // ReplayWindow は再生する execution trace の 1 区間。時刻は StartedAtMs からのナノ秒。

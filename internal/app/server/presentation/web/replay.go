@@ -43,7 +43,7 @@ func indexOf[T comparable](list []T, v T) int {
 func replayWindow(out usecase.ListTraceChunksUsecaseOutput) string {
 	c := out.Chunk
 	var fns, reasons table
-	w := components.ReplayWindow{From: rfc(c.StartedAt), To: rfc(c.EndedAt()), StartedAtMs: float64(c.StartedAt.UnixNano()) / 1e6, DurationNs: int64(c.Duration),
+	w := components.ReplayWindow{From: rfc(c.StartedAt), To: rfc(c.EndedAt()), StartedAtMs: unixMilli(c.StartedAt), DurationNs: int64(c.Duration),
 		Entries: map[string]int{}, Events: []components.ReplayEvent{}, ProcEvents: []components.ReplayProc{}, Lanes: [][]components.ReplaySpan{},
 		STW: []components.ReplayRange{}, GCMark: []components.ReplayRange{}, Leaks: []components.ReplayLeak{}, LeakCheckAt: rfc(out.LeakCheckAt), FromPreserved: out.FromPreserved}
 	procs := map[observation.ProcID]bool{}

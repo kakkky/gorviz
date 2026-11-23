@@ -90,6 +90,39 @@ func TestBreakdown(t *testing.T) {
 	}
 }
 
+func TestStateSinceAt(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+	running := observation.Place{Kind: observation.PlaceRunning}
+	queued := observation.Place{Kind: observation.PlaceGlobalQueue}
+	ev := func(at time.Duration, p observation.Place) observation.StateChange {
+		return observation.StateChange{At: at, Kind: observation.StateChangeGoroutine, Goroutine: 1, Place: p}
+	}
+	tests := []struct {
+		name   string
+		events []observation.StateChange
+		want   domain.StateSince
+		wantOK bool
+	}{
+		{name: "the state entered in the chunk began there, joining the same cause written again",
+			events: []observation.StateChange{ev(0, running), ev(2*time.Second, queued), ev(5*time.Second, queued)},
+			want:   domain.StateSince{Cause: domain.CauseRunnable, Since: start.Add(2 * time.Second), Began: true}, wantOK: true},
+		{name: "the state from the head of the chunk began before it",
+			events: []observation.StateChange{ev(0, queued)},
+			want:   domain.StateSince{Cause: domain.CauseRunnable, Since: start}, wantOK: true},
+		{name: "a goroutine that is not in the chunk has no state", wantOK: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := observation.TraceChunk{StartedAt: start, Duration: 10 * time.Second, Events: tt.events}
+			got, ok := domain.StateSinceAt(c, 1)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestMatchLeaks(t *testing.T) {
 	t.Parallel()
 	stack := []observation.Frame{{Function: "runtime.gopark"}, {Function: "main.send", File: "main.go", Line: 9}}

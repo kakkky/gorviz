@@ -95,6 +95,23 @@ func Stretches(c observation.TraceChunk, g observation.GoroutineID) []Stretch {
 	return out
 }
 
+// StateSince は、ある時点で g がいる主因の状態に入った時刻。Began が false なら、c の頭からその状態で、もっと前から続いている
+type StateSince struct {
+	Cause MainCause
+	Since time.Time
+	Began bool
+}
+
+// StateSinceAt は c の終わりの時点で g がいる主因の状態と、それに入った時刻。そのとき主因のない状態 (終わった・まだない) なら false
+func StateSinceAt(c observation.TraceChunk, g observation.GoroutineID) (StateSince, bool) {
+	ss := Stretches(c, g)
+	if len(ss) == 0 || ss[len(ss)-1].End < c.Duration {
+		return StateSince{}, false
+	}
+	last := ss[len(ss)-1]
+	return StateSince{Cause: last.Cause, Since: c.StartedAt.Add(last.Start), Began: last.Start > 0}, true
+}
+
 type span struct{ start, end time.Duration }
 
 func gcSpans(c observation.TraceChunk, g observation.GoroutineID) []span {

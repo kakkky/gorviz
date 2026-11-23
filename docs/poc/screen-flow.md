@@ -261,7 +261,7 @@ URL に `?log={ID}` を付けると、その行を開いた状態で出す (共�
 
 ![Goroutine の GMP の再生](screenshots/15-goroutine-replay.png)
 
-再生の見出しに、追っている G が今の時点でどの状態か、いつからか (`FOLLOWING G30 IO_WAIT since ...`) と、その状態に入った瞬間へ移るボタンが出る。
+再生の見出しに、追っている G が今の時点でどの状態か、いつからか (`FOLLOWING G30 IO_WAIT since ...`) と、その状態に入った瞬間へ移るボタンが出る。窓の頭より前からその状態なら、execution trace を 5 分さかのぼって入った時刻を探し、その時刻から始まる画面へ移るボタンを出す。5 分で見つからなければ、さかのぼった先の画面へ移るボタンを出す。それより前の trace が残っていなければ `no earlier trace is recorded` と出す。
 
 ### Issue の発生から入ったとき
 
@@ -297,7 +297,11 @@ Scheduler で local run queue に並んでいた G を押して開いたもの�
   - つまみで時刻を動かす
 - 凡例は、G の丸の色 (主因) と、リークの赤い輪
 - CPU slots (P) over time
-  - P ごとに、G が走った区間の帯。いちばん上の GC の段は concurrent mark (薄い) と stop-the-world (濃い)。右端は P が G を走らせていた割合
+  - P ごとに、G が走った区間の帯。Goroutine の画面では、追っている G が走った区間を白で描く
+  - いちばん上の GC の段は concurrent mark (薄い) と stop-the-world (濃い)
+  - P の段を縦に貫く線は stop-the-world。GC によるものは黄色、それ以外 (agent が trace を取り始めるときなど) は灰色で、マウスを載せると理由が出る
+  - 右端は P が G を走らせていた割合
+  - 帯の種類は見出しの横に凡例として出す
   - 押すとその時刻へ移る
 - GMP
   - P のカードに、乗っている M、走っている G、local run queue (待っている時間つき)

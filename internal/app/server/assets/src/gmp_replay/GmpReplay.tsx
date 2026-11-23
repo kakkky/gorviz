@@ -1,6 +1,6 @@
 import type { JSX } from "preact"
 import { useEffect, useMemo, useState } from "preact/hooks"
-import type { GMPReplayProps, ReplayLeak, ReplayWindow } from "../gen/types"
+import type { GMPReplayProps, ReplayLeak, ReplayStateBefore, ReplayWindow } from "../gen/types"
 import { Replay, segmentsOf, type GoroutineState, type SchedView, type WaitingGroup } from "./engine"
 import { clock, duration, short } from "./format"
 import { Signal, useSignal } from "./signal"
@@ -56,11 +56,16 @@ export function GmpReplay(props: GmpReplayIslandProps) {
     }
   }, [windows.length, following, playing])
 
-  // 最初の窓は、追っている G があればその G が最初に動く時点、なければ最初に G が走る時点から見せる
+  // 最初の窓は、追っている G があればその G が最初に動く時点、なければ最初に G が走る時点から見せる。
+  // 窓の外から移ってきたときは、移った先の時刻から見せる (unix ms は丸まっているので、その G の近くの出来事に合わせる)
   useEffect(() => {
     if (!replay || following) return
-    const first = replay.window.events.find((e) => (props.focusGoroutine ? e.g === props.focusGoroutine : e.k === 0))
-    setT(first ? first.t : 0)
+    const focus = props.focusGoroutine
+    const at = takeStartAt(replay.window)
+    const first = at !== undefined
+      ? replay.window.events.find((e) => e.g === focus && e.t >= at - 1000)
+      : replay.window.events.find((e) => (focus ? e.g === focus : e.k === 0))
+    setT(first ? first.t : at ?? 0)
   }, [replay])
 
   useEffect(() => {
@@ -102,7 +107,7 @@ export function GmpReplay(props: GmpReplayIslandProps) {
           GMP replay
           {current.fromPreserved && <span class="badge inference" title="the full execution trace of this time is past its retention; this replays the trace kept around an issue occurrence or an error log">from a kept trace</span>}
         </h2>
-        <FocusSince window={current} g={props.focusGoroutine} t={t} onSeek={seekTo} />
+        <FocusSince window={current} g={props.focusGoroutine} t={t} before={index === 0 ? (props.focusBefore ?? undefined) : undefined} onSeek={seekTo} onNavigate={props.onNavigate} />
       </div>
       <div class="replay-controls">
         <div class="transport" role="group" aria-label="replay">
@@ -150,11 +155,20 @@ export function GmpReplay(props: GmpReplayIslandProps) {
   )
 }
 
-// FocusSince は追っている G が今の時点でいつから今の状態かと、その状態に入った瞬間へ移るボタン
-function FocusSince({ window: w, g, t, onSeek }: { window: ReplayWindow; g: number; t: number; onSeek: (t: number) => void }) {
+// FocusSince は追っている G が今の時点でいつから今の状態かと、その状態に入った瞬間へ移るボタン。
+// 窓の中で入っていれば再生の中で移り、最初の窓の頭より前からなら、サーバがさかのぼって見つけた時刻の画面へ移る
+function FocusSince({ window: w, g, t, before, onSeek, onNavigate }: {
+  window: ReplayWindow
+  g: number
+  t: number
+  before?: ReplayStateBefore
+  onSeek: (t: number) => void
+  onNavigate: (url: string) => void
+}) {
   const segs = useMemo(() => (g ? segmentsOf(w, g) : []), [w, g])
   if (!g) return null
   const seg = segs.find((s) => s.start <= t && t < s.end)
+  const label = seg && `Go to when ${seg.cause} began`
   return (
     <span class="state-since">
       <span class="following-label">following</span>
@@ -162,14 +176,58 @@ function FocusSince({ window: w, g, t, onSeek }: { window: ReplayWindow; g: numb
       {seg ? (
         <>
           <span class="cause-name">{seg.cause}</span>
-          <span class="mono">since {seg.start > 0 ? clock(w.startedAtMs, seg.start) : "before this window"}</span>
-          {seg.start > 0 && t > seg.start && <button type="button" class="btn small" onClick={() => onSeek(seg.start)}>Go to when {seg.cause} began</button>}
+          {seg.start > 0 ? (
+            <>
+              <span class="mono">since {clock(w.startedAtMs, seg.start)}</span>
+              {t > seg.start && <button type="button" class="btn small" onClick={() => onSeek(seg.start)}>{label}</button>}
+            </>
+          ) : (
+            <SinceBefore before={before?.cause === seg.cause ? before : undefined} label={label!} onNavigate={onNavigate} />
+          )}
         </>
       ) : (
         <span class="muted">not seen at this moment</span>
       )}
     </span>
   )
+}
+
+function SinceBefore({ before, label, onNavigate }: { before?: ReplayStateBefore; label: string; onNavigate: (url: string) => void }) {
+  if (!before) return <span class="mono">since before this window</span>
+  const since = before.sinceMs > 0 ? clock(before.sinceMs, 0) : `before ${clock(before.recordedFromMs, 0)}`
+  return (
+    <>
+      <span class="mono">since {since}</span>
+      {before.url ? (
+        <button type="button" class="btn small" onClick={() => { keepStartAt(before.sinceMs); onNavigate(before.url) }}>{before.sinceMs > 0 ? label : `Go back to ${clock(before.recordedFromMs, 0)}`}</button>
+      ) : (
+        <span class="faint">no earlier trace is recorded</span>
+      )}
+    </>
+  )
+}
+
+// 窓の外の時刻へ移るとき、移った先の画面の再生をその時刻から始める。移った先は窓の頭を少し前にずらしてあり、頭からだと手前の出来事を見せてしまうため
+const START_AT_KEY = "gorviz:replay-start-at"
+
+function keepStartAt(ms: number) {
+  try {
+    if (ms > 0) sessionStorage.setItem(START_AT_KEY, String(ms))
+  } catch {
+    // 残せなければ、いつものとおり G が最初に動く時点から見せる
+  }
+}
+
+function takeStartAt(w: ReplayWindow): number | undefined {
+  let ms: number
+  try {
+    ms = Number(sessionStorage.getItem(START_AT_KEY))
+    sessionStorage.removeItem(START_AT_KEY)
+  } catch {
+    return undefined
+  }
+  const t = Math.round((ms - w.startedAtMs) * 1e6)
+  return ms > 0 && t >= 0 && t <= w.durationNs ? t : undefined
 }
 
 function pct(v: number, total: number): string {
@@ -202,7 +260,16 @@ function Lanes({ window: w, replay, t, focus, onSeek }: { window: ReplayWindow; 
   }
   return (
     <div class="gmp-lanes">
-      <div class="caption"><strong>CPU slots (P) over time</strong></div>
+      <div class="caption">
+        <strong>CPU slots (P) over time</strong>
+        <span class="lane-keys">
+          <span><span class="lane-key seg"></span> a goroutine running</span>
+          {focus > 0 && <span><span class="lane-key seg is-focus"></span> G{focus} running</span>}
+          <span><span class="lane-key gc-mark"></span> GC concurrent mark</span>
+          <span><span class="lane-key stw"></span> stop-the-world by GC</span>
+          <span title="hover a band to see the reason"><span class="lane-key stw other"></span> stop-the-world by others (starting a trace, ...)</span>
+        </span>
+      </div>
       <div class="lanes-grid">
         <span class="pname gc">GC</span>
         <div class="lane-track gc-track" onClick={seekAt}>

@@ -12,6 +12,7 @@ export type Certainty = (typeof CERTAINTIES)[number]
 export interface GMPReplayProps {
   live: boolean
   focusGoroutine: number
+  focusBefore?: ReplayStateBefore | null
   goroutineUrl: string
   nextUrl: string
   prevUrl: string
@@ -36,6 +37,13 @@ export interface ReplayWindow {
   leakCheckAt: string
   fromPreserved: boolean
   truncated: boolean
+}
+
+export interface ReplayStateBefore {
+  cause: MainCause
+  sinceMs: number
+  recordedFromMs: number
+  url: string
 }
 
 export interface ReplayEvent {
