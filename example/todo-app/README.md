@@ -65,10 +65,10 @@ gorviz の Issues が見つけるのは runtime 層の問題だけ。遅いリ�
    - ときどき「reminder could not be registered (timeout)」が出る
 2. 1〜2 分待つと、gorviz の Overview の Ongoing issues に `GOROUTINE_LEAK` が出る。行を押して Issue の詳細を開く (いちばん新しい発生は開いてある)
    - 確かさは `FACT`。runtime の goroutineleak プロファイルが「この channel に届く G はもういない」と判定した
-   - Leaked goroutines, per stack に、生成元 `(*NotifierClient).RegisterReminder` (`notifier_client.go:25`)・止まっている場所 (`notifier_client.go:27`)・「同じ場所で待っている M 個のうち N 個がリーク」が出る
+   - Leaked goroutines, per stack に、生成元 `(*NotifierClient).RegisterReminder` (`notifier_client.go:25`)・止まっている場所 (`notifier_client.go:27`)・`N of the M goroutines waiting at the same place leaked`が出る
 3. 行の `Goroutine →` を押して、リークした G の診断を開く
    - 主因は `SYNC_WAIT`、待機理由は `chan send` (送れずに止まっている)
-   - カードの見出しに `GOROUTINE_LEAK`、leak の欄に「同じスタックの M 個のうち N 個がリーク」(`FACT`)
+   - カードの見出しに `GOROUTINE_LEAK`、leak の欄に`N of the M goroutines with the same stack leaked`(`FACT`)
 4. 考える: なぜ送り先がいないのか
 
 ![GOROUTINE_LEAK の詳細](../../docs/poc/screenshots/06-issue-goroutine-leak.png)

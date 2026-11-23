@@ -163,7 +163,7 @@ flowchart TD
 
 - runtime の goroutineleak プロファイルが判定したので `FACT`
 - Leaked goroutines, per stack
-  - スタックごとに 1 行。生成元 (go 文を書いた関数と file:line)・止まっている場所 (file:line)・「同じ場所で待っている M 個のうち N 個がリーク」・確かさ・`Goroutine →`
+  - スタックごとに 1 行。生成元 (go 文を書いた関数と file:line)・止まっている場所 (file:line)・`N of the M goroutines waiting at the same place leaked`・確かさ・`Goroutine →`
 - Leaked goroutines
   - リークした G の番号
 
@@ -198,7 +198,7 @@ flowchart TD
 
 ![LONG_STW の詳細](screenshots/22-issue-long-stw.png)
 
-- 1 回の stop-the-world が 1ms 以上だったので `INFERENCE`。対象は STW の理由 (`GC sweep termination`)
+- 1 回の stop-the-world が 1ms 以上だったので `INFERENCE`。対象は STW の理由 (`GC mark termination`)
 - Goroutines that stopped the world
   - STW の理由と長さ
 
@@ -254,7 +254,7 @@ URL に `?log={ID}` を付けると、その行を開いた状態で出す (共�
   - stopped in・location・wait reason は、最も長く止まっていた関数・場所・待機理由と、その長さ
   - woken by は、この G の待ちを終わらせて起こした G と、起こした場所・回数・待っていた時間。G を押すと、起こされた側が待っていた区間でその G を開く
   - created by と leak
-  - 保持期間を過ぎて出せない欄は、隠さずに「保持期間を過ぎたため出せない」と出す
+  - 保持期間を過ぎて出せない欄は、隠さずに`past its retention, so it cannot be shown`と出す
 - Time by state (右の列)
   - 状態別の時間内訳を棒で。`not recorded` は、その期間に G が居なかったか状態が記録されていない時間
   - その期間にこの G が書いたログ。押すと Logs でその行を開く
@@ -274,7 +274,7 @@ URL に `?log={ID}` を付けると、その行を開いた状態で出す (共�
 ![リークした Goroutine](screenshots/20-goroutine-leaked.png)
 
 - 主因は `SYNC_WAIT` (`chan send` で待ち続けている)
-- カードの見出しに `GOROUTINE_LEAK` と確かさ、leak に「同じスタックの M 個のうち N 個がリーク」
+- カードの見出しに `GOROUTINE_LEAK` と確かさ、leak に`N of the M goroutines with the same stack leaked`
 
 ### Scheduler の G から入ったとき
 
@@ -316,7 +316,7 @@ Scheduler で local run queue に並んでいた G を押して開いたもの�
 
 ![CPU_CONTENTION の瞬間の Scheduler](screenshots/18-scheduler-cpu-contention.png)
 
-統計を開いたときの 1 分を再生し、実行待ちが最も多い瞬間まで進めたもの。統計の計算で todo ごとに立てた goroutine が、P5 の local run queue に数千個並んでいる (先頭の 8 個だけを描き、残りは `+5709` のように数で出す)。CPU slots の黄色い帯は、同じころに走った GC。
+統計を開いたときの 1 分を再生し、実行待ちが最も多い瞬間まで進めたもの。統計の計算で todo ごとに立てた goroutine が、いくつもの P の local run queue に数千個ずつ並んでいる (先頭の 8 個だけを描き、残りは `+9628` のように数で出す)。CPU slots の黄色い帯は、同じころに走った GC。
 
 ### Issue の発生の前後に残した trace
 
