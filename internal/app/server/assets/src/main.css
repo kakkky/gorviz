@@ -16,6 +16,9 @@
   --g-syscall: #c49bff;
   /* waiting は止まっているだけで悪くはないので落ち着いた色にするが、空の帯と見分けられる明るさにする */
   --g-waiting: #8b93a7;
+  /* 追っている G が走っている区間。running と同じ緑の系統で、光らせてほかの G の running と見分ける */
+  --g-focus: #4dff88;
+  --g-focus-glow: 0 0 4px #4dff88, 0 0 10px rgba(77, 255, 136, .6);
   /* 推移のグラフの系列の色。決まった順に使い、件数の順位では塗り替えない */
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -174,7 +177,7 @@ details.chunks a { display: inline-block; margin: 4px 8px 0 0; font: 12px var(--
 .gmp-lanes .lane-keys { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; margin-left: 14px; }
 .gmp-lanes .lane-keys > span { display: inline-flex; align-items: center; gap: 5px; }
 .lane-key { display: inline-block; width: 12px; height: 8px; border-radius: 2px; background: var(--g-running); }
-.lane-key.is-focus { background: #fff; }
+.lane-key.is-focus { background: var(--g-focus); box-shadow: var(--g-focus-glow); }
 .lane-key.gc-mark { background: rgba(245, 196, 81, .28); }
 .lane-key.stw { background: var(--warn); opacity: .55; }
 .lane-key.stw.other { background: var(--muted); }
@@ -188,7 +191,7 @@ details.chunks a { display: inline-block; margin: 4px 8px 0 0; font: 12px var(--
 .lane-track { position: relative; height: 14px; background: #0b0d11; border-radius: 3px; overflow: hidden; cursor: crosshair; }
 .lane-track .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); pointer-events: none; }
 .lane-track .seg { position: absolute; top: 2px; bottom: 2px; min-width: 1px; background: var(--g-running); }
-.lane-track .seg.is-focus { top: 0; bottom: 0; background: #fff; z-index: 1; }
+.lane-track .seg.is-focus { top: 0; bottom: 0; background: var(--g-focus); box-shadow: var(--g-focus-glow); z-index: 1; }
 .lane-track .cursor { position: absolute; top: 0; width: 2px; height: 100%; margin-left: -1px; background: var(--accent); z-index: 2; pointer-events: none; }
 .replay-stage { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .replay-note { font-size: 12px; margin-top: 10px; }
