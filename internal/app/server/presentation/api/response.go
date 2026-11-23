@@ -96,9 +96,9 @@ func rangeQuery(from, to time.Time) url.Values {
 func certaintyNote(c domain.Certainty) string {
 	switch c {
 	case domain.CertaintyFact:
-		return "FACT: runtime の判定や trace の記録から直接言える"
+		return "FACT: read directly from the runtime's judgement or the recorded trace"
 	case domain.CertaintyInference:
-		return "INFERENCE: gorviz が推移や比較から推し量った"
+		return "INFERENCE: inferred by gorviz from trends or comparison"
 	}
 	return ""
 }

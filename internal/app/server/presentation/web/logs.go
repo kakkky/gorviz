@@ -291,9 +291,9 @@ func (h *GetLogGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Reque
 func writerCertaintyNote(c domain.Certainty) string {
 	switch c {
 	case domain.CertaintyFact:
-		return "FACT: ロガーアダプタが振った番号で結んだ"
+		return "FACT: matched by the number the logger adapter wrote"
 	case domain.CertaintyInference:
-		return "INFERENCE: その時刻に走っていた goroutine が 1 つだけ"
+		return "INFERENCE: the only goroutine running at that time"
 	}
 	return ""
 }

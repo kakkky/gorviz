@@ -156,7 +156,7 @@ func leakView(l domain.LeakStatus) pages.LeakViewModel {
 	case !l.Checked:
 		v.State = "The runtime cannot check leaks here (" + string(l.Status) + ")."
 	case l.Leaked:
-		v.State = "同じスタックの " + itoa(l.Of) + " 個のうち " + itoa(l.Count) + " 個がリーク"
+		v.State = itoa(l.Count) + " of the " + itoa(l.Of) + " goroutines with the same stack leaked"
 		v.Certainty, v.CertaintyNote = string(l.Certainty), leakCertaintyNote(l.Certainty)
 	default:
 		v.State = "Not judged as leaked by the runtime."
@@ -167,9 +167,9 @@ func leakView(l domain.LeakStatus) pages.LeakViewModel {
 func mainCertaintyNote(c domain.Certainty) string {
 	switch c {
 	case domain.CertaintyFact:
-		return "FACT: trace のチャンクの状態の変化から決めた"
+		return "FACT: decided from the state changes in the execution trace"
 	case domain.CertaintyInference:
-		return "INFERENCE: goroutine のスナップショットの、スタックから推定した待機理由だけで決めた"
+		return "INFERENCE: decided only from the wait reason inferred from the stack in a goroutine snapshot"
 	}
 	return ""
 }

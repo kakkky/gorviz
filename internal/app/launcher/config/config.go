@@ -32,11 +32,11 @@ func parse(args []string, piped bool) (*Config, error) {
 		return nil, err
 	}
 	fs := flag.NewFlagSet("gorviz-launcher", flag.ContinueOnError)
-	pprofAddr := fs.String("pprof-addr", "", "観測するアプリの pprof のアドレス (例 localhost:6060)")
-	service := fs.String("service", "app", "サービスの名前")
-	dataDir := fs.String("data-dir", ".gorviz", "server の保存先")
-	httpAddr := fs.String("http-addr", "localhost:7070", "GUI と HTTP API の待ち受け")
-	agentAddr := fs.String("agent-addr", "localhost:7071", "agent からの接続の待ち受け")
+	pprofAddr := fs.String("pprof-addr", "", "pprof address of the app to observe (e.g. localhost:6060)")
+	service := fs.String("service", "app", "name of the service")
+	dataDir := fs.String("data-dir", ".gorviz", "data directory of the server")
+	httpAddr := fs.String("http-addr", "localhost:7070", "address the GUI and the HTTP API listen on")
+	agentAddr := fs.String("agent-addr", "localhost:7071", "address the server listens on for the agent")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}

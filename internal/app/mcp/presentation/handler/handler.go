@@ -66,15 +66,15 @@ func (h *ToolHandler) Handle(ctx context.Context, method string, params json.Raw
 
 func instructions() string {
 	body, _ := docs.Get("getting-started")
-	return fmt.Sprintf("調べ始める前に `%s` でドキュメントの一覧を取り、`%s` で getting-started・main-causes・issue-kinds・certainty を読む。\n\n%s", listDocsTool, getDocTool, body)
+	return fmt.Sprintf("Before investigating, list the documents with `%s` and read getting-started, main-causes, issue-kinds and certainty with `%s`.\n\n%s", listDocsTool, getDocTool, body)
 }
 
 func tools() []map[string]any {
 	out := []map[string]any{
-		{"name": listDocsTool, "description": "引けるドキュメントの名前と、何が書いてあるか", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
-		{"name": getDocTool, "description": "1 つのドキュメントの中身", "inputSchema": map[string]any{
+		{"name": listDocsTool, "description": "The documents you can read, and what each one is about", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{}}},
+		{"name": getDocTool, "description": "The content of one document", "inputSchema": map[string]any{
 			"type": "object", "required": []string{"name"},
-			"properties": map[string]any{"name": map[string]any{"type": "string", "description": "list-docs の名前"}},
+			"properties": map[string]any{"name": map[string]any{"type": "string", "description": "a name from list-docs"}},
 		}},
 	}
 	for _, r := range serverapi.AllRoutes {

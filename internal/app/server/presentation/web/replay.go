@@ -144,7 +144,7 @@ func unavailableViews(us []usecase.Unavailable) []components.UnavailableViewMode
 		if field == "" {
 			field = u.Field
 		}
-		text := "この期間のデータが記録されていない"
+		text := "no data is recorded for this period"
 		if u.Reason == usecase.ReasonPastRetention {
 			text = pastRetention
 		}

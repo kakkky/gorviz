@@ -115,13 +115,13 @@ func toBreakdown(b *domain.StateBreakdown) []breakdownJSON {
 func leakNote(l domain.LeakStatus) string {
 	switch {
 	case !l.Checked && l.Status == "":
-		return "リーク判定が残っていない"
+		return "no leak check is kept"
 	case !l.Checked:
-		return "runtime のリーク判定が使えない (" + string(l.Status) + ")"
+		return "the runtime cannot check leaks (" + string(l.Status) + ")"
 	case l.Leaked:
-		return "同じスタックの " + itoa(l.Of) + " 個のうち " + itoa(l.Count) + " 個がリーク"
+		return itoa(l.Count) + " of the " + itoa(l.Of) + " goroutines with the same stack leaked"
 	}
-	return "リークと判定されていない"
+	return "not judged as leaked"
 }
 
 func toLeak(l domain.LeakStatus) leakJSON {

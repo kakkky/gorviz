@@ -63,7 +63,7 @@ func NewSlackClient() (*SlackClient, error) {
 }
 
 func (c *SlackClient) Send(ctx context.Context, dest domain.Destination, n domain.Notification) error {
-	text := fmt.Sprintf("*%s* `%s` (%s) が %s で発生しました\n%s\n次に見ること: %s\n<%s|gorviz で開く>",
+	text := fmt.Sprintf("*%s* `%s` (%s) started on %s\n%s\nWhere to look next: %s\n<%s|Open in gorviz>",
 		n.Kind, n.Subject, n.Certainty, n.Instance, n.Reason, n.NextAction, n.URL)
 	return postJSON(ctx, c.http, dest.URL, map[string]any{"text": text})
 }

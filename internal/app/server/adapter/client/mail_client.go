@@ -27,7 +27,7 @@ func (c *MailClient) Send(ctx context.Context, dest domain.Destination, n domain
 		auth = smtp.PlainAuth("", dest.Username, dest.Password, host)
 	}
 	subject := fmt.Sprintf("[gorviz] %s %s (%s)", n.Kind, n.Subject, n.Service)
-	body := fmt.Sprintf("サービス: %s\nインスタンス: %s\n種類: %s\n対象: %s\n確かさ: %s\n始まり: %s\n\n%s\n\n次に見ること: %s\n\n%s\n",
+	body := fmt.Sprintf("Service: %s\nInstance: %s\nKind: %s\nSubject: %s\nCertainty: %s\nStarted: %s\n\n%s\n\nWhere to look next: %s\n\n%s\n",
 		n.Service, n.Instance, n.Kind, n.Subject, n.Certainty, n.StartedAt.UTC().Format(time.RFC3339), n.Reason, n.NextAction, n.URL)
 	msg := "From: " + dest.From + "\r\nTo: " + strings.Join(dest.To, ", ") + "\r\nSubject: " + subject +
 		"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body

@@ -73,10 +73,10 @@ var baselineMetrics = []baselineMetric{
 	{IssueCPUContention, func(s MetricSample) (float64, bool) {
 		d, ok := s.SchedP99()
 		return d.Seconds(), ok
-	}, "RUNNABLE から RUNNING になるまでの p99 (秒)"},
-	{IssueGCPressure, func(s MetricSample) (float64, bool) { return s.GCShare(), s.ProcCapacity > 0 }, "GC の CPU の割合"},
-	{IssueLockContention, func(s MetricSample) (float64, bool) { return s.LockWaitRatio(), s.Running > 0 }, "ロックの待ち ÷ 実行中の時間"},
-	{IssueThreadExplosion, func(s MetricSample) (float64, bool) { return float64(s.Threads), s.Threads > 0 }, "スレッドの数"},
+	}, "p99 from RUNNABLE to RUNNING (seconds)"},
+	{IssueGCPressure, func(s MetricSample) (float64, bool) { return s.GCShare(), s.ProcCapacity > 0 }, "share of CPU used by the GC"},
+	{IssueLockContention, func(s MetricSample) (float64, bool) { return s.LockWaitRatio(), s.Running > 0 }, "lock wait / running time"},
+	{IssueThreadExplosion, func(s MetricSample) (float64, bool) { return float64(s.Threads), s.Threads > 0 }, "number of OS threads"},
 }
 
 // JudgeByBaseline は 5 分のサービスの値 current を、過去の同じ曜日・時刻の値と比べる。reference は ReferenceWindows の週ごとの 5 分の値。
@@ -110,7 +110,7 @@ func JudgeBaseline(service observation.ServiceName, current MetricSample, refere
 			continue
 		}
 		out = append(out, Finding{Kind: m.kind, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByBaseline, Value: v,
-			Reason: fmt.Sprintf("%s が普段より大きく外れた (修正 z スコア %.1f > 3.5、%d 週分の %d 個と比較)", m.label, z, weeks, len(ref))})
+			Reason: fmt.Sprintf("%s is far above the usual (modified z-score %.1f > 3.5, against %d values over %d weeks)", m.label, z, weeks, len(ref))})
 	}
 	return out
 }

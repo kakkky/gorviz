@@ -285,7 +285,7 @@ func occurrenceView(s observation.ServiceName, sum usecase.IssueSummary, o useca
 		CertaintyNote: certaintyNote(o.Certainty), Reason: o.Reason, SchedulerURL: paths.Scheduler(s, o.Instance, from, to), ImpactsTitle: impactTitles[sum.Kind], Open: open}
 	switch {
 	case o.TraceFile == "":
-		vm.Trace = &components.UnavailableViewModel{Field: "execution trace around it", Text: "前後の execution trace はまだ残していないか、残せなかった。Scheduler では残っている trace から再生する"}
+		vm.Trace = &components.UnavailableViewModel{Field: "execution trace around it", Text: "the execution trace around it is not kept (yet). The Scheduler replays the trace that is still kept"}
 	case !o.TraceRetained:
 		vm.Trace = &components.UnavailableViewModel{Field: "execution trace around it", Text: pastRetention}
 	}
@@ -305,9 +305,9 @@ func occurrenceView(s observation.ServiceName, sum usecase.IssueSummary, o useca
 			l := pages.LeakSiteViewModel{CreatedBy: m.CreatedBy, CreatedByLocation: m.CreatedByLocation, Function: m.Function, Location: m.Location, Reason: m.Reason,
 				Certainty: string(m.Certainty), CertaintyNote: leakCertaintyNote(m.Certainty), URL: goroutineURL(first), Goroutines: goroutineList(m.Goroutines)}
 			if m.Of > 0 {
-				l.Leak = "同じ場所で待っている " + itoa(m.Of) + " 個のうち " + itoa(m.Count) + " 個がリーク"
+				l.Leak = itoa(m.Count) + " of the " + itoa(m.Of) + " goroutines waiting at the same place leaked"
 			} else if m.Count > 0 {
-				l.Leak = itoa(m.Count) + " 個がリーク"
+				l.Leak = itoa(m.Count) + " leaked"
 			}
 			vm.Leaks = append(vm.Leaks, l)
 		case domain.IssueLockContention:
@@ -356,9 +356,9 @@ func goroutineList(gs []observation.GoroutineID) string {
 func leakCertaintyNote(c domain.Certainty) string {
 	switch c {
 	case domain.CertaintyFact:
-		return "FACT: 同じスタックの goroutine がちょうどリークの件数だけあった"
+		return "FACT: exactly as many goroutines with the same stack as the leak count"
 	case domain.CertaintyInference:
-		return "INFERENCE: 同じスタックの goroutine のうち、待っている時間が長い順に件数分を選んだ"
+		return "INFERENCE: picked as many goroutines with the same stack as the leak count, the longest waiting first"
 	}
 	return ""
 }

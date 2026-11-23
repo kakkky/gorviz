@@ -48,12 +48,12 @@ func (c *Command) Run(ctx context.Context, args []string) error {
 
 func (c *Command) usage(w io.Writer) {
 	fmt.Fprintf(w, "usage: gorviz <command> [--name value ...] [--json]\n\n")
-	fmt.Fprintf(w, "まず `gorviz %s` でドキュメントの一覧を見て、`gorviz %s getting-started` を読む。\n\n", docsCommand, docsCommand)
+	fmt.Fprintf(w, "First list the documents with `gorviz %s` and read `gorviz %s getting-started`.\n\n", docsCommand, docsCommand)
 	fmt.Fprintf(w, "commands:\n")
 	for _, r := range serverapi.AllRoutes {
 		fmt.Fprintf(w, "  %-30s %s\n", r.Name, docs.OperationSummary(r.Name))
 	}
-	fmt.Fprintf(w, "  %-30s %s\n", docsCommand+" [name]", "ドキュメントの一覧 / 1 つのドキュメント")
+	fmt.Fprintf(w, "  %-30s %s\n", docsCommand+" [name]", "list the documents / show one document")
 }
 
 func (c *Command) docs(args []string) error {
@@ -85,7 +85,7 @@ func (c *Command) call(ctx context.Context, route serverapi.Route, args []string
 		values[p.Name] = v
 		fs.Var(v, p.Name, string(p.In))
 	}
-	asJSON := fs.Bool("json", false, "JSON で返す (既定は TOON)")
+	asJSON := fs.Bool("json", false, "return JSON (TOON by default)")
 	if err := fs.Parse(args); err != nil {
 		return ErrUsage
 	}

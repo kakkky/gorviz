@@ -166,7 +166,7 @@ func (h *GetIssueHandler) toImpacts(s observation.ServiceName, issue string, o d
 			j.Goroutines = append(j.Goroutines, int64(g))
 		}
 		if m.Of > 0 && len(m.Goroutines) > 0 {
-			j.Leak = "同じ場所で待っている " + itoa(m.Of) + " 個のうち " + itoa(m.Count) + " 個がリーク"
+			j.Leak = itoa(m.Count) + " of the " + itoa(m.Of) + " goroutines waiting at the same place leaked"
 		}
 		first := m.Goroutine
 		if first == 0 && len(m.Goroutines) > 0 {

@@ -26,17 +26,17 @@ var IssueKinds = []IssueKind{IssueGoroutineLeak, IssueCPUContention, IssueGCPres
 func (k IssueKind) NextAction() string {
 	switch k {
 	case IssueGoroutineLeak:
-		return "生成元の go 文と止まっている場所を見て、goroutine が終われる道 (context のキャンセル・channel を閉じる・タイムアウト) があるかを見直す"
+		return "Look at the go statement that created them and where they stop, and check that each goroutine has a way to end (context cancellation, closing the channel, a timeout)"
 	case IssueCPUContention:
-		return "同じ時間帯に CPU を長く使っている goroutine の処理を見直す。または CPU の割り当て (コンテナの CPU の上限・インスタンスの数) を見直す"
+		return "Review the goroutines that used the CPU long at the same time, or the CPU given to the app (the container CPU limit, the number of instances)"
 	case IssueGCPressure:
-		return "mark assist の長い goroutine の割り当てを減らす。または GOGC・GOMEMLIMIT を見直す"
+		return "Reduce the allocations of the goroutines with long mark assist, or review GOGC and GOMEMLIMIT"
 	case IssueLockContention:
-		return "待ちの多かった Lock を呼んだ関数を見て、ロックの粒度・持つ時間・分け方を見直す"
+		return "Look at the functions that called Lock with the most waiting, and review how fine the lock is, how long it is held, and how it is split"
 	case IssueLongSTW:
-		return "STW の理由を見て、STW を起こす呼び出し (runtime.ReadMemStats・runtime.GC・プロファイルの取得など) を見直す"
+		return "Look at the reason of the stop-the-world, and review the calls that cause it (runtime.ReadMemStats, runtime.GC, taking profiles, ...)"
 	case IssueThreadExplosion:
-		return "syscall・cgo の場所を見て、同時に呼ぶ数を絞る"
+		return "Look at where the syscalls and cgo calls are made, and limit how many run at the same time"
 	}
 	return ""
 }
@@ -109,18 +109,18 @@ func JudgeChunk(service observation.ServiceName, c observation.TraceChunk) []Fin
 	var out []Finding
 	if p99, ok := s.SchedP99(); ok && s.SchedLatency.N() >= minSchedSamples && p99 >= schedP99Threshold {
 		out = append(out, Finding{Kind: IssueCPUContention, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: p99.Seconds(),
-			Reason: fmt.Sprintf("RUNNABLE から RUNNING になるまでの p99 が %s (1ms 以上)", p99), Impacts: topByCause(c, CauseRunnable)})
+			Reason: fmt.Sprintf("p99 from RUNNABLE to RUNNING is %s (1ms or more)", p99), Impacts: topByCause(c, CauseRunnable)})
 	}
 	if share := s.GCShare(); share >= gcShareThreshold {
 		out = append(out, Finding{Kind: IssueGCPressure, Subject: string(service), Certainty: CertaintyFact, Judge: JudgeByThreshold, Value: share,
-			Reason: fmt.Sprintf("GC の CPU の割合が %.1f%% (50%% 以上)", share*100), Impacts: topMarkAssist(c)})
+			Reason: fmt.Sprintf("the GC used %.1f%% of the CPU (50%% or more)", share*100), Impacts: topMarkAssist(c)})
 	} else if share := s.MarkAssistShare(); share > markAssistThreshold {
 		out = append(out, Finding{Kind: IssueGCPressure, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: share,
-			Reason: fmt.Sprintf("mark assist の CPU の割合が %.1f%% (5%% 超)", share*100), Impacts: topMarkAssist(c)})
+			Reason: fmt.Sprintf("mark assist used %.1f%% of the CPU (over 5%%)", share*100), Impacts: topMarkAssist(c)})
 	}
 	if s.LockWait >= minLockWait && s.LockWait > s.Running {
 		out = append(out, Finding{Kind: IssueLockContention, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: s.LockWaitRatio(),
-			Reason: fmt.Sprintf("ロックで待たされた時間 %s が実行中の時間 %s を超えた", s.LockWait, s.Running), Impacts: topByCause(c, CauseLockWait), Sites: lockSites(c)})
+			Reason: fmt.Sprintf("goroutines waited %s for locks, longer than they ran (%s)", s.LockWait, s.Running), Impacts: topByCause(c, CauseLockWait), Sites: lockSites(c)})
 	}
 	stws := map[string][]observation.GCRange{}
 	for _, r := range c.GC {
@@ -136,11 +136,11 @@ func JudgeChunk(service observation.ServiceName, c observation.TraceChunk) []Fin
 			impacts = append(impacts, Impact{Goroutine: r.Goroutine, Entry: c.Entries[r.Goroutine], Reason: r.Reason, Duration: r.End - r.Start})
 		}
 		out = append(out, Finding{Kind: IssueLongSTW, Subject: reason, Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: longest.Seconds(),
-			Reason: fmt.Sprintf("1 回の STW が %s (1ms 以上)", longest), Impacts: topImpacts(impacts)})
+			Reason: fmt.Sprintf("one stop-the-world took %s (1ms or more)", longest), Impacts: topImpacts(impacts)})
 	}
 	if c.Threads > threadLimit/2 {
 		out = append(out, Finding{Kind: IssueThreadExplosion, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: float64(c.Threads),
-			Reason: fmt.Sprintf("スレッドの数が %d (上限 %d の半分を超えた)", c.Threads, threadLimit), Impacts: append(topByCause(c, CauseIOWait), topByCause(c, CauseCgo)...)})
+			Reason: fmt.Sprintf("%d OS threads (over half of the limit %d)", c.Threads, threadLimit), Impacts: append(topByCause(c, CauseIOWait), topByCause(c, CauseCgo)...)})
 	}
 	return out
 }
@@ -288,7 +288,7 @@ func JudgeLeakCheck(lc observation.GoroutineLeakCheck, snapshot observation.Goro
 	out := make([]Finding, 0, len(subjects))
 	for _, s := range subjects {
 		f := bySubject[s]
-		f.Reason = fmt.Sprintf("runtime の goroutineleak プロファイルが %d 個のリークを判定した", int(f.Value))
+		f.Reason = fmt.Sprintf("the runtime goroutineleak profile found %d leaked goroutines", int(f.Value))
 		f.Sites = topImpacts(f.Sites)
 		f.Impacts = f.Sites
 		out = append(out, *f)
@@ -338,7 +338,7 @@ func JudgeLeakGrowth(snapshots []observation.GoroutineSnapshot) []Finding {
 			continue
 		}
 		f := Finding{Kind: IssueGoroutineLeak, Subject: creator, Certainty: CertaintyInference, Judge: JudgeByLeakGrowth, Value: float64(last[creator]),
-			Reason: fmt.Sprintf("待機中の goroutine が %d 分で %d 個から %d 個へ減らずに増えた", len(samples), counts[0][creator], last[creator])}
+			Reason: fmt.Sprintf("waiting goroutines grew from %[2]d to %[3]d over %[1]d minutes without going down", len(samples), counts[0][creator], last[creator])}
 		sites := map[string]*Impact{}
 		for _, g := range samples[len(samples)-1].Goroutines {
 			if g.State != observation.GoroutineWaiting || creatorOf(g) != creator {
