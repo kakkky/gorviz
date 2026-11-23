@@ -1,5 +1,5 @@
-# サービスの様子 (発生中の Issue の数、goroutine 数・エラー・CPU 待ち・ヒープの推移) を数値で
+# How a service is doing (ongoing Issues, goroutines, errors, CPU wait, heap) as numbers over time
 
-- `service` (必須)
-- `from`・`to`
-  - 期間 (RFC 3339)。省くと直近 1 時間
+- `service` (required)
+- `from`, `to`
+  - the period (RFC 3339). The last hour when left out

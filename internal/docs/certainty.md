@@ -1,17 +1,27 @@
-# 確かさ (FACT / INFERENCE) と「何から算出したか」の読み方
+# How to read the certainty (FACT / INFERENCE) and what a result was computed from
 
 - `FACT`
-  - runtime の判定や trace の記録から直接言える
+  - read directly from the runtime's judgement or the recorded trace
 - `INFERENCE`
-  - gorviz が推移や比較から推し量った。事実として扱わず、GUI の再生か別の操作で確かめる
+  - inferred by gorviz from trends or comparison. Do not treat it as a fact; confirm it with the GUI replay or another operation
 
-goroutine の診断での確かさ:
+Certainty in a goroutine diagnosis:
 
-- 主因
-  - trace のチャンクの状態の変化から決めたら FACT。goroutine のスナップショットのスタックから推定した待機理由だけで決めたら INFERENCE
-- ログと goroutine の結びつき
-  - ロガーアダプタが振った番号で結んだら FACT。その時刻に走っていた goroutine が 1 つだけだったら INFERENCE
-- goroutine ごとのリーク
-  - 同じスタックの goroutine がちょうどリークの件数だけあったら FACT。待っている時間が長い順に件数分を選んだら INFERENCE
+- Main cause
+  - `FACT` when decided from the state changes in the execution trace
+  - `INFERENCE` when decided only from the wait reason inferred from the stack in a goroutine snapshot
+- The goroutine that wrote a log line
+  - `FACT` when matched by the number the logger adapter wrote
+  - `INFERENCE` when it was the only goroutine running at that time
+- A goroutine's leak
+  - `FACT` when there were exactly as many goroutines with the same stack as the leak count
+  - `INFERENCE` when gorviz picked as many goroutines with the same stack as the leak count, the longest waiting first
 
-診断には「何から算出したか」が付く。細かい順に、`execution-trace` (期間をそのまま切り出せる)・`goroutine-state-breakdown` (1 分ごとの合計。期間は 1 分単位に合わせてある)・`goroutine-snapshot` (その瞬間の状態だけ)。
+A diagnosis says what it was computed from, finest first.
+
+- `execution-trace`
+  - the period can be cut out as is
+- `goroutine-state-breakdown`
+  - totals per minute. The period is aligned to whole minutes
+- `goroutine-snapshot`
+  - only the state at that moment

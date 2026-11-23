@@ -1,5 +1,5 @@
-# ログ 1 行の詳細 (JSON のキーと値、書いた goroutine と結びつきの確かさ)
+# One log line in detail (its JSON keys and values, and the goroutine that wrote it with the certainty)
 
-- `service`・`log` (必須)。`log` は `search-logs` の ID
+- `service`, `log` (required). `log` is an ID from `search-logs`
 
-書いた goroutine が分かれば、その `instance`・`goroutine` と `log` を `diagnose-goroutine` に渡す。分からなければ、その時刻の `summarize-goroutines` を見る。
+When the goroutine that wrote it is known, pass its `instance`, `goroutine` and the `log` to `diagnose-goroutine`. When it is not known, look at `summarize-goroutines` at that time.

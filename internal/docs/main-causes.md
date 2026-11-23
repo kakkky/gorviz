@@ -1,24 +1,24 @@
-# 主因 (goroutine が何に止まっていたか) の種類と、それぞれの次の一手
+# The main causes (what a goroutine was stopped on) and the next step for each
 
-主因は、調べる期間の状態別の時間内訳のうち最も長い状態。
+The main cause is the longest state in the time-by-state breakdown of the period.
 
 - `RUNNING`
-  - 自分で CPU を使っていた。止まっていた場所の処理そのものを見直す
+  - It used the CPU itself. Review the work at the place it stopped
 - `RUNNABLE`
-  - 実行できるのに P が空かず待っていた。同じ時間帯の `CPU_CONTENTION` を見る
+  - It was ready to run but waited for a P. Look for `CPU_CONTENTION` in the same time
 - `LOCK_WAIT`
-  - `sync.Mutex`・`sync.RWMutex` の `Lock` で待っていた。待ちを起こした goroutine (ロックを持っていた側) をたどる
+  - It waited in `Lock` of `sync.Mutex` or `sync.RWMutex`. Follow the goroutine that woke it (the one that held the lock)
 - `SYNC_WAIT`
-  - channel・`select`・`sync.WaitGroup`・`sync.Cond` でほかの goroutine を待っていた。遅かった理由は待っていた相手にあるので、待ちを起こした goroutine をたどる
+  - It waited for another goroutine on a channel, `select`, `sync.WaitGroup` or `sync.Cond`. The reason it was slow is on the side it waited for, so follow the goroutine that woke it
 - `IO_WAIT`
-  - ネットワーク・ディスク・システムコールを待っていた。外部の依存先を APM で見る
+  - It waited for the network, the disk or a system call. Look at the external dependencies in your APM
 - `CGO`
-  - cgo で C のコードを実行していた
+  - It ran C code through cgo
 - `SLEEP`
-  - スリープ・タイマーで止まっていた
+  - It was stopped by a sleep or a timer
 - `GC`
-  - GC に止められた / mark assist をさせられていた。同じ時間帯の `GC_PRESSURE`・`LONG_STW` を見る
+  - The GC stopped it or made it do mark assist. Look for `GC_PRESSURE` and `LONG_STW` in the same time
 
-`LOCK_WAIT` と `sync.WaitGroup` の `SYNC_WAIT` は、trace の待機理由がどちらも「sync」なので、待機に入ったときのスタックで見分けている。
+`LOCK_WAIT` and the `SYNC_WAIT` of `sync.WaitGroup` both have the wait reason "sync" in the trace, so gorviz tells them apart by the stack when the wait began.
 
-待ちを起こした goroutine が分かるのは、execution trace が残っている間だけ。
+The goroutine that woke it is known only while the execution trace is kept.

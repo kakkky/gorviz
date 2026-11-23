@@ -1,5 +1,5 @@
-# goroutine の状態の変化を時刻順に (スケジューラの動きの再生の代わり)
+# The state changes of a goroutine in time order (instead of the scheduler replay)
 
-- 引数は `diagnose-goroutine` と同じ。加えて `cursor`・`max-bytes`
+- The same arguments as `diagnose-goroutine`, plus `cursor` and `max-bytes`
 
-execution trace が残っている期間だけ返せる。
+Only while the execution trace is kept.

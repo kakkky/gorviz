@@ -1,17 +1,17 @@
-# ログの検索 (期間・レベル・インスタンス・JSON のキーと値・文字列で絞る)
+# Search the logs (by period, level, instance, JSON key and value, and text)
 
-- `service` (必須)
-- `from`・`to`
-  - 期間。省くと直近 1 時間
+- `service` (required)
+- `from`, `to`
+  - the period. The last hour when left out
 - `level`
-  - この重さ以上 (`DEBUG`・`INFO`・`WARN`・`ERROR`)
+  - this level and above (`DEBUG`, `INFO`, `WARN`, `ERROR`)
 - `instance`
-  - インスタンスで絞る
+  - only this instance
 - `attr`
-  - `key=value` で JSON のキーと値で絞る。複数渡せる
+  - a JSON key and value as `key=value`. Can be passed several times
 - `q`
-  - メッセージと元の行に含まれる文字列
-- `cursor`・`max-bytes`
-  - 続きの取り方
+  - text contained in the message or the raw line
+- `cursor`, `max-bytes`
+  - how to get the rest
 
-各行の `log` を `get-log` に渡す。件数の当たりは先に `count-logs` で付ける。
+Pass the `log` of a row to `get-log`. Get a feel for the counts with `count-logs` first.

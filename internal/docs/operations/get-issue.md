@@ -1,7 +1,7 @@
-# Issue の詳細 (発生の回数の推移、発生ごとの影響の大きかった goroutine、ネクストアクション)
+# One Issue in detail (occurrences over time, the goroutines each occurrence hit the most, where to look next)
 
-- `service`・`issue` (必須)。`issue` は `list-issues` の ID
-- `from`・`to`
-  - 期間
+- `service`, `issue` (required). `issue` is an ID from `list-issues`
+- `from`, `to`
+  - the period
 
-発生ごとの `occurrence` (時刻) と `instance` を `diagnose-goroutine` の `issue`・`occurrence` に渡すと、発生の前後を調べる。
+Pass the `occurrence` (time) and `instance` of an occurrence to `diagnose-goroutine` as `issue` and `occurrence` to look around it.

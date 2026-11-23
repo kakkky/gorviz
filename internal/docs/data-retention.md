@@ -1,11 +1,12 @@
-# データごとの保持期間と、期間を過ぎたときの返り方
+# How long each kind of data is kept, and what comes back after that
 
-既定の期間 (server の設定で変わる):
+Default periods (the server's config changes them):
 
-- execution trace
-  - 7 日。過ぎるとスケジューラの動きの再生と、リクエストの区間に合わせた正確な診断ができない
-- Issue の発生の前後・エラーログの前後に残した execution trace
-  - 31 日
-- メトリクス・Issue・ログ・ログを書いた goroutine・インスタンスの始まりと終わり・goroutine のスナップショット・リーク判定・1 分ごとの状態別の時間内訳: 31 日
+- Execution traces
+  - 7 days. After that, the scheduler replay and the exact diagnosis over the period of a request are no longer possible
+- Execution traces kept around Issue occurrences and error logs
+  - 31 days
+- Metrics, Issues, logs, the goroutines that wrote logs, instance starts and ends, goroutine snapshots, leak checks, and per-minute time-by-state breakdowns
+  - 31 days
 
-期間を過ぎて出せない項目は省かず、出せないと返す。データが残っていないときは、近くに残っている先 (前後に残した execution trace など) を返す。`list-available-data` で、ある期間にどのデータが残っているかを確かめられる。
+Fields past their retention are not left out; they come back as not available. When no data is left, the nearest kept data (such as traces kept around an Issue or an error log) comes back instead. `list-available-data` tells which data is kept for a period.

@@ -1,9 +1,9 @@
-# Issue の一覧 (種類・対象・確かさ・発生の回数・最後の発生・発生中か)
+# The Issues (kind, subject, certainty, number of occurrences, last occurrence, ongoing or not)
 
-- `service` (必須)
-- `from`・`to`
-  - 期間 (RFC 3339)。省くと直近 31 日
-- `cursor`・`max-bytes`
-  - 続きの取り方。返る量で区切る
+- `service` (required)
+- `from`, `to`
+  - the period (RFC 3339). The last 31 days when left out
+- `cursor`, `max-bytes`
+  - how to get the rest. Results are cut by size
 
-各行の `issue` を `get-issue` に渡す。
+Pass the `issue` of a row to `get-issue`.

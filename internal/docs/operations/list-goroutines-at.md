@@ -1,6 +1,6 @@
-# ある時刻に近い goroutine のスナップショットを、生成元と止まっている場所ごとにまとめたもの
+# The goroutine snapshot nearest to a time, grouped by creator and the place they stop
 
-- `service`・`instance`・`at` (必須)。`at` は RFC 3339
-- `cursor`・`max-bytes`
+- `service`, `instance`, `at` (required). `at` is RFC 3339
+- `cursor`, `max-bytes`
 
-各まとまりの goroutine の ID を `diagnose-goroutine` に渡す。
+Pass the goroutine IDs of a group to `diagnose-goroutine`.

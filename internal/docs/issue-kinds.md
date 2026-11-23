@@ -1,46 +1,46 @@
-# Issue の種類・判定の線・ネクストアクション
+# The kinds of Issues, the lines they are judged by, and where to look next
 
-Issue は runtime 層の問題。解決の状態は持たず、どこかのインスタンスで発生が続いていれば発生中。数える単位は関数 (無名関数は外側の関数にまとめる)。
+An Issue is a problem in the runtime layer. It has no resolved state: it is ongoing while an occurrence goes on in some instance. It is counted per function (closures are folded into the outer function).
 
 - `GOROUTINE_LEAK`
-  - 終わるはずの goroutine が溜まり続ける
+  - Goroutines that should end keep piling up, waiting for something
   - FACT
-    - runtime の goroutineleak プロファイルが判定した
+    - the runtime goroutineleak profile found them
   - INFERENCE
-    - 生成元ごとの待機中の数が減らずに増え続けている
-  - 次の一手
-    - 生成元の go 文と止まっている場所を見て、終われる道 (context のキャンセル・channel を閉じる・タイムアウト) があるかを見直す
+    - the number of waiting goroutines per creator keeps growing without going down
+  - Next
+    - look at the go statement that created them and where they stop, and check that each goroutine has a way to end (context cancellation, closing the channel, a timeout)
 - `CPU_CONTENTION`
-  - `RUNNABLE` の goroutine が P を待たされる
+  - `RUNNABLE` goroutines wait for a P
   - INFERENCE
-    - `RUNNABLE` から `RUNNING` までの p99 が 1ms 以上、または普段より大きく外れた
-  - 次の一手
-    - 同じ時間帯に CPU を長く使っている goroutine か、CPU の割り当てを見直す
+    - the p99 from `RUNNABLE` to `RUNNING` is 1ms or more, or far above the usual
+  - Next
+    - review the goroutines that used the CPU long at the same time, or the CPU given to the app
 - `GC_PRESSURE`
-  - GC が CPU を奪う
+  - The GC takes the CPU away from the app
   - FACT
-    - GC の CPU の割合が 50% に達した
+    - the GC used 50% of the CPU
   - INFERENCE
-    - mark assist の CPU の割合が 5% 超、または GC の CPU の割合が普段より外れた
-  - 次の一手
-    - mark assist の長い goroutine の割り当てを減らす。GOGC・GOMEMLIMIT を見直す
+    - mark assist used over 5% of the CPU, or the GC share is far above the usual
+  - Next
+    - reduce the allocations of the goroutines with long mark assist, or review GOGC and GOMEMLIMIT
 - `LOCK_CONTENTION`
-  - 仕事より長い時間をロックの待ちに取られる
+  - Goroutines spend more time waiting for locks than working
   - INFERENCE
-    - ロックで待たされた時間が実行中の時間を超えた、または普段より外れた (インスタンス全体で判定)
-  - 次の一手
-    - 待ちの多かった `Lock` を呼んだ関数を見る。回数が多いのか、誰かが長く持っているのかを、回数と 1 回あたりの長さで見分け、待たせていた関数の goroutine をたどる
+    - the time waited for locks is longer than the running time, or far above the usual (judged for the whole instance)
+  - Next
+    - look at the functions that called `Lock` with the most waiting. Tell whether the lock is taken too often or held too long from the count and the time per wait, and follow the goroutine that held it
 - `LONG_STW`
-  - stop-the-world でアプリ全体が長く止まる
+  - A stop-the-world stops the whole app for long
   - INFERENCE
-    - 1 回の STW が 1ms 以上
-  - 次の一手
-    - STW の理由を見て、`runtime.ReadMemStats`・`runtime.GC`・プロファイルの取得などの呼び出しを見直す
+    - one stop-the-world took 1ms or more
+  - Next
+    - look at the reason of the stop-the-world, and review the calls that cause it (`runtime.ReadMemStats`, `runtime.GC`, taking profiles, ...)
 - `THREAD_EXPLOSION`
-  - OS のスレッドが増えすぎる
+  - Too many OS threads
   - INFERENCE
-    - スレッドの数が上限 (既定 10,000) の半分を超えた、または普段より外れた
-  - 次の一手
-    - syscall・cgo の場所を見て、同時に呼ぶ数を絞る
+    - more than half of the limit (10,000 by default), or far above the usual
+  - Next
+    - look at where the syscalls and cgo calls are made, and limit how many run at the same time
 
-「普段より外れた」は、同じ曜日・同じ時刻の前後 30 分の 5 分ごとの値 (直近 3 週まで) の中央値と MAD からの修正 z スコアが 3.5 を超えたこと。
+"Far above the usual" means the modified z-score against the median and the MAD of the 5-minute values around the same time on the same weekday (up to the last 3 weeks) is over 3.5.

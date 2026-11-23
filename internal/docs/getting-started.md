@@ -1,21 +1,21 @@
-# gorviz で調べ始める前に読む。何が分かり、どの順に操作を使うか
+# Read this before investigating with gorviz: what it tells and in what order to use the operations
 
-gorviz は Go のアプリの goroutine が「何に止まっていたか」を、Go ランタイムの execution trace から診断する。
+gorviz diagnoses what the goroutines of a Go app were stopped on, from the Go runtime's execution trace.
 
-- アプリ層の遅さ・エラーの増加に気づくのは APM の役目。gorviz はそこで見つけたログ・時間帯・Issue を入口に、goroutine と runtime を調べる
-- 観測するアプリは「サービス」(同じアプリのインスタンスをまとめたもの) と「インスタンス」(プロセス 1 つ) の 2 段で扱う
-  - サービス単位
-    - Overview・Issues・Logs (list-issues・search-logs など)
-  - インスタンス単位
-    - goroutine の診断・状態の変化・集計 (diagnose-goroutine など)
-- goroutine は「インスタンス + goroutine の ID」で区別する
+- Noticing slow requests or more errors is the job of your APM. gorviz starts from the logs, time ranges and Issues you found there, and looks into the goroutines and the runtime
+- gorviz handles the apps it observes as "services" (the instances of the same app together) and "instances" (one process)
+  - Per service
+    - the overview, Issues and logs (`get-overview`, `list-issues`, `search-logs`, ...)
+  - Per instance
+    - goroutine diagnoses, state changes and summaries (`diagnose-goroutine`, ...)
+- A goroutine is identified by its instance and its goroutine ID
 
-## 使う順の目安
+## Order of use
 
-1. `list-services` でサービスとインスタンスを知る
-2. `get-overview`・`list-issues`・`count-logs` で当たりを付ける
-3. Issue の発生かログを入口にして `diagnose-goroutine` を呼ぶ。調べる期間は入口から server が決める
-4. 返ってきた「次に調べる先」の ID をたどる (待ちを起こした goroutine・影響の大きかった goroutine など)
-5. 返ってきた関数と file:line で手元のコードを読む。人に確かめてもらうときは GUI の URL を渡す
+1. Learn the services and instances with `list-services`
+2. Narrow it down with `get-overview`, `list-issues` and `count-logs`
+3. Call `diagnose-goroutine` with an Issue occurrence or a log line as the entry point. The server decides the period to look at from the entry point
+4. Follow the IDs to look at next that come back (the goroutine that woke it, the goroutines an Issue hit the most, ...)
+5. Read your code at the functions and file:line that come back. To let a person confirm it, hand them the GUI URL
 
-続けて読む: `main-causes`・`issue-kinds`・`certainty`・`investigation`・`data-retention`
+Read next: `main-causes`, `issue-kinds`, `certainty`, `investigation`, `data-retention`

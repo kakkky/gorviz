@@ -1,14 +1,14 @@
-# goroutine の診断 (状態別の時間内訳・主因・止まっていた場所・リーク。確かさと何から算出したか付き)
+# Diagnose a goroutine (time by state, main cause, where it stopped, leak; with the certainty and what it was computed from)
 
-- `service`・`instance`・`goroutine` (必須)
-- 調べる期間は入口で決める。次のどれか 1 つを渡す
+- `service`, `instance`, `goroutine` (required)
+- The period to look at is decided by the entry point. Pass one of these
   - `log`
-    - ログの ID。所要時間があればそのリクエストの区間、なければ書いた時刻の前後
-  - `issue` と `occurrence`
-    - Issue の発生の前後
+    - a log ID. The request it ended when it has a duration, otherwise around the time it was written
+  - `issue` and `occurrence`
+    - around an Issue occurrence
   - `woken`
-    - 起こされた側の goroutine の ID。その goroutine が待っていた区間 (待ちを起こした goroutine を調べるとき)
-  - `from`・`to`
-    - 期間をそのまま
+    - the ID of the goroutine that was woken. The period that goroutine waited (to look at the goroutine that woke it)
+  - `from`, `to`
+    - the period as is
 
-返る `wokenBy` などの ID をたどって次を調べる。主因の意味は `main-causes`、確かさは `certainty` を読む。
+Follow the IDs that come back, such as `wokenBy`. Read `main-causes` for the main causes and `certainty` for the certainty.

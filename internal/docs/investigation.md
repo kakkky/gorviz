@@ -1,14 +1,14 @@
-# 入口ごとの調べ方の流れ (リーク・ロック・エラーログ・遅いリクエスト・時間帯)
+# How to investigate from each entry point (leaks, locks, error logs, slow requests, time ranges)
 
-- goroutine が溜まる
-  - `list-issues` で `GOROUTINE_LEAK` → `get-issue` でスタックごとの「M 個のうち N 個がリーク」と生成元を見る → `diagnose-goroutine` で待機理由とリークの確かさ
-- ロックの待ち
-  - `list-issues` で `LOCK_CONTENTION` → `get-issue` で `Lock` を呼んだ関数ごとの回数・平均・最大と待たせていた関数 → 待たせていた goroutine を `diagnose-goroutine` (`woken`) でたどる
-- エラーログ
-  - `search-logs` (`level=ERROR`) → `get-log` で書いた goroutine → `diagnose-goroutine` (`log`)。エラーログの前後の trace は長く残してある
-- 遅いリクエスト
-  - 所要時間のあるログを `get-log` → `diagnose-goroutine` (`log`)。期間はそのリクエストの区間になる。主因が `RUNNABLE` なら `CPU_CONTENTION`、`GC` なら `GC_PRESSURE` を同じ時間帯で探す
-- APM で気づいた時間帯
-  - `get-overview` (`from`・`to`) → Issue があれば上と同じ。なければ `summarize-goroutines` で生成元ごとの主因を見る。runtime に原因がなければアプリ層を APM で調べる
+- Goroutines pile up
+  - `list-issues` for `GOROUTINE_LEAK`, then `get-issue` for "N of the M goroutines waiting at the same place leaked" per stack and their creator, then `diagnose-goroutine` for the wait reason and the certainty of the leak
+- Waiting for locks
+  - `list-issues` for `LOCK_CONTENTION`, then `get-issue` for the count, average and max per function that called `Lock` and the function that held it, then follow the goroutine that held it with `diagnose-goroutine` (`woken`)
+- An error log
+  - `search-logs` (`level=ERROR`), then `get-log` for the goroutine that wrote it, then `diagnose-goroutine` (`log`). The trace around error logs is kept long
+- A slow request
+  - `get-log` on the log line with its duration, then `diagnose-goroutine` (`log`). The period becomes that request. If the main cause is `RUNNABLE`, look for `CPU_CONTENTION` in the same time; if it is `GC`, look for `GC_PRESSURE`
+- A time range found in your APM
+  - `get-overview` (`from`, `to`). If there is an Issue, follow it as above. If not, see the main cause per creator with `summarize-goroutines`. If the runtime is not the cause, look at the app layer in your APM
 
-一覧は要点と次の ID だけを返す。中身は詳細の操作で取る。返る量で区切ってあり、続きは `cursor` で取る。
+Lists return only the key points and the IDs to look at next; get the details with the detail operations. Results are cut by size, and `cursor` gets the rest.

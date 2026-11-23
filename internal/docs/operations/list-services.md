@@ -1,3 +1,3 @@
-# サービスの一覧と、各サービスのインスタンス (始まり・終わり・再起動)
+# The services and their instances (starts, ends and restarts)
 
-引数はない。インスタンスの名前は、インスタンス単位の操作 (`diagnose-goroutine` など) の `instance` に渡す。同じ名前のまま再起動したインスタンスは、始まりと終わりが複数並ぶ。
+No arguments. Pass an instance name as `instance` to the per-instance operations (`diagnose-goroutine`, ...). An instance restarted under the same name shows several starts and ends.

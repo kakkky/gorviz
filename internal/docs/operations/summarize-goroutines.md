@@ -1,6 +1,6 @@
-# ある期間のインスタンスの goroutine を、生成元の関数ごとにまとめた主因と状態別の時間
+# The goroutines of an instance in a period, with the main cause and time by state per creator function
 
-- `service`・`instance` (必須)
-- `from`・`to`
-  - 期間。省くと直近 5 分
+- `service`, `instance` (required)
+- `from`, `to`
+  - the period. The last 5 minutes when left out
 - `max-bytes`

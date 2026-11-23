@@ -1,5 +1,5 @@
-# ログの集計 (絞ったログを、キーごとに数えた件数)
+# Count the logs (the filtered lines, counted per key)
 
-- `service`・`by` (必須)。`by` は数えるキー (`level`・`instance`・`message` か、JSON のキー)
-- `from`・`to`・`level`・`instance`・`attr`
-  - `search-logs` と同じ絞り方
+- `service`, `by` (required). `by` is the key to count by (`level`, `instance`, `message`, or a JSON key)
+- `from`, `to`, `level`, `instance`, `attr`
+  - the same filters as `search-logs`
