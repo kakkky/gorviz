@@ -4,14 +4,14 @@
 
 ## 組み立て
 
-### cmd (`cmd/<コンポーネント>/`)
+### cmd (`cmd/gorviz/`)
 
-- `main` は、シグナルで終わる ctx を作り、`config.NewConfig()` で読んだ config を渡して `<コンポーネント>.Run` を 1 回呼ぶだけ
+- `main` は、シグナルで終わる ctx を作り、`config.NewConfig()` で読んだ config を渡して `server.Run` か `cli.Run` を 1 回呼ぶだけ。デーモンとして起動されたときが server、それ以外が cli
 - `NewConfig`・`Run` がエラーを返したら、ログに出して `os.Exit(1)` する。起動・停止のエラーをログに出すのはここだけ
 
 ### エントリ (`internal/app/<コンポーネント>/<コンポーネント>.go`)
 
-- `Run(ctx context.Context, cfg *config.Config) error` を 1 つだけ公開する
+- `Run(ctx context.Context, cfg *config.Config) error` を 1 つだけ公開する。agent は「[agent](#agent)」の決まりに従う
 - 各層の `NewXxx` を内側から順に呼んで、依存を引数で渡す。DI のライブラリは使わない
   - adapter が使う接続の driver は adapter より先に、presentation を受けて待ち受ける driver は presentation の後に作る
 - コンストラクタ (`NewXxx`) の中で panic しない。失敗しうるなら error を返す
@@ -19,9 +19,10 @@
 - driver の後始末は、コンストラクタが返す cleanup を `defer` で呼ぶ
 - driver・worker の `Run` は、最後に `scope.Run` の下で起動する
 - 組み立て以外の処理 (値の変換・分岐) は書かない。必要ならその層に置く
+- 層をまたいでパッケージ名がぶつかるとき (driver の `socket` と presentation の `socket` など) は、エントリでだけ別名を付ける。ほかの層では別名を使わない
 
 ```go
-// cmd/<コンポーネント>/main.go
+// cmd/gorviz/main.go (server・cli のどちらか 1 つを呼ぶ)
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -71,6 +72,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 ## 並行処理
 
+- agent には「[agent](#agent)」の決まりを当てる
 - goroutine は [kakkky/scope](https://github.com/kakkky/scope) の下でだけ起動する。`go` 文を直接書かない
   - 親の ctx が終わったら子も終わり、子がすべて終わるまで親が戻らないようにするため。止まらない goroutine を残さない
 - `sc.Go` に渡す関数は `func(ctx context.Context) error`。エラーを返すと同じ scope の兄弟も止まるので、続けられるエラーは返さない
@@ -80,14 +82,13 @@ func Run(ctx context.Context, cfg *config.Config) error {
 ## config (`internal/app/<コンポーネント>/config/`)
 
 - 設定は環境変数だけから読む。コマンドラインのフラグは使わない
-  - 例外は launcher。人が手元で 1 行で打つ入口なので、フラグで読む
   - cli のサブコマンドの引数・フラグは操作の入力で、設定ではない。presentation で受け取る
 - `Config` は struct の tag で環境変数に対応づけ、[envconfig](https://github.com/kelseyhightower/envconfig) で読む
 
   ```go
   type Config struct {
-  	Addr    string `envconfig:"ADDR" default:":8080"`
-  	DataDir string `envconfig:"DATA_DIR" required:"true"`
+  	Addr            string        `envconfig:"ADDR" default:"127.0.0.1:8080"`
+  	ShutdownTimeout time.Duration `envconfig:"SHUTDOWN_TIMEOUT" default:"10s"`
   }
 
   func NewConfig() (*Config, error) {
@@ -100,13 +101,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
   ```
 
 - 無いと動けないものは `required:"true"`、無くても動けるものは `default` を付ける。既定値をコードの別の場所に書かない
-- launcher は、server と agent の `NewConfig()` で既定値を読んでから、フラグで受け取った値で上書きして渡す。既定値を launcher に書き直さない
 - `*config.Config` を受け取ってよいのは、組み立て・driver・presentation・worker・adapter。usecase・domain には必要な値だけを渡す
   - usecase・domain のテストで、Config を丸ごと組まずに済ませるため
 
 ## driver (`internal/app/<コンポーネント>/driver/`)
 
-- 状態や後始末を持つ資源 (接続・待ち受け・保存先・メモリの置き場) を用意して起動する。外の API を呼ぶだけのクライアントは driver にせず、adapter の中で作る
+- 状態や後始末を持つ資源 (接続・待ち受け・プロセス・メモリの置き場) を用意して起動する。外の API を呼ぶだけのクライアントは driver にせず、adapter の中で作る
 - コンストラクタは `(*Xxx, func(), error)` を返す。後始末がないものは `(*Xxx, error)`
 - 使えるかどうか (排他・形式) は、コンストラクタで確かめる。使えなければエラーを返して起動させない。使い始めてから気づかせない
 - 待ち受けるものは `Run(ctx context.Context) error` を持ち、ctx が終わったら閉じて `nil` を返す
@@ -132,16 +132,17 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - Accept で返す形を選び分けるときは、handler ごとに書かず、共通の書き出しを通す
 - 画面の ViewModel の組み立ては、handler の中の非公開の関数に切り出す。テンプレートに usecase の Output を渡さない
 
-### middleware・interceptor
+### middleware
 
-- 認証・アクセスログ・エラーの返し方・panic の復旧だけを持つ。usecase を呼ばない
+- アクセスログ・エラーの返し方・panic の復旧だけを持つ。usecase を呼ばない
 - エラーの取り出しと status への変換は defer で行う
 - 適用の順序は、handler ごとに書かず、待ち受けに渡す側でまとめて組む
 
-### gRPC
+### socket
 
-- protocol の生成した server interface を実装する
-- 生成型と domain の型の詰め替えは protocol の関数を呼ぶ。presentation の中で詰め替えを書かない
+- `socket.SocketHandler` は、メッセージの種類ごとに 1 つの usecase を呼ぶ
+- メッセージの読み書きと区切りは `protocol/agentsocket` の関数を呼ぶ。presentation の中で形式を書かない
+- エラーと panic は Handler の入口で拾い、接続を止めない。1 つのメッセージの失敗で、ほかのメッセージを読めなくしないため
 
 ### 手順も判断も持たないコンポーネント
 
@@ -158,7 +159,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - usecase のエラーで止まらない。ログに出して次の周期に進む。`Run` がエラーを返すのは、続けられないときだけ
 - 1 回の `Exec` の中身 (何を対象に・何をするか) は usecase に書く。worker は「いつ呼ぶか」だけを持つ
 - 1 つの worker は 1 つの usecase を呼ぶ。複数の処理をまとめない
-  - 処理ごとに間隔も、落ちたときの続きの位置も違うため
+  - 処理ごとに間隔が違うため
 
 ## usecase (`internal/app/<コンポーネント>/usecase/`)
 
@@ -172,9 +173,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - エラーのときは `Output{}` (zero value) とエラーを返す
 - usecase の依存は `usecase.go` の `UseCase` にまとめて持ち、`NewUseCase(...)` で受け取る。個々の usecase は `(us *UseCase) New<Name>Usecase()` で使う依存だけを取り出す
   - 依存を作るのに失敗しうるときは `(*<Name>Usecase, error)` を返す
-- 何についての処理か (サービス・インスタンスなど) は Input で受け取る。usecase の field に持たない
+- 何についての処理か (Issue の ID・期間など) は Input で受け取る。usecase の field に持たない
 - 判断を含む処理は domain に書き、usecase から呼ぶ。usecase は読む・domain に渡す・書くの順番だけを持つ
-- domain のエラーはそのまま返す。usecase で HTTP や gRPC の status を意識しない
+- domain のエラーはそのまま返す。usecase で HTTP の status を意識しない
 
 ## domain (`internal/app/<コンポーネント>/domain/`)
 
@@ -194,68 +195,69 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - 種別に `.With(msg)` (メッセージだけ) か `.Wrap(cause, msg)` (原因付き) を被せて作る。生の Go のエラーを返さない
 - 新しい種別をむやみに足さない
 - internal の msg は、ログでどこで失敗したかがわかる短い英語を呼び出し箇所に直書きする (例 `ErrInternal.Wrap(err, "append log line")`)
-- データが残っていなくて出せないことは、エラーにしない。出せない欄として正常に返す
+- trace の末尾が欠けて出せないことは、エラーにしない。出せない欄として正常に返す
 
 ## adapter (`internal/app/<コンポーネント>/adapter/`)
 
 - domain の interface を実装する。取る・送る・書く・読むまでで、判断はしない
   - 取ってきたものを読み解く (形式の解釈・値を決める) のは domain
-- 外の型 (生成型・ライブラリの型) を domain に漏らさない。adapter の中で domain の型に詰め替える
+- 外の型 (ライブラリの型・`protocol/agentsocket` のメッセージの型) を domain に漏らさない。adapter の中で domain の型に詰め替える
 - 外から返ってきたエラーは `ErrInternal.Wrap(err, "...")` で包む。見つからないことが外の応答でわかるときは `ErrNotFound` にする
 
 ### accessor
 
-- driver が持つ状態 (メモリの置き場・ディスクの保存先) を、domain の interface の操作に対応づける
-- キーや置き場 (パス) の決め方は accessor が持つ。usecase に組ませない
-- ディスクは driver が開いた保存先を通して触る。保存先の外のパスを開けないようにするため
+- driver が持つメモリの置き場を、domain の interface の操作に対応づける
+- キーの決め方は accessor が持つ。usecase に組ませない
 
 ### client
 
 - 外への送信と、外からの取得を持つ
 - `NewXxxClient(...)` は `(*XxxClient, error)` を返す。失敗しうるかに関わらず形を揃える
-- 資格情報やエンドポイントは、組み立てで config から渡す
+- 接続先は、組み立てで config から渡す
 
 ## protocol (`internal/protocol/`)
 
 - 契約を相手ごとに 1 パッケージで持つ。両側のコンポーネントが同じパッケージを使う
-- 生成コードを持つ契約
-  - 定義 (`.proto` など) を正とし、生成したファイルは手で直さない
-  - 生成型と domain の型の詰め替えを両方向で持つ。生成型を protocol の外に出さない
-  - フィールドを消すときは番号を `reserved` にする。両側の版がずれても読めるようにするため
+- `agentsocket` は、標準ライブラリだけで書く。agent と一緒にアプリのビルドに持ち込まれるため
+- メッセージの種類を消すときは、その種類の番号を使い回さない。agent と server の版がずれても読み違えないようにするため
 
-## アプリのプロセスで動くコード
+## agent
 
-- 公開パッケージから呼ばれ、アプリと同じプロセスで動くコード (埋め込んだ agent・ロガーアダプタ) は、アプリの処理を止めない
+agent はアプリのモジュールの中でコンパイルされ、アプリと同じプロセスで動く。ほかのコンポーネントと同じ層に分けるが、次の決まりを足す。
+
+### 使えるもの
+
+- 標準ライブラリと `protocol/agentsocket` だけを import する。`kakkky/scope`・envconfig も使わない
+  - テストのファイルはアプリに足さないので、テストでは testify・gomock を使ってよい
+- 設定は `os.Getenv` で読む
+
+### 組み立てと並行処理
+
+- エントリは `Start()` と `Finish()` の 2 つだけを公開する
+  - `Start()` は init から呼ばれる。driver の用意と worker・待ち受けの起動を済ませたら戻る。アプリの main を待たせないため
+  - `Finish()` は main に足した defer から呼ばれる。受け口に渡し、最後の観測データを送り終えるまで戻らない
+- goroutine は `go` 文で起動する。接続が閉じたら、すべての goroutine が終わるようにする
+- server につながらなければ、何も起動せずに戻る
+
+### アプリを止めない
+
+- アプリの処理を止めない
   - アプリの呼び出しの中でブロックしない。渡し先が詰まっていたら待たない
   - 呼び出しごとの割り当てを増やさない
-  - panic をアプリに伝えない
-
-## internal/domain
-
-- 型と、型の意味から決まる振る舞いだけを置く。判断の規則はそれを決めるコンポーネントの domain に置く
-- パッケージは中身の名前で切る。コンポーネントの `domain` と並べて import したときに別名を要らなくするため
-
-## pkg (`internal/pkg/`)
-
-- gorviz の仕様に依らない道具だけを置く。`internal/` のほかのパッケージを import しない
-- gorviz の仕様 (何を取り出すか・どう決めるか) が入るなら、共通で使うものでも domain に置く
-
-## 公開パッケージ (`gorviz`・`logger/`)
-
-- 利用者が import するので、公開する名前を最小にする。中身は `internal/` に置き、公開パッケージは薄い入口だけにする
-- 公開する名前を変える・消すときは、利用者の移行を考えてから行う
+  - panic をアプリに伝えない。agent の中で復旧して、agent だけを止める
+- アプリの終わり方を変えない。シグナルを横取りせず、`Finish()` の中で panic を握りつぶさない (main の panic はそのまま続ける)
 
 ## ログ
 
 - コンポーネント自身のログは `log/slog` で出し、ctx と属性を渡す:
 
   ```go
-  slog.InfoContext(ctx, "...", slog.String("instance", name))
+  slog.InfoContext(ctx, "...", slog.String("phase", name))
   slog.ErrorContext(ctx, "...", slog.Any("err", err))
   ```
 
 - 返すエラーは、その場でログに出さない。最後に受け取った側が 1 回だけ出す
-  - HTTP・gRPC のリクエストのエラーと panic は middleware・interceptor が出す
+  - HTTP のリクエストのエラーと panic は middleware が、socket のメッセージのエラーと panic は `socket.SocketHandler` が出す
   - worker の周期のエラーは worker が出す
   - 起動・停止のエラーは `main` が出す
   - その場で出すのは、エラーを処理して先に進むときだけ
@@ -266,8 +268,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - 中身を表さない名前 (`shared`・`common`・`util`・`types`・`helper`) のパッケージ・ファイルを作らない
 - gorviz 自身は「コンポーネント」、観測される利用者のプログラムは「アプリ」と呼ぶ。名前でもこの区別を守る
 - usecase の Input / Output は usecase 名 + `Input` / `Output`
-- 値オブジェクトの型名は単数形で、型 + 意味 (`InstanceName`・`ServiceName` など)
-- パッケージ名と型名を重ねない (`issue.IssueAccessor` ではなく `accessor.IssueAccessor`)
+- 値オブジェクトの型名は単数形で、型 + 意味 (`IssueID`・`GoroutineID` など)
+- パッケージ名は短い一語にし、何のものかは型名に含める (`kvs.InMemoryKVS`・`socket.SocketConn`・`accessor.IssueAccessor`)。対象の名前でパッケージを切らない (`issue.IssueAccessor` にしない)
 
 ## コメント
 
@@ -286,10 +288,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - usecase
   - adapter はすべて mock にする。メモリの置き場は driver の実物を使う
 - adapter
-  - ディスクの accessor は、`t.TempDir()` に driver の実物の保存先を開いて確かめる
-  - client は相手に合わせて、`httptest`・in-process の gRPC (`bufconn`) を使う
+  - accessor は、driver の実物のメモリの置き場を作って確かめる
+  - client は相手に合わせて、`httptest`・`net.Pipe` を使う
 - protocol
-  - 詰め替えは、往復で値が変わらないことを確かめる
+  - `agentsocket` は、書いたメッセージが同じ値で読めることを確かめる
   - コンポーネント同士の通信は、両方を組み立てて確かめる (コンポーネントをまたぐ import の例外)
 - driver・presentation
   - 書かない。組み立てて動かす確認で足りる。テストのために本体を歪めない
