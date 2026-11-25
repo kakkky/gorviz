@@ -1,170 +1,81 @@
+// Package agent はアプリのビルドに差し込まれ、アプリのプロセスの中で execution trace を server へ流す。
+// 標準ライブラリと protocol/agentsocket だけを import する
 package agent
 
 import (
 	"context"
-
-	"github.com/kakkky/scope"
+	"os"
 
 	"github.com/kakkky/gorviz/internal/app/agent/adapter/accessor"
 	"github.com/kakkky/gorviz/internal/app/agent/adapter/client"
-	"github.com/kakkky/gorviz/internal/app/agent/config"
-	"github.com/kakkky/gorviz/internal/app/agent/driver/flightrecorder"
-	"github.com/kakkky/gorviz/internal/app/agent/driver/grpcconn"
-	"github.com/kakkky/gorviz/internal/app/agent/driver/kvs"
-	"github.com/kakkky/gorviz/internal/app/agent/driver/logsource"
-	"github.com/kakkky/gorviz/internal/app/agent/driver/ringbuffer"
-	"github.com/kakkky/gorviz/internal/app/agent/presentation/logs"
+	socketdriver "github.com/kakkky/gorviz/internal/app/agent/driver/socket"
+	"github.com/kakkky/gorviz/internal/app/agent/driver/tracer"
+	"github.com/kakkky/gorviz/internal/app/agent/presentation/function"
+	socketpresentation "github.com/kakkky/gorviz/internal/app/agent/presentation/socket"
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
 	"github.com/kakkky/gorviz/internal/app/agent/worker"
-	"github.com/kakkky/gorviz/internal/domain/observation"
+	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
 )
 
-// Run は gorviz-agent (sidecar 型・daemon 型) を動かす。アプリの pprof から取り、ログはファイル・TCP・UDP・標準入力から取り込む
-func Run(ctx context.Context, cfg *config.Config) error {
-	if err := cfg.Validate(); err != nil {
-		return err
+var functionCallHandler *function.FunctionCallHandler
+
+func init() { Start() }
+
+// Start は server につながり、execution trace を取り始めてから戻る。server につながらなければ何もしない
+func Start() {
+	addr := os.Getenv(agentsocket.EnvSocket)
+	if addr == "" || functionCallHandler != nil {
+		return
 	}
 	// driver (adapter が使う接続)
-	conn, closeConn, err := grpcconn.NewClientConn(cfg)
+	conn, closeConn, err := socketdriver.NewSocketConn(addr)
 	if err != nil {
-		return err
+		return
 	}
-	defer closeConn()
-	store := kvs.NewInMemoryKVS()
-	buf, err := ringbuffer.NewRingBuffer[observation.Instance](cfg)
-	if err != nil {
-		return err
-	}
+	executionTracer, stopTracer := tracer.NewExecutionTracer()
 
 	// adapter
-	kvsAccessor := accessor.NewKVSAccessor(store)
-	bufAccessor := accessor.NewRingBufferAccessor(buf)
-	pprof, err := client.NewPprofClient(cfg)
+	runtime := accessor.NewAppRuntimeAccessor(executionTracer)
+	server, err := client.NewServerClient(conn)
 	if err != nil {
-		return err
-	}
-	kubernetes, err := client.NewKubernetesClient(cfg)
-	if err != nil {
-		return err
-	}
-	server, err := client.NewGorvizServerClient(cfg, conn)
-	if err != nil {
-		return err
+		closeConn()
+		return
 	}
 
 	// usecase
-	uc := usecase.NewUseCase(kvsAccessor, kvsAccessor, kvsAccessor, kvsAccessor, kvsAccessor, kvsAccessor, bufAccessor, pprof, kubernetes, server)
+	uc := usecase.NewUseCase(runtime, runtime, runtime, runtime, server, server)
 
 	// presentation
-	receiver := logs.NewReceiver(cfg, uc.NewForwardLogLineUsecase())
+	handler := function.NewFunctionCallHandler(uc.NewStartAppObservationUsecase(), uc.NewFinishAppObservationUsecase())
+	socketHandler := socketpresentation.NewSocketHandler(
+		uc.NewWriteAppRuntimeTraceEventUsecase(),
+		uc.NewResetAppCoverageUsecase(),
+		uc.NewReadAppCoverageUsecase(),
+		uc.NewSendAppGoroutineLeaksUsecase(),
+		uc.NewWriteAppThreadCountUsecase(),
+		uc.NewFinishAppObservationUsecase(),
+		uc.NewAbandonAppObservationUsecase(),
+		server,
+	)
 
 	// worker
-	syncWorker, err := worker.NewSyncInstancesWorker(cfg, uc.NewSyncInstancesUsecase())
-	if err != nil {
-		return err
-	}
-	observationWorker, err := worker.NewObservationWorker(cfg, uc.NewCollectObservationsUsecase())
-	if err != nil {
-		return err
-	}
-	exportWorker := worker.NewExportWorker(cfg, uc.NewExportObservationsUsecase())
+	streamWorker := worker.NewStreamAppRuntimeTraceWorker(uc.NewStreamAppRuntimeTraceUsecase())
 
-	// driver (presentation を受けて待ち受ける)
-	fileTailer, err := logsource.NewFileTailer(cfg, receiver)
-	if err != nil {
-		return err
+	if err := handler.Start(); err != nil {
+		stopTracer()
+		closeConn()
+		return
 	}
-	tcpListener, closeTCP, err := logsource.NewTCPListener(cfg, receiver)
-	if err != nil {
-		return err
-	}
-	defer closeTCP()
-	udpListener, closeUDP, err := logsource.NewUDPListener(cfg, receiver)
-	if err != nil {
-		return err
-	}
-	defer closeUDP()
-	stdinReader, err := logsource.NewStdinReader(cfg, receiver)
-	if err != nil {
-		return err
-	}
-
-	return scope.Run(ctx, func(sc *scope.Scope) error {
-		sc.Go(syncWorker.Run)
-		sc.Go(observationWorker.Run)
-		sc.Go(exportWorker.Run)
-		sc.Go(fileTailer.Run)
-		sc.Go(tcpListener.Run)
-		sc.Go(udpListener.Run)
-		sc.Go(stdinReader.Run)
-		return nil
-	})
+	functionCallHandler = handler
+	ctx := context.Background()
+	go streamWorker.Run(ctx)
+	go conn.Run(ctx, socketHandler)
 }
 
-// RunEmbedded はライブラリ型の agent をアプリのプロセスの中で動かす。gorviz パッケージだけが呼ぶ。
-// trace を runtime の FlightRecorder から取り、ログをロガーアダプタから受けるので、Run とは組み立てる driver と adapter が違う
-func RunEmbedded(ctx context.Context, cfg *config.Config) error {
-	if err := cfg.Validate(); err != nil {
-		return err
+// Stop は最後の観測データを送り終え、接続を閉じてから戻る。アプリの main の先頭に overlay した defer から呼ばれる
+func Stop() {
+	if functionCallHandler == nil {
+		return
 	}
-	// driver (adapter が使う接続)
-	conn, closeConn, err := grpcconn.NewClientConn(cfg)
-	if err != nil {
-		return err
-	}
-	defer closeConn()
-	fr, stopRecorder, err := flightrecorder.NewFlightRecorder(cfg)
-	if err != nil {
-		return err
-	}
-	defer stopRecorder()
-	store := kvs.NewInMemoryKVS()
-	buf, err := ringbuffer.NewRingBuffer[observation.Instance](cfg)
-	if err != nil {
-		return err
-	}
-
-	// adapter
-	kvsAccessor := accessor.NewKVSAccessor(store)
-	bufAccessor := accessor.NewRingBufferAccessor(buf)
-	runtime, err := client.NewFlightRecorderClient(fr)
-	if err != nil {
-		return err
-	}
-	server, err := client.NewGorvizServerClient(cfg, conn)
-	if err != nil {
-		return err
-	}
-
-	// usecase
-	uc := usecase.NewUseCase(kvsAccessor, kvsAccessor, kvsAccessor, kvsAccessor, kvsAccessor, kvsAccessor, bufAccessor, runtime, nil, server)
-
-	// presentation
-	receiver := logs.NewReceiver(cfg, uc.NewForwardLogLineUsecase())
-
-	// worker
-	syncWorker, err := worker.NewSyncInstancesWorker(cfg, uc.NewSyncInstancesUsecase())
-	if err != nil {
-		return err
-	}
-	observationWorker, err := worker.NewObservationWorker(cfg, uc.NewCollectObservationsUsecase())
-	if err != nil {
-		return err
-	}
-	exportWorker := worker.NewExportWorker(cfg, uc.NewExportObservationsUsecase())
-
-	// driver (presentation を受けて待ち受ける)
-	hook, unhook, err := logsource.NewLoggerHook(cfg, receiver)
-	if err != nil {
-		return err
-	}
-	defer unhook()
-
-	return scope.Run(ctx, func(sc *scope.Scope) error {
-		sc.Go(syncWorker.Run)
-		sc.Go(observationWorker.Run)
-		sc.Go(exportWorker.Run)
-		sc.Go(hook.Run)
-		return nil
-	})
+	functionCallHandler.Stop()
 }

@@ -10,48 +10,178 @@
 package mock
 
 import (
-	context "context"
 	reflect "reflect"
 
-	observation "github.com/kakkky/gorviz/internal/domain/observation"
+	domain "github.com/kakkky/gorviz/internal/app/agent/domain"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockServerClient is a mock of ServerClient interface.
-type MockServerClient struct {
+// MockServerSender is a mock of ServerSender interface.
+type MockServerSender struct {
 	ctrl     *gomock.Controller
-	recorder *MockServerClientMockRecorder
+	recorder *MockServerSenderMockRecorder
 	isgomock struct{}
 }
 
-// MockServerClientMockRecorder is the mock recorder for MockServerClient.
-type MockServerClientMockRecorder struct {
-	mock *MockServerClient
+// MockServerSenderMockRecorder is the mock recorder for MockServerSender.
+type MockServerSenderMockRecorder struct {
+	mock *MockServerSender
 }
 
-// NewMockServerClient creates a new mock instance.
-func NewMockServerClient(ctrl *gomock.Controller) *MockServerClient {
-	mock := &MockServerClient{ctrl: ctrl}
-	mock.recorder = &MockServerClientMockRecorder{mock}
+// NewMockServerSender creates a new mock instance.
+func NewMockServerSender(ctrl *gomock.Controller) *MockServerSender {
+	mock := &MockServerSender{ctrl: ctrl}
+	mock.recorder = &MockServerSenderMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockServerClient) EXPECT() *MockServerClientMockRecorder {
+func (m *MockServerSender) EXPECT() *MockServerSenderMockRecorder {
 	return m.recorder
 }
 
-// Export mocks base method.
-func (m *MockServerClient) Export(ctx context.Context, batches []observation.Batch) (map[observation.Instance]observation.Cursor, error) {
+// SendBye mocks base method.
+func (m *MockServerSender) SendBye() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Export", ctx, batches)
-	ret0, _ := ret[0].(map[observation.Instance]observation.Cursor)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "SendBye")
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
-// Export indicates an expected call of Export.
-func (mr *MockServerClientMockRecorder) Export(ctx, batches any) *gomock.Call {
+// SendBye indicates an expected call of SendBye.
+func (mr *MockServerSenderMockRecorder) SendBye() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Export", reflect.TypeOf((*MockServerClient)(nil).Export), ctx, batches)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendBye", reflect.TypeOf((*MockServerSender)(nil).SendBye))
+}
+
+// SendCoverage mocks base method.
+func (m *MockServerSender) SendCoverage(files []domain.CoverageFile) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendCoverage", files)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendCoverage indicates an expected call of SendCoverage.
+func (mr *MockServerSenderMockRecorder) SendCoverage(files any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendCoverage", reflect.TypeOf((*MockServerSender)(nil).SendCoverage), files)
+}
+
+// SendGoroutineLeakProfile mocks base method.
+func (m *MockServerSender) SendGoroutineLeakProfile(seq uint64, text []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendGoroutineLeakProfile", seq, text)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendGoroutineLeakProfile indicates an expected call of SendGoroutineLeakProfile.
+func (mr *MockServerSenderMockRecorder) SendGoroutineLeakProfile(seq, text any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendGoroutineLeakProfile", reflect.TypeOf((*MockServerSender)(nil).SendGoroutineLeakProfile), seq, text)
+}
+
+// SendHello mocks base method.
+func (m *MockServerSender) SendHello(h domain.Hello) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendHello", h)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendHello indicates an expected call of SendHello.
+func (mr *MockServerSenderMockRecorder) SendHello(h any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendHello", reflect.TypeOf((*MockServerSender)(nil).SendHello), h)
+}
+
+// SendReply mocks base method.
+func (m *MockServerSender) SendReply(r domain.Reply) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendReply", r)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendReply indicates an expected call of SendReply.
+func (mr *MockServerSenderMockRecorder) SendReply(r any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendReply", reflect.TypeOf((*MockServerSender)(nil).SendReply), r)
+}
+
+// SendTrace mocks base method.
+func (m *MockServerSender) SendTrace(p []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendTrace", p)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendTrace indicates an expected call of SendTrace.
+func (mr *MockServerSenderMockRecorder) SendTrace(p any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendTrace", reflect.TypeOf((*MockServerSender)(nil).SendTrace), p)
+}
+
+// MockServerConnection is a mock of ServerConnection interface.
+type MockServerConnection struct {
+	ctrl     *gomock.Controller
+	recorder *MockServerConnectionMockRecorder
+	isgomock struct{}
+}
+
+// MockServerConnectionMockRecorder is the mock recorder for MockServerConnection.
+type MockServerConnectionMockRecorder struct {
+	mock *MockServerConnection
+}
+
+// NewMockServerConnection creates a new mock instance.
+func NewMockServerConnection(ctrl *gomock.Controller) *MockServerConnection {
+	mock := &MockServerConnection{ctrl: ctrl}
+	mock.recorder = &MockServerConnectionMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockServerConnection) EXPECT() *MockServerConnectionMockRecorder {
+	return m.recorder
+}
+
+// BeginFinish mocks base method.
+func (m *MockServerConnection) BeginFinish() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BeginFinish")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// BeginFinish indicates an expected call of BeginFinish.
+func (mr *MockServerConnectionMockRecorder) BeginFinish() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeginFinish", reflect.TypeOf((*MockServerConnection)(nil).BeginFinish))
+}
+
+// Close mocks base method.
+func (m *MockServerConnection) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockServerConnectionMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockServerConnection)(nil).Close))
+}
+
+// WaitFinished mocks base method.
+func (m *MockServerConnection) WaitFinished() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "WaitFinished")
+}
+
+// WaitFinished indicates an expected call of WaitFinished.
+func (mr *MockServerConnectionMockRecorder) WaitFinished() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitFinished", reflect.TypeOf((*MockServerConnection)(nil).WaitFinished))
 }

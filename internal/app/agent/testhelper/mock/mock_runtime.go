@@ -10,79 +10,283 @@
 package mock
 
 import (
-	context "context"
 	reflect "reflect"
-	time "time"
 
 	domain "github.com/kakkky/gorviz/internal/app/agent/domain"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockRuntimeClient is a mock of RuntimeClient interface.
-type MockRuntimeClient struct {
+// MockAppProcess is a mock of AppProcess interface.
+type MockAppProcess struct {
 	ctrl     *gomock.Controller
-	recorder *MockRuntimeClientMockRecorder
+	recorder *MockAppProcessMockRecorder
 	isgomock struct{}
 }
 
-// MockRuntimeClientMockRecorder is the mock recorder for MockRuntimeClient.
-type MockRuntimeClientMockRecorder struct {
-	mock *MockRuntimeClient
+// MockAppProcessMockRecorder is the mock recorder for MockAppProcess.
+type MockAppProcessMockRecorder struct {
+	mock *MockAppProcess
 }
 
-// NewMockRuntimeClient creates a new mock instance.
-func NewMockRuntimeClient(ctrl *gomock.Controller) *MockRuntimeClient {
-	mock := &MockRuntimeClient{ctrl: ctrl}
-	mock.recorder = &MockRuntimeClientMockRecorder{mock}
+// NewMockAppProcess creates a new mock instance.
+func NewMockAppProcess(ctrl *gomock.Controller) *MockAppProcess {
+	mock := &MockAppProcess{ctrl: ctrl}
+	mock.recorder = &MockAppProcessMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockRuntimeClient) EXPECT() *MockRuntimeClientMockRecorder {
+func (m *MockAppProcess) EXPECT() *MockAppProcessMockRecorder {
 	return m.recorder
 }
 
-// FetchExecutionTrace mocks base method.
-func (m *MockRuntimeClient) FetchExecutionTrace(ctx context.Context, t domain.TargetInstance, length time.Duration) (domain.RawTrace, error) {
+// GoVersion mocks base method.
+func (m *MockAppProcess) GoVersion() string {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchExecutionTrace", ctx, t, length)
-	ret0, _ := ret[0].(domain.RawTrace)
+	ret := m.ctrl.Call(m, "GoVersion")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GoVersion indicates an expected call of GoVersion.
+func (mr *MockAppProcessMockRecorder) GoVersion() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GoVersion", reflect.TypeOf((*MockAppProcess)(nil).GoVersion))
+}
+
+// PID mocks base method.
+func (m *MockAppProcess) PID() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PID")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// PID indicates an expected call of PID.
+func (mr *MockAppProcessMockRecorder) PID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PID", reflect.TypeOf((*MockAppProcess)(nil).PID))
+}
+
+// Procs mocks base method.
+func (m *MockAppProcess) Procs() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Procs")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// Procs indicates an expected call of Procs.
+func (mr *MockAppProcessMockRecorder) Procs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Procs", reflect.TypeOf((*MockAppProcess)(nil).Procs))
+}
+
+// MockAppRuntimeTrace is a mock of AppRuntimeTrace interface.
+type MockAppRuntimeTrace struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppRuntimeTraceMockRecorder
+	isgomock struct{}
+}
+
+// MockAppRuntimeTraceMockRecorder is the mock recorder for MockAppRuntimeTrace.
+type MockAppRuntimeTraceMockRecorder struct {
+	mock *MockAppRuntimeTrace
+}
+
+// NewMockAppRuntimeTrace creates a new mock instance.
+func NewMockAppRuntimeTrace(ctrl *gomock.Controller) *MockAppRuntimeTrace {
+	mock := &MockAppRuntimeTrace{ctrl: ctrl}
+	mock.recorder = &MockAppRuntimeTraceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppRuntimeTrace) EXPECT() *MockAppRuntimeTraceMockRecorder {
+	return m.recorder
+}
+
+// ReadTrace mocks base method.
+func (m *MockAppRuntimeTrace) ReadTrace(p []byte) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadTrace", p)
+	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// FetchExecutionTrace indicates an expected call of FetchExecutionTrace.
-func (mr *MockRuntimeClientMockRecorder) FetchExecutionTrace(ctx, t, length any) *gomock.Call {
+// ReadTrace indicates an expected call of ReadTrace.
+func (mr *MockAppRuntimeTraceMockRecorder) ReadTrace(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchExecutionTrace", reflect.TypeOf((*MockRuntimeClient)(nil).FetchExecutionTrace), ctx, t, length)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadTrace", reflect.TypeOf((*MockAppRuntimeTrace)(nil).ReadTrace), p)
 }
 
-// FetchGoroutineLeakProfile mocks base method.
-func (m *MockRuntimeClient) FetchGoroutineLeakProfile(ctx context.Context, t domain.TargetInstance) ([]byte, error) {
+// StartTrace mocks base method.
+func (m *MockAppRuntimeTrace) StartTrace() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchGoroutineLeakProfile", ctx, t)
+	ret := m.ctrl.Call(m, "StartTrace")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartTrace indicates an expected call of StartTrace.
+func (mr *MockAppRuntimeTraceMockRecorder) StartTrace() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartTrace", reflect.TypeOf((*MockAppRuntimeTrace)(nil).StartTrace))
+}
+
+// StopTrace mocks base method.
+func (m *MockAppRuntimeTrace) StopTrace() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "StopTrace")
+}
+
+// StopTrace indicates an expected call of StopTrace.
+func (mr *MockAppRuntimeTraceMockRecorder) StopTrace() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopTrace", reflect.TypeOf((*MockAppRuntimeTrace)(nil).StopTrace))
+}
+
+// WaitTraceDrained mocks base method.
+func (m *MockAppRuntimeTrace) WaitTraceDrained() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "WaitTraceDrained")
+}
+
+// WaitTraceDrained indicates an expected call of WaitTraceDrained.
+func (mr *MockAppRuntimeTraceMockRecorder) WaitTraceDrained() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitTraceDrained", reflect.TypeOf((*MockAppRuntimeTrace)(nil).WaitTraceDrained))
+}
+
+// WriteTraceEvent mocks base method.
+func (m *MockAppRuntimeTrace) WriteTraceEvent(event string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "WriteTraceEvent", event)
+}
+
+// WriteTraceEvent indicates an expected call of WriteTraceEvent.
+func (mr *MockAppRuntimeTraceMockRecorder) WriteTraceEvent(event any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteTraceEvent", reflect.TypeOf((*MockAppRuntimeTrace)(nil).WriteTraceEvent), event)
+}
+
+// MockAppCoverage is a mock of AppCoverage interface.
+type MockAppCoverage struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppCoverageMockRecorder
+	isgomock struct{}
+}
+
+// MockAppCoverageMockRecorder is the mock recorder for MockAppCoverage.
+type MockAppCoverageMockRecorder struct {
+	mock *MockAppCoverage
+}
+
+// NewMockAppCoverage creates a new mock instance.
+func NewMockAppCoverage(ctrl *gomock.Controller) *MockAppCoverage {
+	mock := &MockAppCoverage{ctrl: ctrl}
+	mock.recorder = &MockAppCoverageMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppCoverage) EXPECT() *MockAppCoverageMockRecorder {
+	return m.recorder
+}
+
+// ReadCoverage mocks base method.
+func (m *MockAppCoverage) ReadCoverage() ([]domain.CoverageFile, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadCoverage")
+	ret0, _ := ret[0].([]domain.CoverageFile)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadCoverage indicates an expected call of ReadCoverage.
+func (mr *MockAppCoverageMockRecorder) ReadCoverage() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadCoverage", reflect.TypeOf((*MockAppCoverage)(nil).ReadCoverage))
+}
+
+// ResetCoverage mocks base method.
+func (m *MockAppCoverage) ResetCoverage() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetCoverage")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetCoverage indicates an expected call of ResetCoverage.
+func (mr *MockAppCoverageMockRecorder) ResetCoverage() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetCoverage", reflect.TypeOf((*MockAppCoverage)(nil).ResetCoverage))
+}
+
+// MockAppGoroutines is a mock of AppGoroutines interface.
+type MockAppGoroutines struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppGoroutinesMockRecorder
+	isgomock struct{}
+}
+
+// MockAppGoroutinesMockRecorder is the mock recorder for MockAppGoroutines.
+type MockAppGoroutinesMockRecorder struct {
+	mock *MockAppGoroutines
+}
+
+// NewMockAppGoroutines creates a new mock instance.
+func NewMockAppGoroutines(ctrl *gomock.Controller) *MockAppGoroutines {
+	mock := &MockAppGoroutines{ctrl: ctrl}
+	mock.recorder = &MockAppGoroutinesMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppGoroutines) EXPECT() *MockAppGoroutinesMockRecorder {
+	return m.recorder
+}
+
+// NextLeakCheckSeq mocks base method.
+func (m *MockAppGoroutines) NextLeakCheckSeq() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NextLeakCheckSeq")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// NextLeakCheckSeq indicates an expected call of NextLeakCheckSeq.
+func (mr *MockAppGoroutinesMockRecorder) NextLeakCheckSeq() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NextLeakCheckSeq", reflect.TypeOf((*MockAppGoroutines)(nil).NextLeakCheckSeq))
+}
+
+// ReadGoroutineLeakProfile mocks base method.
+func (m *MockAppGoroutines) ReadGoroutineLeakProfile() ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadGoroutineLeakProfile")
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// FetchGoroutineLeakProfile indicates an expected call of FetchGoroutineLeakProfile.
-func (mr *MockRuntimeClientMockRecorder) FetchGoroutineLeakProfile(ctx, t any) *gomock.Call {
+// ReadGoroutineLeakProfile indicates an expected call of ReadGoroutineLeakProfile.
+func (mr *MockAppGoroutinesMockRecorder) ReadGoroutineLeakProfile() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchGoroutineLeakProfile", reflect.TypeOf((*MockRuntimeClient)(nil).FetchGoroutineLeakProfile), ctx, t)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadGoroutineLeakProfile", reflect.TypeOf((*MockAppGoroutines)(nil).ReadGoroutineLeakProfile))
 }
 
-// FetchThreadCreateProfile mocks base method.
-func (m *MockRuntimeClient) FetchThreadCreateProfile(ctx context.Context, t domain.TargetInstance) ([]byte, error) {
+// ThreadCount mocks base method.
+func (m *MockAppGoroutines) ThreadCount() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchThreadCreateProfile", ctx, t)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "ThreadCount")
+	ret0, _ := ret[0].(int)
+	return ret0
 }
 
-// FetchThreadCreateProfile indicates an expected call of FetchThreadCreateProfile.
-func (mr *MockRuntimeClientMockRecorder) FetchThreadCreateProfile(ctx, t any) *gomock.Call {
+// ThreadCount indicates an expected call of ThreadCount.
+func (mr *MockAppGoroutinesMockRecorder) ThreadCount() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchThreadCreateProfile", reflect.TypeOf((*MockRuntimeClient)(nil).FetchThreadCreateProfile), ctx, t)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ThreadCount", reflect.TypeOf((*MockAppGoroutines)(nil).ThreadCount))
 }

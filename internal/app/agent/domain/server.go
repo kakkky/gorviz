@@ -1,13 +1,19 @@
 //go:generate mockgen -source=$GOFILE -destination=../testhelper/mock/mock_server.go -package=mock
 package domain
 
-import (
-	"context"
+// ServerSender は server へ観測データと返事を送る
+type ServerSender interface {
+	SendHello(h Hello) error
+	SendTrace(p []byte) error
+	SendReply(r Reply) error
+	SendGoroutineLeakProfile(seq uint64, text []byte) error
+	SendCoverage(files []CoverageFile) error
+	SendBye() error
+}
 
-	"github.com/kakkky/gorviz/internal/domain/observation"
-)
-
-// ServerClient は観測データを送り、server がインスタンスごとにどこまで持っているかを受け取る
-type ServerClient interface {
-	Export(ctx context.Context, batches []observation.Batch) (map[observation.Instance]observation.Cursor, error)
+// ServerConnection は server との接続を終える。終える手順は 1 度だけ流し、2 度目以降は 1 度目が終わるのを待たせる
+type ServerConnection interface {
+	BeginFinish() bool
+	WaitFinished()
+	Close()
 }
