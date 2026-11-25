@@ -387,9 +387,9 @@ agent が取るのは、アプリのプロセスの中からしか取れない�
   - 待機理由は、スタックの上の方の runtime の関数 (channel の受信・ロック・スリープ・ネットワークなど) から推定する (`INFERENCE`)
 - アプリがその場で終わったとき (`os.Exit`・`log.Fatal`・main 以外の goroutine の panic、止める合図を受ける処理がないとき) は、trace の末尾が欠ける。欠けたことは時間軸と Issue に示す
   - main の goroutine の panic では、trace を書き切ってから panic が続く
-- agent 自身の goroutine は、隠さず、agent のものだと分かるように示す。agent がアプリの中で何をしているかも、観測の対象として見られるようにするため
+- agent 自身の goroutine (agent が trace を取るために runtime に作らせたものを含む) は、消さずに agent のものだと分かるように示す。agent がアプリの中で何をしているかも、見ようと思えば見られるようにするため
   - 見分けるのは、作られたときのスタックに agent があるかどうか。agent はアプリの中で別のパッケージとして動くので、確かに見分けられる
-  - Issue の判定と、影響の大きかった goroutine には数えない。Issue はアプリの問題だけを出すため
+  - Issue の判定と、影響の大きかった goroutine には数えない。agent が起こした STW (goroutineleak プロファイルを取るときの GC など) も数えない。Issue はアプリの問題だけを出すため
   - goroutine 数などの推移も、アプリの goroutine だけで数える
 
 #### 4.1.6 依存コンポーネント
@@ -688,7 +688,8 @@ Issue の確かさは「[判定](#4262-判定)」の表のとおり。goroutine 
   - 待たせていた関数から、その goroutine の Goroutine へ移れる。待たせていた側がロックを持っている間に何をしていたかを見るため
 - Scheduler と Goroutine では、goroutine ごとのリークを、確かさ (`FACT` / `INFERENCE`) が分かる形で示す
 - trace の末尾が欠けたところは、隠さず欠けたと示す
-- agent の goroutine は、目立たない色と「agent」の印で示す。cli の `gorviz goroutine` でも、agent のものだと分かるようにする
+- agent の goroutine は、既定で畳んで数だけを示し、開けば目立たない色と「agent」の印で示す。アプリの goroutine を見る邪魔をしないため。P の上で走っている間は、P が埋まっていることを隠さないよう畳まない
+- cli の `gorviz goroutine` でも、agent のものだと分かるようにする
 
 #### 4.2.9 依存コンポーネント
 
