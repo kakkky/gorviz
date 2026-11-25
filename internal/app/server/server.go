@@ -1,4 +1,4 @@
-// Package server は gorviz-server を組み立てる
+// Package server はアプリをビルドして起動し、負荷をかけ、agent から届いた execution trace から Issue を判定する。結果を GUI と HTTP API で返す
 package server
 
 import (
@@ -7,22 +7,19 @@ import (
 
 	"github.com/kakkky/scope"
 
+	"github.com/kakkky/gorviz/internal"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/accessor"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/client"
+	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/config"
-	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/app/server/driver/authtoken"
-	"github.com/kakkky/gorviz/internal/app/server/driver/filesystem"
-	"github.com/kakkky/gorviz/internal/app/server/driver/grpcserver"
 	"github.com/kakkky/gorviz/internal/app/server/driver/httpserver"
 	"github.com/kakkky/gorviz/internal/app/server/driver/kvs"
-	"github.com/kakkky/gorviz/internal/app/server/driver/tlscert"
+	socketdriver "github.com/kakkky/gorviz/internal/app/server/driver/socket"
+	"github.com/kakkky/gorviz/internal/app/server/driver/tracestream"
+	"github.com/kakkky/gorviz/internal/app/server/driver/workdir"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/api"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/interceptor"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/login"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/route"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/rpc"
+	socketpresentation "github.com/kakkky/gorviz/internal/app/server/presentation/socket"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/web"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 	"github.com/kakkky/gorviz/internal/app/server/worker"
@@ -30,135 +27,95 @@ import (
 )
 
 func Run(ctx context.Context, cfg *config.Config) error {
-	// driver (adapter が使う保存先・メモリの置き場)
-	root, cleanup, err := filesystem.NewRoot(cfg.DataDir)
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	// driver (adapter が使う置き場・接続)
+	work, removeWork, err := workdir.NewWorkDir()
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer removeWork()
 	store := kvs.NewInMemoryKVS()
-	tokens, err := authtoken.NewTokens(root, cfg.BootstrapToken)
-	if err != nil {
-		return err
-	}
-	tlsConf, err := tlscert.NewTLSConfig(cfg, root)
+	stream := tracestream.NewTraceStream()
+	conn := socketdriver.NewSocketConn()
+	agentSource, socketSource, err := internal.AgentSource()
 	if err != nil {
 		return err
 	}
 
 	// adapter
-	holdings := accessor.NewHoldingAccessor(root, store)
-	webhook, err := client.NewWebhookClient()
+	sessions := accessor.NewSessionAccessor(store)
+	index := accessor.NewTraceIndexAccessor(store)
+	issues := accessor.NewIssueBookAccessor(store)
+	traceStream := accessor.NewTraceStreamAccessor(stream)
+	sources := accessor.NewAgentSourceAccessor(agentSource, socketSource)
+	agent, err := client.NewAgentClient(conn)
 	if err != nil {
 		return err
 	}
-	slack, err := client.NewSlackClient()
+	app, err := client.NewAppClient(work.SocketPath(), work.Path())
 	if err != nil {
 		return err
 	}
-	mail, err := client.NewMailClient()
+	toolchain, err := client.NewToolchainClient(work.Path())
+	if err != nil {
+		return err
+	}
+	clock, err := client.NewClockClient()
 	if err != nil {
 		return err
 	}
 
 	// usecase
-	uc := usecase.NewUseCase(
-		usecase.Settings{
-			Retention: domain.Retention{
-				Metrics: cfg.RetentionMetrics, Issues: cfg.RetentionIssues, Logs: cfg.RetentionLogs, LogWriterGoroutines: cfg.RetentionLogWriterGoroutines,
-				InstanceLifecycle: cfg.RetentionInstanceLifecycle, ExecutionTraces: cfg.RetentionExecutionTraces,
-				ExecutionTracesAroundIssues: cfg.RetentionExecutionTracesAroundIssues, ExecutionTracesAroundErrorLogs: cfg.RetentionExecutionTracesAroundErrorLogs,
-				GoroutineSnapshots: cfg.RetentionGoroutineSnapshots, GoroutineLeakChecks: cfg.RetentionGoroutineLeakChecks, GoroutineStateBreakdowns: cfg.RetentionGoroutineStateBreakdowns,
-			},
-			MaxDiskBytes:  cfg.MaxDiskBytes,
-			GUI:           domain.GUI{Base: cfg.PublicURL},
-			Notifications: cfg.Notifications,
-		},
-		holdings, holdings,
-		accessor.NewInventoryAccessor(root),
-		accessor.NewLogAccessor(root),
-		accessor.NewTraceAccessor(root),
-		accessor.NewSnapshotAccessor(root),
-		accessor.NewLeakCheckAccessor(root),
-		accessor.NewLifecycleAccessor(root),
-		accessor.NewMetricAccessor(root),
-		accessor.NewBreakdownAccessor(root),
-		accessor.NewIssueAccessor(root),
-		accessor.NewPreservedTraceAccessor(root),
-		accessor.NewLogWriterAccessor(root),
-		accessor.NewCheckpointAccessor(root),
-		accessor.NewDataFileAccessor(root),
-		webhook, slack, mail,
-	)
+	uc := usecase.NewUseCase(sessions, index, issues, traceStream, agent, app, app, app, toolchain, sources, clock)
 
 	// presentation
-	gui := domain.GUI{Base: cfg.PublicURL}
-	ic := interceptor.NewInterceptor(tokens)
-	observationService := rpc.NewObservationService(uc.NewIngestObservationsUsecase())
-	mw := middleware.NewMiddleware(tokens)
-	apiHandlers := map[string]http.Handler{
-		serverapi.ListServices.Name:        api.NewGetServicesHandler(uc.NewListServicesUsecase(), gui),
-		serverapi.GetOverview.Name:         api.NewGetOverviewHandler(uc.NewGetOverviewUsecase(), gui),
-		serverapi.ListIssues.Name:          api.NewGetIssuesHandler(uc.NewListIssuesUsecase(), gui),
-		serverapi.GetIssue.Name:            api.NewGetIssueHandler(uc.NewGetIssueUsecase(), gui),
-		serverapi.SearchLogs.Name:          api.NewGetLogsHandler(uc.NewSearchLogsUsecase()),
-		serverapi.CountLogs.Name:           api.NewGetLogCountsHandler(uc.NewCountLogsUsecase()),
-		serverapi.GetLog.Name:              api.NewGetLogHandler(uc.NewGetLogUsecase(), gui),
-		serverapi.DiagnoseGoroutine.Name:   api.NewGetGoroutineDiagnosisHandler(uc.NewDiagnoseGoroutineUsecase(), gui),
-		serverapi.ListStateChanges.Name:    api.NewGetGoroutineStateChangesHandler(uc.NewListGoroutineStateChangesUsecase(), gui),
-		serverapi.SummarizeGoroutines.Name: api.NewGetGoroutineSummaryHandler(uc.NewSummarizeGoroutinesUsecase(), gui),
-		serverapi.ListGoroutinesAt.Name:    api.NewGetGoroutinesHandler(uc.NewListGoroutinesAtUsecase()),
-		serverapi.ListAvailableData.Name:   api.NewGetAvailableDataHandler(uc.NewListAvailableDataUsecase(), gui),
-	}
-	loginHandlers := route.Login{Get: login.NewGetLoginHandler(), Post: login.NewPostLoginHandler(cfg, tokens), PostLogout: login.NewPostLogoutHandler()}
-	services, chunks := uc.NewListServicesUsecase(), uc.NewListTraceChunksUsecase()
-	guiHandlers := route.GUI{
-		Root:            web.NewGetRootHandler(services),
-		Assets:          web.NewGetAssetsHandler(),
-		Overview:        web.NewGetOverviewHandler(services, uc.NewGetOverviewUsecase()),
-		OverviewStream:  web.NewGetOverviewStreamHandler(services, uc.NewGetOverviewUsecase()),
-		Issues:          web.NewGetIssuesHandler(services, uc.NewListIssuesUsecase()),
-		Issue:           web.NewGetIssueHandler(services, uc.NewGetIssueUsecase()),
-		Logs:            web.NewGetLogsHandler(services, uc.NewSearchLogsUsecase(), uc.NewCountLogsUsecase(), uc.NewGetLogUsecase()),
-		LogGoroutine:    web.NewGetLogGoroutineHandler(uc.NewGetLogUsecase()),
-		Scheduler:       web.NewGetSchedulerHandler(services, chunks),
-		SchedulerStream: web.NewGetSchedulerStreamHandler(chunks),
-		Goroutine:       web.NewGetGoroutineHandler(services, uc.NewDiagnoseGoroutineUsecase(), chunks),
-	}
-	mux, err := route.NewMux(mw, apiHandlers, loginHandlers, guiHandlers)
-	if err != nil {
-		return err
-	}
+	gui := "http://" + cfg.Addr
+	socketHandler := socketpresentation.NewSocketHandler(uc.NewIngestAppObservationsUsecase())
+	mux := http.NewServeMux()
+	mux.Handle("GET "+serverapi.PathStatus, api.NewGetStatusHandler(uc.NewGetSessionStatusUsecase(), gui))
+	mux.Handle("GET "+serverapi.PathStartResult, api.NewGetStartResultHandler(uc.NewWaitAppStartUsecase(), stop, gui))
+	mux.Handle("POST "+serverapi.PathDiagnose, api.NewPostDiagnoseHandler(uc.NewDiagnoseAppUsecase(), gui))
+	mux.Handle("GET "+serverapi.PathIssues, api.NewGetIssuesHandler(uc.NewListIssuesUsecase(), gui))
+	mux.Handle("GET "+serverapi.PathIssue, api.NewGetIssueHandler(uc.NewGetIssueUsecase(), gui))
+	mux.Handle("GET "+serverapi.PathGoroutine, api.NewGetGoroutineHandler(uc.NewGetGoroutineDetailUsecase(), gui))
+	mux.Handle("POST "+serverapi.PathStop, api.NewPostStopHandler(uc.NewWaitAppShutdownUsecase(), stop))
+	mux.Handle("GET /{$}", web.NewGetRootHandler())
+	mux.Handle("GET /overview", web.NewGetOverviewHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
+	mux.Handle("GET /issues", web.NewGetIssuesHandler(uc.NewGetSessionStatusUsecase(), uc.NewListIssuesUsecase()))
+	mux.Handle("GET /issues/{id}", web.NewGetIssueHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetIssueUsecase()))
+	mux.Handle("GET /scheduler", web.NewGetSchedulerHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetSchedulerWindowUsecase()))
+	mux.Handle("GET /scheduler/stream", web.NewGetSchedulerStreamHandler(uc.NewGetSchedulerWindowUsecase()))
+	mux.Handle("GET /goroutines/{id}", web.NewGetGoroutineHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetGoroutineDetailUsecase(), uc.NewGetSchedulerWindowUsecase()))
+	mux.Handle("GET "+assets.URLPrefix, web.NewAssetsHandler())
+	mw := middleware.NewMiddleware(api.NewErrorWriter(), web.NewErrorWriter())
 
 	// worker
-	aggregateMetricsWorker := worker.NewAggregateMetricsWorker(cfg, uc.NewAggregateMetricsUsecase())
-	aggregateBreakdownsWorker := worker.NewAggregateGoroutineStateBreakdownsWorker(cfg, uc.NewAggregateGoroutineStateBreakdownsUsecase())
-	detectIssuesWorker := worker.NewDetectIssuesWorker(cfg, uc.NewDetectIssuesUsecase())
-	preserveWorker := worker.NewPreserveExecutionTracesAroundErrorLogsWorker(cfg, uc.NewPreserveExecutionTracesAroundErrorLogsUsecase())
-	attachWorker := worker.NewAttachLogWriterGoroutinesWorker(cfg, uc.NewAttachLogWriterGoroutinesUsecase())
-	pruneWorker := worker.NewPruneDataWorker(cfg, uc.NewPruneDataUsecase())
+	runAppWorker := worker.NewRunAppWorker(cfg, uc.NewRunAppUsecase())
+	indexWorker := worker.NewIndexAppRuntimeTraceWorker(uc.NewIndexAppRuntimeTraceUsecase())
+	collectWorker := worker.NewCollectAppObservationsWorker(uc.NewCollectAppObservationsUsecase())
+	detectWorker := worker.NewDetectAppIssuesWorker(uc.NewDetectAppIssuesUsecase())
 
 	// driver (presentation を受けて待ち受ける)
-	grpcServer, closeGRPC, err := grpcserver.NewGRPCServer(cfg, tlsConf, ic.Unary, observationService)
-	if err != nil {
-		return err
-	}
-	defer closeGRPC()
-	httpServer, closeHTTP, err := httpserver.NewHTTPServer(cfg, tlsConf, mux)
+	httpServer, closeHTTP, err := httpserver.NewHTTPServer(cfg.Addr, mw.Wrap(mux))
 	if err != nil {
 		return err
 	}
 	defer closeHTTP()
+	listener, closeListener, err := socketdriver.NewSocketListener(work.SocketPath(), conn, socketHandler)
+	if err != nil {
+		return err
+	}
+	defer closeListener()
 
 	return scope.Run(ctx, func(sc *scope.Scope) error {
-		sc.Go(aggregateMetricsWorker.Run)
-		sc.Go(aggregateBreakdownsWorker.Run)
-		sc.Go(detectIssuesWorker.Run)
-		sc.Go(preserveWorker.Run)
-		sc.Go(attachWorker.Run)
-		sc.Go(pruneWorker.Run)
-		sc.Go(grpcServer.Run)
+		sc.Go(listener.Run)
 		sc.Go(httpServer.Run)
+		sc.Go(runAppWorker.Run)
+		sc.Go(indexWorker.Run)
+		sc.Go(collectWorker.Run)
+		sc.Go(detectWorker.Run)
 		return nil
 	})
 }

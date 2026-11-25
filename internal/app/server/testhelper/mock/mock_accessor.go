@@ -10,894 +10,233 @@
 package mock
 
 import (
-	context "context"
+	io "io"
 	reflect "reflect"
-	time "time"
 
 	domain "github.com/kakkky/gorviz/internal/app/server/domain"
-	observation "github.com/kakkky/gorviz/internal/domain/observation"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockInstanceLocker is a mock of InstanceLocker interface.
-type MockInstanceLocker struct {
+// MockSessionStore is a mock of SessionStore interface.
+type MockSessionStore struct {
 	ctrl     *gomock.Controller
-	recorder *MockInstanceLockerMockRecorder
+	recorder *MockSessionStoreMockRecorder
 	isgomock struct{}
 }
 
-// MockInstanceLockerMockRecorder is the mock recorder for MockInstanceLocker.
-type MockInstanceLockerMockRecorder struct {
-	mock *MockInstanceLocker
+// MockSessionStoreMockRecorder is the mock recorder for MockSessionStore.
+type MockSessionStoreMockRecorder struct {
+	mock *MockSessionStore
 }
 
-// NewMockInstanceLocker creates a new mock instance.
-func NewMockInstanceLocker(ctrl *gomock.Controller) *MockInstanceLocker {
-	mock := &MockInstanceLocker{ctrl: ctrl}
-	mock.recorder = &MockInstanceLockerMockRecorder{mock}
+// NewMockSessionStore creates a new mock instance.
+func NewMockSessionStore(ctrl *gomock.Controller) *MockSessionStore {
+	mock := &MockSessionStore{ctrl: ctrl}
+	mock.recorder = &MockSessionStoreMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockInstanceLocker) EXPECT() *MockInstanceLockerMockRecorder {
+func (m *MockSessionStore) EXPECT() *MockSessionStoreMockRecorder {
 	return m.recorder
 }
 
-// LockInstance mocks base method.
-func (m *MockInstanceLocker) LockInstance(service observation.ServiceName, instance observation.InstanceName) func() {
+// Session mocks base method.
+func (m *MockSessionStore) Session() domain.Session {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LockInstance", service, instance)
-	ret0, _ := ret[0].(func())
+	ret := m.ctrl.Call(m, "Session")
+	ret0, _ := ret[0].(domain.Session)
 	return ret0
 }
 
-// LockInstance indicates an expected call of LockInstance.
-func (mr *MockInstanceLockerMockRecorder) LockInstance(service, instance any) *gomock.Call {
+// Session indicates an expected call of Session.
+func (mr *MockSessionStoreMockRecorder) Session() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockInstance", reflect.TypeOf((*MockInstanceLocker)(nil).LockInstance), service, instance)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Session", reflect.TypeOf((*MockSessionStore)(nil).Session))
 }
 
-// MockHoldingAccessor is a mock of HoldingAccessor interface.
-type MockHoldingAccessor struct {
+// UpdateSession mocks base method.
+func (m *MockSessionStore) UpdateSession(f func(*domain.Session)) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UpdateSession", f)
+}
+
+// UpdateSession indicates an expected call of UpdateSession.
+func (mr *MockSessionStoreMockRecorder) UpdateSession(f any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSession", reflect.TypeOf((*MockSessionStore)(nil).UpdateSession), f)
+}
+
+// MockTraceIndexStore is a mock of TraceIndexStore interface.
+type MockTraceIndexStore struct {
 	ctrl     *gomock.Controller
-	recorder *MockHoldingAccessorMockRecorder
+	recorder *MockTraceIndexStoreMockRecorder
 	isgomock struct{}
 }
 
-// MockHoldingAccessorMockRecorder is the mock recorder for MockHoldingAccessor.
-type MockHoldingAccessorMockRecorder struct {
-	mock *MockHoldingAccessor
+// MockTraceIndexStoreMockRecorder is the mock recorder for MockTraceIndexStore.
+type MockTraceIndexStoreMockRecorder struct {
+	mock *MockTraceIndexStore
 }
 
-// NewMockHoldingAccessor creates a new mock instance.
-func NewMockHoldingAccessor(ctrl *gomock.Controller) *MockHoldingAccessor {
-	mock := &MockHoldingAccessor{ctrl: ctrl}
-	mock.recorder = &MockHoldingAccessorMockRecorder{mock}
+// NewMockTraceIndexStore creates a new mock instance.
+func NewMockTraceIndexStore(ctrl *gomock.Controller) *MockTraceIndexStore {
+	mock := &MockTraceIndexStore{ctrl: ctrl}
+	mock.recorder = &MockTraceIndexStoreMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockHoldingAccessor) EXPECT() *MockHoldingAccessorMockRecorder {
+func (m *MockTraceIndexStore) EXPECT() *MockTraceIndexStoreMockRecorder {
 	return m.recorder
 }
 
-// ForgetHolding mocks base method.
-func (m *MockHoldingAccessor) ForgetHolding(ctx context.Context, service observation.ServiceName, instance observation.InstanceName) {
+// UpdateTraceIndex mocks base method.
+func (m *MockTraceIndexStore) UpdateTraceIndex(f func(*domain.TraceIndex)) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ForgetHolding", ctx, service, instance)
+	m.ctrl.Call(m, "UpdateTraceIndex", f)
 }
 
-// ForgetHolding indicates an expected call of ForgetHolding.
-func (mr *MockHoldingAccessorMockRecorder) ForgetHolding(ctx, service, instance any) *gomock.Call {
+// UpdateTraceIndex indicates an expected call of UpdateTraceIndex.
+func (mr *MockTraceIndexStoreMockRecorder) UpdateTraceIndex(f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForgetHolding", reflect.TypeOf((*MockHoldingAccessor)(nil).ForgetHolding), ctx, service, instance)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTraceIndex", reflect.TypeOf((*MockTraceIndexStore)(nil).UpdateTraceIndex), f)
 }
 
-// Holding mocks base method.
-func (m *MockHoldingAccessor) Holding(ctx context.Context, service observation.ServiceName, instance observation.InstanceName) (domain.Holding, error) {
+// ViewTraceIndex mocks base method.
+func (m *MockTraceIndexStore) ViewTraceIndex(f func(*domain.TraceIndex)) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Holding", ctx, service, instance)
-	ret0, _ := ret[0].(domain.Holding)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	m.ctrl.Call(m, "ViewTraceIndex", f)
 }
 
-// Holding indicates an expected call of Holding.
-func (mr *MockHoldingAccessorMockRecorder) Holding(ctx, service, instance any) *gomock.Call {
+// ViewTraceIndex indicates an expected call of ViewTraceIndex.
+func (mr *MockTraceIndexStoreMockRecorder) ViewTraceIndex(f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Holding", reflect.TypeOf((*MockHoldingAccessor)(nil).Holding), ctx, service, instance)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ViewTraceIndex", reflect.TypeOf((*MockTraceIndexStore)(nil).ViewTraceIndex), f)
 }
 
-// RememberHolding mocks base method.
-func (m *MockHoldingAccessor) RememberHolding(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, h domain.Holding) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RememberHolding", ctx, service, instance, h)
-}
-
-// RememberHolding indicates an expected call of RememberHolding.
-func (mr *MockHoldingAccessorMockRecorder) RememberHolding(ctx, service, instance, h any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RememberHolding", reflect.TypeOf((*MockHoldingAccessor)(nil).RememberHolding), ctx, service, instance, h)
-}
-
-// MockInventoryAccessor is a mock of InventoryAccessor interface.
-type MockInventoryAccessor struct {
+// MockIssueBookStore is a mock of IssueBookStore interface.
+type MockIssueBookStore struct {
 	ctrl     *gomock.Controller
-	recorder *MockInventoryAccessorMockRecorder
+	recorder *MockIssueBookStoreMockRecorder
 	isgomock struct{}
 }
 
-// MockInventoryAccessorMockRecorder is the mock recorder for MockInventoryAccessor.
-type MockInventoryAccessorMockRecorder struct {
-	mock *MockInventoryAccessor
+// MockIssueBookStoreMockRecorder is the mock recorder for MockIssueBookStore.
+type MockIssueBookStoreMockRecorder struct {
+	mock *MockIssueBookStore
 }
 
-// NewMockInventoryAccessor creates a new mock instance.
-func NewMockInventoryAccessor(ctrl *gomock.Controller) *MockInventoryAccessor {
-	mock := &MockInventoryAccessor{ctrl: ctrl}
-	mock.recorder = &MockInventoryAccessorMockRecorder{mock}
+// NewMockIssueBookStore creates a new mock instance.
+func NewMockIssueBookStore(ctrl *gomock.Controller) *MockIssueBookStore {
+	mock := &MockIssueBookStore{ctrl: ctrl}
+	mock.recorder = &MockIssueBookStoreMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockInventoryAccessor) EXPECT() *MockInventoryAccessorMockRecorder {
+func (m *MockIssueBookStore) EXPECT() *MockIssueBookStoreMockRecorder {
 	return m.recorder
 }
 
-// ListInstances mocks base method.
-func (m *MockInventoryAccessor) ListInstances(ctx context.Context, service observation.ServiceName) ([]observation.InstanceName, error) {
+// UpdateIssueBook mocks base method.
+func (m *MockIssueBookStore) UpdateIssueBook(f func(*domain.IssueBook)) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListInstances", ctx, service)
-	ret0, _ := ret[0].([]observation.InstanceName)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	m.ctrl.Call(m, "UpdateIssueBook", f)
 }
 
-// ListInstances indicates an expected call of ListInstances.
-func (mr *MockInventoryAccessorMockRecorder) ListInstances(ctx, service any) *gomock.Call {
+// UpdateIssueBook indicates an expected call of UpdateIssueBook.
+func (mr *MockIssueBookStoreMockRecorder) UpdateIssueBook(f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListInstances", reflect.TypeOf((*MockInventoryAccessor)(nil).ListInstances), ctx, service)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIssueBook", reflect.TypeOf((*MockIssueBookStore)(nil).UpdateIssueBook), f)
 }
 
-// ListServices mocks base method.
-func (m *MockInventoryAccessor) ListServices(ctx context.Context) ([]observation.ServiceName, error) {
+// ViewIssueBook mocks base method.
+func (m *MockIssueBookStore) ViewIssueBook(f func(*domain.IssueBook)) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListServices", ctx)
-	ret0, _ := ret[0].([]observation.ServiceName)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	m.ctrl.Call(m, "ViewIssueBook", f)
 }
 
-// ListServices indicates an expected call of ListServices.
-func (mr *MockInventoryAccessorMockRecorder) ListServices(ctx any) *gomock.Call {
+// ViewIssueBook indicates an expected call of ViewIssueBook.
+func (mr *MockIssueBookStoreMockRecorder) ViewIssueBook(f any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListServices", reflect.TypeOf((*MockInventoryAccessor)(nil).ListServices), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ViewIssueBook", reflect.TypeOf((*MockIssueBookStore)(nil).ViewIssueBook), f)
 }
 
-// MockLogAccessor is a mock of LogAccessor interface.
-type MockLogAccessor struct {
+// MockTraceStream is a mock of TraceStream interface.
+type MockTraceStream struct {
 	ctrl     *gomock.Controller
-	recorder *MockLogAccessorMockRecorder
+	recorder *MockTraceStreamMockRecorder
 	isgomock struct{}
 }
 
-// MockLogAccessorMockRecorder is the mock recorder for MockLogAccessor.
-type MockLogAccessorMockRecorder struct {
-	mock *MockLogAccessor
+// MockTraceStreamMockRecorder is the mock recorder for MockTraceStream.
+type MockTraceStreamMockRecorder struct {
+	mock *MockTraceStream
 }
 
-// NewMockLogAccessor creates a new mock instance.
-func NewMockLogAccessor(ctrl *gomock.Controller) *MockLogAccessor {
-	mock := &MockLogAccessor{ctrl: ctrl}
-	mock.recorder = &MockLogAccessorMockRecorder{mock}
+// NewMockTraceStream creates a new mock instance.
+func NewMockTraceStream(ctrl *gomock.Controller) *MockTraceStream {
+	mock := &MockTraceStream{ctrl: ctrl}
+	mock.recorder = &MockTraceStreamMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockLogAccessor) EXPECT() *MockLogAccessorMockRecorder {
+func (m *MockTraceStream) EXPECT() *MockTraceStreamMockRecorder {
 	return m.recorder
 }
 
-// AppendLogs mocks base method.
-func (m *MockLogAccessor) AppendLogs(ctx context.Context, instance observation.Instance, logs []observation.LogLine) error {
+// AppendTrace mocks base method.
+func (m *MockTraceStream) AppendTrace(p []byte) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendLogs", ctx, instance, logs)
+	ret := m.ctrl.Call(m, "AppendTrace", p)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// AppendLogs indicates an expected call of AppendLogs.
-func (mr *MockLogAccessorMockRecorder) AppendLogs(ctx, instance, logs any) *gomock.Call {
+// AppendTrace indicates an expected call of AppendTrace.
+func (mr *MockTraceStreamMockRecorder) AppendTrace(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogs", reflect.TypeOf((*MockLogAccessor)(nil).AppendLogs), ctx, instance, logs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendTrace", reflect.TypeOf((*MockTraceStream)(nil).AppendTrace), p)
 }
 
-// ListLogs mocks base method.
-func (m *MockLogAccessor) ListLogs(ctx context.Context, service observation.ServiceName, from, to time.Time) ([]domain.StoredLog, error) {
+// CloseTrace mocks base method.
+func (m *MockTraceStream) CloseTrace(broken bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogs", ctx, service, from, to)
-	ret0, _ := ret[0].([]domain.StoredLog)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	m.ctrl.Call(m, "CloseTrace", broken)
 }
 
-// ListLogs indicates an expected call of ListLogs.
-func (mr *MockLogAccessorMockRecorder) ListLogs(ctx, service, from, to any) *gomock.Call {
+// CloseTrace indicates an expected call of CloseTrace.
+func (mr *MockTraceStreamMockRecorder) CloseTrace(broken any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogs", reflect.TypeOf((*MockLogAccessor)(nil).ListLogs), ctx, service, from, to)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseTrace", reflect.TypeOf((*MockTraceStream)(nil).CloseTrace), broken)
 }
 
-// MockTraceAccessor is a mock of TraceAccessor interface.
-type MockTraceAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockTraceAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockTraceAccessorMockRecorder is the mock recorder for MockTraceAccessor.
-type MockTraceAccessorMockRecorder struct {
-	mock *MockTraceAccessor
-}
-
-// NewMockTraceAccessor creates a new mock instance.
-func NewMockTraceAccessor(ctrl *gomock.Controller) *MockTraceAccessor {
-	mock := &MockTraceAccessor{ctrl: ctrl}
-	mock.recorder = &MockTraceAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockTraceAccessor) EXPECT() *MockTraceAccessorMockRecorder {
-	return m.recorder
-}
-
-// AppendTraceChunks mocks base method.
-func (m *MockTraceAccessor) AppendTraceChunks(ctx context.Context, instance observation.Instance, chunks []observation.TraceChunk) error {
+// TraceBroken mocks base method.
+func (m *MockTraceStream) TraceBroken() bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendTraceChunks", ctx, instance, chunks)
-	ret0, _ := ret[0].(error)
+	ret := m.ctrl.Call(m, "TraceBroken")
+	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
-// AppendTraceChunks indicates an expected call of AppendTraceChunks.
-func (mr *MockTraceAccessorMockRecorder) AppendTraceChunks(ctx, instance, chunks any) *gomock.Call {
+// TraceBroken indicates an expected call of TraceBroken.
+func (mr *MockTraceStreamMockRecorder) TraceBroken() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendTraceChunks", reflect.TypeOf((*MockTraceAccessor)(nil).AppendTraceChunks), ctx, instance, chunks)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceBroken", reflect.TypeOf((*MockTraceStream)(nil).TraceBroken))
 }
 
-// ListTraceChunks mocks base method.
-func (m *MockTraceAccessor) ListTraceChunks(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, from, to time.Time) ([]observation.TraceChunk, error) {
+// TraceReader mocks base method.
+func (m *MockTraceStream) TraceReader() io.Reader {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListTraceChunks", ctx, service, instance, from, to)
-	ret0, _ := ret[0].([]observation.TraceChunk)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListTraceChunks indicates an expected call of ListTraceChunks.
-func (mr *MockTraceAccessorMockRecorder) ListTraceChunks(ctx, service, instance, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTraceChunks", reflect.TypeOf((*MockTraceAccessor)(nil).ListTraceChunks), ctx, service, instance, from, to)
-}
-
-// ListTraceRanges mocks base method.
-func (m *MockTraceAccessor) ListTraceRanges(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, from, to time.Time) ([]domain.TimeRange, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListTraceRanges", ctx, service, instance, from, to)
-	ret0, _ := ret[0].([]domain.TimeRange)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListTraceRanges indicates an expected call of ListTraceRanges.
-func (mr *MockTraceAccessorMockRecorder) ListTraceRanges(ctx, service, instance, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTraceRanges", reflect.TypeOf((*MockTraceAccessor)(nil).ListTraceRanges), ctx, service, instance, from, to)
-}
-
-// MockSnapshotAccessor is a mock of SnapshotAccessor interface.
-type MockSnapshotAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockSnapshotAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockSnapshotAccessorMockRecorder is the mock recorder for MockSnapshotAccessor.
-type MockSnapshotAccessorMockRecorder struct {
-	mock *MockSnapshotAccessor
-}
-
-// NewMockSnapshotAccessor creates a new mock instance.
-func NewMockSnapshotAccessor(ctrl *gomock.Controller) *MockSnapshotAccessor {
-	mock := &MockSnapshotAccessor{ctrl: ctrl}
-	mock.recorder = &MockSnapshotAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockSnapshotAccessor) EXPECT() *MockSnapshotAccessorMockRecorder {
-	return m.recorder
-}
-
-// AppendSnapshots mocks base method.
-func (m *MockSnapshotAccessor) AppendSnapshots(ctx context.Context, instance observation.Instance, snapshots []observation.GoroutineSnapshot) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendSnapshots", ctx, instance, snapshots)
-	ret0, _ := ret[0].(error)
+	ret := m.ctrl.Call(m, "TraceReader")
+	ret0, _ := ret[0].(io.Reader)
 	return ret0
 }
 
-// AppendSnapshots indicates an expected call of AppendSnapshots.
-func (mr *MockSnapshotAccessorMockRecorder) AppendSnapshots(ctx, instance, snapshots any) *gomock.Call {
+// TraceReader indicates an expected call of TraceReader.
+func (mr *MockTraceStreamMockRecorder) TraceReader() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendSnapshots", reflect.TypeOf((*MockSnapshotAccessor)(nil).AppendSnapshots), ctx, instance, snapshots)
-}
-
-// ListSnapshots mocks base method.
-func (m *MockSnapshotAccessor) ListSnapshots(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, from, to time.Time) ([]observation.GoroutineSnapshot, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListSnapshots", ctx, service, instance, from, to)
-	ret0, _ := ret[0].([]observation.GoroutineSnapshot)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListSnapshots indicates an expected call of ListSnapshots.
-func (mr *MockSnapshotAccessorMockRecorder) ListSnapshots(ctx, service, instance, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSnapshots", reflect.TypeOf((*MockSnapshotAccessor)(nil).ListSnapshots), ctx, service, instance, from, to)
-}
-
-// MockLeakCheckAccessor is a mock of LeakCheckAccessor interface.
-type MockLeakCheckAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockLeakCheckAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockLeakCheckAccessorMockRecorder is the mock recorder for MockLeakCheckAccessor.
-type MockLeakCheckAccessorMockRecorder struct {
-	mock *MockLeakCheckAccessor
-}
-
-// NewMockLeakCheckAccessor creates a new mock instance.
-func NewMockLeakCheckAccessor(ctrl *gomock.Controller) *MockLeakCheckAccessor {
-	mock := &MockLeakCheckAccessor{ctrl: ctrl}
-	mock.recorder = &MockLeakCheckAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockLeakCheckAccessor) EXPECT() *MockLeakCheckAccessorMockRecorder {
-	return m.recorder
-}
-
-// AppendLeakChecks mocks base method.
-func (m *MockLeakCheckAccessor) AppendLeakChecks(ctx context.Context, instance observation.Instance, checks []observation.GoroutineLeakCheck) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendLeakChecks", ctx, instance, checks)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AppendLeakChecks indicates an expected call of AppendLeakChecks.
-func (mr *MockLeakCheckAccessorMockRecorder) AppendLeakChecks(ctx, instance, checks any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLeakChecks", reflect.TypeOf((*MockLeakCheckAccessor)(nil).AppendLeakChecks), ctx, instance, checks)
-}
-
-// ListLeakChecks mocks base method.
-func (m *MockLeakCheckAccessor) ListLeakChecks(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, from, to time.Time) ([]observation.GoroutineLeakCheck, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLeakChecks", ctx, service, instance, from, to)
-	ret0, _ := ret[0].([]observation.GoroutineLeakCheck)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListLeakChecks indicates an expected call of ListLeakChecks.
-func (mr *MockLeakCheckAccessorMockRecorder) ListLeakChecks(ctx, service, instance, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLeakChecks", reflect.TypeOf((*MockLeakCheckAccessor)(nil).ListLeakChecks), ctx, service, instance, from, to)
-}
-
-// MockLifecycleAccessor is a mock of LifecycleAccessor interface.
-type MockLifecycleAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockLifecycleAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockLifecycleAccessorMockRecorder is the mock recorder for MockLifecycleAccessor.
-type MockLifecycleAccessorMockRecorder struct {
-	mock *MockLifecycleAccessor
-}
-
-// NewMockLifecycleAccessor creates a new mock instance.
-func NewMockLifecycleAccessor(ctrl *gomock.Controller) *MockLifecycleAccessor {
-	mock := &MockLifecycleAccessor{ctrl: ctrl}
-	mock.recorder = &MockLifecycleAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockLifecycleAccessor) EXPECT() *MockLifecycleAccessorMockRecorder {
-	return m.recorder
-}
-
-// AppendLifecycle mocks base method.
-func (m *MockLifecycleAccessor) AppendLifecycle(ctx context.Context, service observation.ServiceName, events []domain.LifecycleEvent) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendLifecycle", ctx, service, events)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AppendLifecycle indicates an expected call of AppendLifecycle.
-func (mr *MockLifecycleAccessorMockRecorder) AppendLifecycle(ctx, service, events any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLifecycle", reflect.TypeOf((*MockLifecycleAccessor)(nil).AppendLifecycle), ctx, service, events)
-}
-
-// LastLifecycle mocks base method.
-func (m *MockLifecycleAccessor) LastLifecycle(ctx context.Context, service observation.ServiceName, instance observation.InstanceName) (domain.LifecycleEvent, bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LastLifecycle", ctx, service, instance)
-	ret0, _ := ret[0].(domain.LifecycleEvent)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// LastLifecycle indicates an expected call of LastLifecycle.
-func (mr *MockLifecycleAccessorMockRecorder) LastLifecycle(ctx, service, instance any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastLifecycle", reflect.TypeOf((*MockLifecycleAccessor)(nil).LastLifecycle), ctx, service, instance)
-}
-
-// ListLifecycle mocks base method.
-func (m *MockLifecycleAccessor) ListLifecycle(ctx context.Context, service observation.ServiceName, from, to time.Time) ([]domain.LifecycleEvent, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLifecycle", ctx, service, from, to)
-	ret0, _ := ret[0].([]domain.LifecycleEvent)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListLifecycle indicates an expected call of ListLifecycle.
-func (mr *MockLifecycleAccessorMockRecorder) ListLifecycle(ctx, service, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLifecycle", reflect.TypeOf((*MockLifecycleAccessor)(nil).ListLifecycle), ctx, service, from, to)
-}
-
-// MockMetricAccessor is a mock of MetricAccessor interface.
-type MockMetricAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockMetricAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockMetricAccessorMockRecorder is the mock recorder for MockMetricAccessor.
-type MockMetricAccessorMockRecorder struct {
-	mock *MockMetricAccessor
-}
-
-// NewMockMetricAccessor creates a new mock instance.
-func NewMockMetricAccessor(ctrl *gomock.Controller) *MockMetricAccessor {
-	mock := &MockMetricAccessor{ctrl: ctrl}
-	mock.recorder = &MockMetricAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockMetricAccessor) EXPECT() *MockMetricAccessorMockRecorder {
-	return m.recorder
-}
-
-// AppendMetrics mocks base method.
-func (m *MockMetricAccessor) AppendMetrics(ctx context.Context, service observation.ServiceName, samples []domain.MetricSample) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendMetrics", ctx, service, samples)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AppendMetrics indicates an expected call of AppendMetrics.
-func (mr *MockMetricAccessorMockRecorder) AppendMetrics(ctx, service, samples any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendMetrics", reflect.TypeOf((*MockMetricAccessor)(nil).AppendMetrics), ctx, service, samples)
-}
-
-// ListMetrics mocks base method.
-func (m *MockMetricAccessor) ListMetrics(ctx context.Context, service observation.ServiceName, from, to time.Time) ([]domain.MetricSample, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListMetrics", ctx, service, from, to)
-	ret0, _ := ret[0].([]domain.MetricSample)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListMetrics indicates an expected call of ListMetrics.
-func (mr *MockMetricAccessorMockRecorder) ListMetrics(ctx, service, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMetrics", reflect.TypeOf((*MockMetricAccessor)(nil).ListMetrics), ctx, service, from, to)
-}
-
-// MockBreakdownAccessor is a mock of BreakdownAccessor interface.
-type MockBreakdownAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockBreakdownAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockBreakdownAccessorMockRecorder is the mock recorder for MockBreakdownAccessor.
-type MockBreakdownAccessorMockRecorder struct {
-	mock *MockBreakdownAccessor
-}
-
-// NewMockBreakdownAccessor creates a new mock instance.
-func NewMockBreakdownAccessor(ctrl *gomock.Controller) *MockBreakdownAccessor {
-	mock := &MockBreakdownAccessor{ctrl: ctrl}
-	mock.recorder = &MockBreakdownAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockBreakdownAccessor) EXPECT() *MockBreakdownAccessorMockRecorder {
-	return m.recorder
-}
-
-// AppendBreakdowns mocks base method.
-func (m *MockBreakdownAccessor) AppendBreakdowns(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, rows []domain.MinuteBreakdown) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendBreakdowns", ctx, service, instance, rows)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AppendBreakdowns indicates an expected call of AppendBreakdowns.
-func (mr *MockBreakdownAccessorMockRecorder) AppendBreakdowns(ctx, service, instance, rows any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendBreakdowns", reflect.TypeOf((*MockBreakdownAccessor)(nil).AppendBreakdowns), ctx, service, instance, rows)
-}
-
-// ListBreakdowns mocks base method.
-func (m *MockBreakdownAccessor) ListBreakdowns(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, from, to time.Time) ([]domain.MinuteBreakdown, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListBreakdowns", ctx, service, instance, from, to)
-	ret0, _ := ret[0].([]domain.MinuteBreakdown)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListBreakdowns indicates an expected call of ListBreakdowns.
-func (mr *MockBreakdownAccessorMockRecorder) ListBreakdowns(ctx, service, instance, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBreakdowns", reflect.TypeOf((*MockBreakdownAccessor)(nil).ListBreakdowns), ctx, service, instance, from, to)
-}
-
-// MockIssueAccessor is a mock of IssueAccessor interface.
-type MockIssueAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockIssueAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockIssueAccessorMockRecorder is the mock recorder for MockIssueAccessor.
-type MockIssueAccessorMockRecorder struct {
-	mock *MockIssueAccessor
-}
-
-// NewMockIssueAccessor creates a new mock instance.
-func NewMockIssueAccessor(ctrl *gomock.Controller) *MockIssueAccessor {
-	mock := &MockIssueAccessor{ctrl: ctrl}
-	mock.recorder = &MockIssueAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockIssueAccessor) EXPECT() *MockIssueAccessorMockRecorder {
-	return m.recorder
-}
-
-// ListIssues mocks base method.
-func (m *MockIssueAccessor) ListIssues(ctx context.Context, service observation.ServiceName, from, to time.Time) ([]domain.DatedIssue, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListIssues", ctx, service, from, to)
-	ret0, _ := ret[0].([]domain.DatedIssue)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListIssues indicates an expected call of ListIssues.
-func (mr *MockIssueAccessorMockRecorder) ListIssues(ctx, service, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIssues", reflect.TypeOf((*MockIssueAccessor)(nil).ListIssues), ctx, service, from, to)
-}
-
-// ReadIssue mocks base method.
-func (m *MockIssueAccessor) ReadIssue(ctx context.Context, service observation.ServiceName, day time.Time, name string) (domain.Issue, bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadIssue", ctx, service, day, name)
-	ret0, _ := ret[0].(domain.Issue)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ReadIssue indicates an expected call of ReadIssue.
-func (mr *MockIssueAccessorMockRecorder) ReadIssue(ctx, service, day, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadIssue", reflect.TypeOf((*MockIssueAccessor)(nil).ReadIssue), ctx, service, day, name)
-}
-
-// WriteIssue mocks base method.
-func (m *MockIssueAccessor) WriteIssue(ctx context.Context, service observation.ServiceName, day time.Time, issue domain.Issue) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteIssue", ctx, service, day, issue)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// WriteIssue indicates an expected call of WriteIssue.
-func (mr *MockIssueAccessorMockRecorder) WriteIssue(ctx, service, day, issue any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteIssue", reflect.TypeOf((*MockIssueAccessor)(nil).WriteIssue), ctx, service, day, issue)
-}
-
-// MockPreservedTraceAccessor is a mock of PreservedTraceAccessor interface.
-type MockPreservedTraceAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockPreservedTraceAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockPreservedTraceAccessorMockRecorder is the mock recorder for MockPreservedTraceAccessor.
-type MockPreservedTraceAccessorMockRecorder struct {
-	mock *MockPreservedTraceAccessor
-}
-
-// NewMockPreservedTraceAccessor creates a new mock instance.
-func NewMockPreservedTraceAccessor(ctrl *gomock.Controller) *MockPreservedTraceAccessor {
-	mock := &MockPreservedTraceAccessor{ctrl: ctrl}
-	mock.recorder = &MockPreservedTraceAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockPreservedTraceAccessor) EXPECT() *MockPreservedTraceAccessorMockRecorder {
-	return m.recorder
-}
-
-// ListPreservedTraces mocks base method.
-func (m *MockPreservedTraceAccessor) ListPreservedTraces(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, kind domain.PreservedKind, day time.Time, dir string) ([]domain.PreservedTrace, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListPreservedTraces", ctx, service, instance, kind, day, dir)
-	ret0, _ := ret[0].([]domain.PreservedTrace)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListPreservedTraces indicates an expected call of ListPreservedTraces.
-func (mr *MockPreservedTraceAccessorMockRecorder) ListPreservedTraces(ctx, service, instance, kind, day, dir any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPreservedTraces", reflect.TypeOf((*MockPreservedTraceAccessor)(nil).ListPreservedTraces), ctx, service, instance, kind, day, dir)
-}
-
-// ListPreservedTracesBetween mocks base method.
-func (m *MockPreservedTraceAccessor) ListPreservedTracesBetween(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, from, to time.Time) ([]domain.PreservedTrace, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListPreservedTracesBetween", ctx, service, instance, from, to)
-	ret0, _ := ret[0].([]domain.PreservedTrace)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListPreservedTracesBetween indicates an expected call of ListPreservedTracesBetween.
-func (mr *MockPreservedTraceAccessorMockRecorder) ListPreservedTracesBetween(ctx, service, instance, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPreservedTracesBetween", reflect.TypeOf((*MockPreservedTraceAccessor)(nil).ListPreservedTracesBetween), ctx, service, instance, from, to)
-}
-
-// ReadPreservedTrace mocks base method.
-func (m *MockPreservedTraceAccessor) ReadPreservedTrace(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, p domain.PreservedTrace) (observation.TraceChunk, bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadPreservedTrace", ctx, service, instance, p)
-	ret0, _ := ret[0].(observation.TraceChunk)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ReadPreservedTrace indicates an expected call of ReadPreservedTrace.
-func (mr *MockPreservedTraceAccessorMockRecorder) ReadPreservedTrace(ctx, service, instance, p any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPreservedTrace", reflect.TypeOf((*MockPreservedTraceAccessor)(nil).ReadPreservedTrace), ctx, service, instance, p)
-}
-
-// SavePreservedTrace mocks base method.
-func (m *MockPreservedTraceAccessor) SavePreservedTrace(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, p domain.PreservedTrace, chunk observation.TraceChunk) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SavePreservedTrace", ctx, service, instance, p, chunk)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SavePreservedTrace indicates an expected call of SavePreservedTrace.
-func (mr *MockPreservedTraceAccessorMockRecorder) SavePreservedTrace(ctx, service, instance, p, chunk any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SavePreservedTrace", reflect.TypeOf((*MockPreservedTraceAccessor)(nil).SavePreservedTrace), ctx, service, instance, p, chunk)
-}
-
-// MockLogWriterAccessor is a mock of LogWriterAccessor interface.
-type MockLogWriterAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockLogWriterAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockLogWriterAccessorMockRecorder is the mock recorder for MockLogWriterAccessor.
-type MockLogWriterAccessorMockRecorder struct {
-	mock *MockLogWriterAccessor
-}
-
-// NewMockLogWriterAccessor creates a new mock instance.
-func NewMockLogWriterAccessor(ctrl *gomock.Controller) *MockLogWriterAccessor {
-	mock := &MockLogWriterAccessor{ctrl: ctrl}
-	mock.recorder = &MockLogWriterAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockLogWriterAccessor) EXPECT() *MockLogWriterAccessorMockRecorder {
-	return m.recorder
-}
-
-// AppendLogWriters mocks base method.
-func (m *MockLogWriterAccessor) AppendLogWriters(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, writers []domain.LogWriter) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendLogWriters", ctx, service, instance, writers)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AppendLogWriters indicates an expected call of AppendLogWriters.
-func (mr *MockLogWriterAccessorMockRecorder) AppendLogWriters(ctx, service, instance, writers any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLogWriters", reflect.TypeOf((*MockLogWriterAccessor)(nil).AppendLogWriters), ctx, service, instance, writers)
-}
-
-// ListLogWriters mocks base method.
-func (m *MockLogWriterAccessor) ListLogWriters(ctx context.Context, service observation.ServiceName, instance observation.InstanceName, from, to time.Time) ([]domain.LogWriter, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListLogWriters", ctx, service, instance, from, to)
-	ret0, _ := ret[0].([]domain.LogWriter)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListLogWriters indicates an expected call of ListLogWriters.
-func (mr *MockLogWriterAccessorMockRecorder) ListLogWriters(ctx, service, instance, from, to any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLogWriters", reflect.TypeOf((*MockLogWriterAccessor)(nil).ListLogWriters), ctx, service, instance, from, to)
-}
-
-// MockCheckpointAccessor is a mock of CheckpointAccessor interface.
-type MockCheckpointAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockCheckpointAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockCheckpointAccessorMockRecorder is the mock recorder for MockCheckpointAccessor.
-type MockCheckpointAccessorMockRecorder struct {
-	mock *MockCheckpointAccessor
-}
-
-// NewMockCheckpointAccessor creates a new mock instance.
-func NewMockCheckpointAccessor(ctrl *gomock.Controller) *MockCheckpointAccessor {
-	mock := &MockCheckpointAccessor{ctrl: ctrl}
-	mock.recorder = &MockCheckpointAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockCheckpointAccessor) EXPECT() *MockCheckpointAccessorMockRecorder {
-	return m.recorder
-}
-
-// ModifyCheckpoints mocks base method.
-func (m *MockCheckpointAccessor) ModifyCheckpoints(ctx context.Context, service observation.ServiceName, modify func(domain.Checkpoints) domain.Checkpoints) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ModifyCheckpoints", ctx, service, modify)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ModifyCheckpoints indicates an expected call of ModifyCheckpoints.
-func (mr *MockCheckpointAccessorMockRecorder) ModifyCheckpoints(ctx, service, modify any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ModifyCheckpoints", reflect.TypeOf((*MockCheckpointAccessor)(nil).ModifyCheckpoints), ctx, service, modify)
-}
-
-// ReadCheckpoints mocks base method.
-func (m *MockCheckpointAccessor) ReadCheckpoints(ctx context.Context, service observation.ServiceName) (domain.Checkpoints, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadCheckpoints", ctx, service)
-	ret0, _ := ret[0].(domain.Checkpoints)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadCheckpoints indicates an expected call of ReadCheckpoints.
-func (mr *MockCheckpointAccessorMockRecorder) ReadCheckpoints(ctx, service any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadCheckpoints", reflect.TypeOf((*MockCheckpointAccessor)(nil).ReadCheckpoints), ctx, service)
-}
-
-// UpdateCheckpoint mocks base method.
-func (m *MockCheckpointAccessor) UpdateCheckpoint(ctx context.Context, service observation.ServiceName, process domain.Process, key string, cp domain.Checkpoint) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateCheckpoint", ctx, service, process, key, cp)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateCheckpoint indicates an expected call of UpdateCheckpoint.
-func (mr *MockCheckpointAccessorMockRecorder) UpdateCheckpoint(ctx, service, process, key, cp any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCheckpoint", reflect.TypeOf((*MockCheckpointAccessor)(nil).UpdateCheckpoint), ctx, service, process, key, cp)
-}
-
-// MockDataFileAccessor is a mock of DataFileAccessor interface.
-type MockDataFileAccessor struct {
-	ctrl     *gomock.Controller
-	recorder *MockDataFileAccessorMockRecorder
-	isgomock struct{}
-}
-
-// MockDataFileAccessorMockRecorder is the mock recorder for MockDataFileAccessor.
-type MockDataFileAccessorMockRecorder struct {
-	mock *MockDataFileAccessor
-}
-
-// NewMockDataFileAccessor creates a new mock instance.
-func NewMockDataFileAccessor(ctrl *gomock.Controller) *MockDataFileAccessor {
-	mock := &MockDataFileAccessor{ctrl: ctrl}
-	mock.recorder = &MockDataFileAccessorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockDataFileAccessor) EXPECT() *MockDataFileAccessorMockRecorder {
-	return m.recorder
-}
-
-// ListDataFiles mocks base method.
-func (m *MockDataFileAccessor) ListDataFiles(ctx context.Context) ([]domain.DataFile, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListDataFiles", ctx)
-	ret0, _ := ret[0].([]domain.DataFile)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListDataFiles indicates an expected call of ListDataFiles.
-func (mr *MockDataFileAccessorMockRecorder) ListDataFiles(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDataFiles", reflect.TypeOf((*MockDataFileAccessor)(nil).ListDataFiles), ctx)
-}
-
-// RemoveDataFiles mocks base method.
-func (m *MockDataFileAccessor) RemoveDataFiles(ctx context.Context, files []domain.DataFile) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveDataFiles", ctx, files)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RemoveDataFiles indicates an expected call of RemoveDataFiles.
-func (mr *MockDataFileAccessorMockRecorder) RemoveDataFiles(ctx, files any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveDataFiles", reflect.TypeOf((*MockDataFileAccessor)(nil).RemoveDataFiles), ctx, files)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceReader", reflect.TypeOf((*MockTraceStream)(nil).TraceReader))
 }

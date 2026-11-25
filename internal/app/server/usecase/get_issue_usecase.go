@@ -2,93 +2,63 @@ package usecase
 
 import (
 	"context"
-	"time"
+	"fmt"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/domain/observation"
 )
 
+// GetIssueUsecase は Issue の発生の時間軸と、1 つの発生 (指定がなければ最新) で影響の大きかった goroutine の詳細を返す
+type GetIssueUsecase struct {
+	index  domain.TraceIndexStore
+	issues domain.IssueBookStore
+}
+
+// GetIssueUsecaseInput の Occurrence は 1 から数える。0 なら最新
 type GetIssueUsecaseInput struct {
-	Service observation.ServiceName
-	Issue   string
-	From    time.Time
-	To      time.Time
-	Now     time.Time
-}
-
-// OccurrenceDetail の TraceRetained は前後の execution trace がまだ保持期間の中にあるか
-type OccurrenceDetail struct {
-	domain.Occurrence
-	TraceRetained bool
-}
-
-type DayCount struct {
-	Day   time.Time
-	Count int
+	ID         domain.IssueID
+	Occurrence int
 }
 
 type GetIssueUsecaseOutput struct {
-	Summary       IssueSummary
-	Occurrences   []OccurrenceDetail
-	CountsByDay   []DayCount
-	RetainedSince time.Time
-}
-
-type GetIssueUsecase struct {
-	retention domain.Retention
-	inventory domain.InventoryAccessor
-	issues    domain.IssueAccessor
+	Issue      domain.Issue
+	Certainty  domain.Certainty
+	Occurrence int
+	Impact     domain.Impact
+	NextAction string
+	Phases     []domain.PhaseRange
 }
 
 func (us *UseCase) NewGetIssueUsecase() *GetIssueUsecase {
-	return &GetIssueUsecase{retention: us.settings.Retention, inventory: us.inventory, issues: us.issues}
+	return &GetIssueUsecase{index: us.index, issues: us.issues}
 }
 
-func (u *GetIssueUsecase) Exec(ctx context.Context, in GetIssueUsecaseInput) (GetIssueUsecaseOutput, error) {
-	if err := requireService(ctx, u.inventory, in.Service); err != nil {
-		return GetIssueUsecaseOutput{}, err
-	}
-	since := u.retention.RetainedSince(domain.DataIssues, in.Now)
-	from, to := in.From, in.To
-	if to.IsZero() {
-		to = in.Now
-	}
-	if from.IsZero() {
-		from = since
-	}
-	days, err := u.issues.ListIssues(ctx, in.Service, since, to)
+func (u *GetIssueUsecase) Exec(_ context.Context, in GetIssueUsecaseInput) (GetIssueUsecaseOutput, error) {
+	var is domain.Issue
+	var err error
+	u.issues.ViewIssueBook(func(b *domain.IssueBook) {
+		found, ok := b.Issue(in.ID)
+		if !ok {
+			err = domain.IssueNotFound(in.ID, b.Issues())
+			return
+		}
+		is = *found
+		is.Occurrences = append([]domain.Occurrence(nil), found.Occurrences...)
+	})
 	if err != nil {
 		return GetIssueUsecaseOutput{}, err
 	}
-	var (
-		mine  []domain.DatedIssue
-		names []string
-		seen  = map[string]bool{}
-	)
-	for _, d := range days {
-		if d.Issue.Name == in.Issue {
-			mine = append(mine, d)
-		} else if !seen[d.Issue.Name] {
-			seen[d.Issue.Name] = true
-			names = append(names, d.Issue.Name)
-		}
+	n := in.Occurrence
+	if n == 0 {
+		n = len(is.Occurrences)
 	}
-	sums := summarizeIssues(mine, from, to)
-	if len(sums) == 0 {
-		return GetIssueUsecaseOutput{}, domain.ErrNotFound.WithCandidates("no occurrence of the issue "+in.Issue+" in the period", domain.Candidates(in.Issue, names, candidateLimit))
+	o, ok := is.Occurrence(n)
+	if !ok {
+		return GetIssueUsecaseOutput{}, domain.ErrNotFound.With(fmt.Sprintf("issue %s has occurrences 1 to %d", is.ID, len(is.Occurrences)))
 	}
-	out := GetIssueUsecaseOutput{Summary: sums[0], RetainedSince: since}
-	traceSince := u.retention.RetainedSince(domain.DataExecutionTracesAroundIssues, in.Now)
-	for _, d := range mine {
-		n := 0
-		for _, o := range d.Issue.Occurrences {
-			if (!o.Ongoing() && o.EndedAt.Before(from)) || o.StartedAt.After(to) {
-				continue
-			}
-			n++
-			out.Occurrences = append(out.Occurrences, OccurrenceDetail{Occurrence: o, TraceRetained: o.TraceFile != "" && !o.StartedAt.Before(traceSince)})
-		}
-		out.CountsByDay = append(out.CountsByDay, DayCount{Day: d.Day, Count: n})
-	}
+	out := GetIssueUsecaseOutput{Issue: is, Certainty: is.Certainty(), Occurrence: n, NextAction: is.Kind.NextAction()}
+	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) {
+		out.Impact = domain.ImpactOf(ix, &is, o)
+		out.Phases = domain.PhasesOf(ix.Marks(), ix.Last())
+	})
 	return out, nil
 }

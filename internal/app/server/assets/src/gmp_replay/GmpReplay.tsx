@@ -105,7 +105,6 @@ export function GmpReplay(props: GmpReplayIslandProps) {
       <div class="replay-head">
         <h2>
           GMP replay
-          {current.fromPreserved && <span class="badge inference" title="the full execution trace of this time is past its retention; this replays the trace kept around an issue occurrence or an error log">from a kept trace</span>}
         </h2>
         <FocusSince window={current} g={props.focusGoroutine} t={t} before={index === 0 ? (props.focusBefore ?? undefined) : undefined} onSeek={seekTo} onNavigate={props.onNavigate} />
       </div>
@@ -450,8 +449,9 @@ interface ChipProps {
 // Chip は G 1 つ。丸の色は主因、赤い輪はリーク。押すとその G の診断へ移る
 function Chip({ g, dot, wide, wait, focus, leak, replay, onSelect }: ChipProps) {
   const entry = replay.entryOf(g.g)
+  const agent = replay.isAgent(g.g)
   const tip = [
-    `G${g.g}${leak ? ` (leaked · ${leak.certainty} · ${leak.count} of ${leak.of} at the same place)` : ""}`,
+    `G${g.g}${leak ? ` (leaked · ${leak.certainty} · ${leak.count} of ${leak.of} at the same place)` : ""}${agent ? " (gorviz agent)" : ""}`,
     `entry: ${entry || "?"}`,
     g.fn && `now at: ${g.fn}`,
     g.reason && `wait reason: ${g.reason}`,
@@ -459,9 +459,10 @@ function Chip({ g, dot, wide, wait, focus, leak, replay, onSelect }: ChipProps) 
     "click to diagnose this goroutine",
   ].filter(Boolean).join("\n")
   return (
-    <button type="button" class={`gchip${g.g === focus ? " is-focus" : ""}`} title={tip} onClick={() => onSelect(g.g)}>
+    <button type="button" class={`gchip${g.g === focus ? " is-focus" : ""}${agent ? " is-agent" : ""}`} title={tip} onClick={() => onSelect(g.g)}>
       <span class={`gdot ${dot}${leak ? " is-leaked" : ""}`}></span>
       G{g.g}
+      {agent && <small class="agent-mark">agent</small>}
       {wide && <small>{short(entry) || "entry unknown"}</small>}
       {wait && <small class="wait" title={`waiting in the run queue for ${wait}`}>{wait}</small>}
     </button>

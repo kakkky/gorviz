@@ -1,13 +1,10 @@
 package domain
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
-	"strings"
+	"strconv"
 	"time"
-
-	"github.com/kakkky/gorviz/internal/domain/observation"
 )
 
 type IssueKind string
@@ -23,345 +20,235 @@ const (
 
 var IssueKinds = []IssueKind{IssueGoroutineLeak, IssueCPUContention, IssueGCPressure, IssueLockContention, IssueLongSTW, IssueThreadExplosion}
 
+// NextAction は、どこを見直せばよいかの方向。直し方そのものは示さない
 func (k IssueKind) NextAction() string {
 	switch k {
 	case IssueGoroutineLeak:
-		return "Look at the go statement that created them and where they stop, and check that each goroutine has a way to end (context cancellation, closing the channel, a timeout)"
+		return "Look at the go statement that created the goroutines and where they are blocked, and check that they have a way to finish (context cancellation, closing the channel, a timeout)."
 	case IssueCPUContention:
-		return "Review the goroutines that used the CPU long at the same time, or the CPU given to the app (the container CPU limit, the number of instances)"
+		return "Review the work of the goroutines that used the CPU for long in the same period."
 	case IssueGCPressure:
-		return "Reduce the allocations of the goroutines with long mark assist, or review GOGC and GOMEMLIMIT"
+		return "Reduce the allocations of the goroutines with long mark assist, or review GOGC and GOMEMLIMIT."
 	case IssueLockContention:
-		return "Look at the functions that called Lock with the most waiting, and review how fine the lock is, how long it is held, and how it is split"
+		return "Look at the functions that called Lock with the most waiting, and review the granularity of the lock, how long it is held and how it is split."
 	case IssueLongSTW:
-		return "Look at the reason of the stop-the-world, and review the calls that cause it (runtime.ReadMemStats, runtime.GC, taking profiles, ...)"
+		return "Look at the reason of the stop-the-world and review the calls that cause it (runtime.ReadMemStats, runtime.GC, taking profiles and so on)."
 	case IssueThreadExplosion:
-		return "Look at where the syscalls and cgo calls are made, and limit how many run at the same time"
+		return "Look at where the syscalls and cgo calls are made, and limit how many of them run at the same time."
 	}
 	return ""
 }
 
-// Judge は発生を判定したやり方。同じ Issue でもやり方ごとに発生を追う
-type Judge string
+type Certainty string
 
 const (
-	JudgeByThreshold  Judge = "threshold"
-	JudgeByBaseline   Judge = "baseline"
-	JudgeByLeakCheck  Judge = "leak-check"
-	JudgeByLeakGrowth Judge = "leak-growth"
+	CertaintyFact      Certainty = "FACT"
+	CertaintyInference Certainty = "INFERENCE"
 )
 
-const (
-	schedP99Threshold     = time.Millisecond
-	gcShareThreshold      = 0.5
-	markAssistThreshold   = 0.05
-	stwThreshold          = time.Millisecond
-	threadLimit           = 10000
-	impactLimit           = 10
-	minSchedSamples       = 20
-	minLockWait           = time.Millisecond
-	leakGrowthMinSamples  = 6
-	leakGrowthMinIncrease = 10
-)
-
-// Impact は影響の大きかった goroutine (または同じスタック・同じ場所の goroutine のまとまり) 1 つ
-type Impact struct {
-	Goroutine         observation.GoroutineID   `json:"goroutine,omitempty"`
-	Goroutines        []observation.GoroutineID `json:"goroutines,omitempty"`
-	Entry             string                    `json:"entry,omitempty"`
-	Function          string                    `json:"function,omitempty"`
-	Location          string                    `json:"location,omitempty"`
-	CreatedBy         string                    `json:"createdBy,omitempty"`
-	CreatedByLocation string                    `json:"createdByLocation,omitempty"`
-	Reason            string                    `json:"reason,omitempty"`
-	Duration          time.Duration             `json:"duration,omitempty"`
-	Max               time.Duration             `json:"max,omitempty"`
-	Count             int                       `json:"count,omitempty"`
-	Of                int                       `json:"of,omitempty"`
-	Share             float64                   `json:"share,omitempty"`
-	HolderGoroutine   observation.GoroutineID   `json:"holderGoroutine,omitempty"`
-	HolderFunction    string                    `json:"holderFunction,omitempty"`
-	HolderLocation    string                    `json:"holderLocation,omitempty"`
-	Certainty         Certainty                 `json:"certainty,omitempty"`
+func stronger(a, b Certainty) Certainty {
+	if a == CertaintyFact || b == CertaintyFact {
+		return CertaintyFact
+	}
+	return CertaintyInference
 }
 
-// Finding は 1 回の判定で条件を満たしたこと。Sites は LOCK_CONTENTION の Lock を呼んだ場所ごとの行、GOROUTINE_LEAK のスタックごとの行
-type Finding struct {
+type IssueID string
+
+// LeakStack はリークした goroutine を同じ場所で待っているものごとにまとめたもの。Of は同じ場所で待っていた goroutine の数
+type LeakStack struct {
+	Creator    Frame
+	Blocked    Frame
+	Reason     string
+	Count      int
+	Of         int
+	Goroutines []GoroutineID
+	Certainty  Certainty
+}
+
+// Detection は判定 1 回で見つかった問題
+type Detection struct {
 	Kind      IssueKind
-	Subject   string
+	Target    string
 	Certainty Certainty
-	Judge     Judge
-	Value     float64
-	Reason    string
-	Impacts   []Impact
-	Sites     []Impact
+	From      time.Duration
+	To        time.Duration
+	Value     string
+	Leaks     []LeakStack
 }
 
-func IssueName(kind IssueKind, subject string) string {
-	return FileName(string(kind), subject)
+// Occurrence は同じ Issue が条件を満たし始めてから満たさなくなるまでの 1 回
+type Occurrence struct {
+	From      time.Duration
+	To        time.Duration
+	Phase     string
+	Certainty Certainty
+	Value     string
+	Leaks     []LeakStack
 }
 
-func (f Finding) IssueName() string { return IssueName(f.Kind, f.Subject) }
+type Issue struct {
+	ID          IssueID
+	Kind        IssueKind
+	Target      string
+	Occurrences []Occurrence
+}
 
-// JudgeChunk はチャンク 1 つを固定の線で判定する。LOCK_CONTENTION などインスタンス全体の値で判定するものは、サービスの名前を対象にする
-func JudgeChunk(service observation.ServiceName, c observation.TraceChunk) []Finding {
-	s := ChunkSample(c)
-	var out []Finding
-	if p99, ok := s.SchedP99(); ok && s.SchedLatency.N() >= minSchedSamples && p99 >= schedP99Threshold {
-		out = append(out, Finding{Kind: IssueCPUContention, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: p99.Seconds(),
-			Reason: fmt.Sprintf("p99 from RUNNABLE to RUNNING is %s (1ms or more)", p99), Impacts: topByCause(c, CauseRunnable)})
+func (i *Issue) Certainty() Certainty {
+	c := CertaintyInference
+	for _, o := range i.Occurrences {
+		c = stronger(c, o.Certainty)
 	}
-	if share := s.GCShare(); share >= gcShareThreshold {
-		out = append(out, Finding{Kind: IssueGCPressure, Subject: string(service), Certainty: CertaintyFact, Judge: JudgeByThreshold, Value: share,
-			Reason: fmt.Sprintf("the GC used %.1f%% of the CPU (50%% or more)", share*100), Impacts: topMarkAssist(c)})
-	} else if share := s.MarkAssistShare(); share > markAssistThreshold {
-		out = append(out, Finding{Kind: IssueGCPressure, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: share,
-			Reason: fmt.Sprintf("mark assist used %.1f%% of the CPU (over 5%%)", share*100), Impacts: topMarkAssist(c)})
-	}
-	if s.LockWait >= minLockWait && s.LockWait > s.Running {
-		out = append(out, Finding{Kind: IssueLockContention, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: s.LockWaitRatio(),
-			Reason: fmt.Sprintf("goroutines waited %s for locks, longer than they ran (%s)", s.LockWait, s.Running), Impacts: topByCause(c, CauseLockWait), Sites: lockSites(c)})
-	}
-	stws := map[string][]observation.GCRange{}
-	for _, r := range c.GC {
-		if r.Kind == observation.GCStopTheWorld && r.End-r.Start >= stwThreshold {
-			stws[r.Reason] = append(stws[r.Reason], r)
+	return c
+}
+
+// FirstPhase は発生のうち最も早いものがかかった phase
+func (i *Issue) FirstPhase() string {
+	for _, o := range i.Occurrences {
+		if o.Phase != "" {
+			return o.Phase
 		}
 	}
-	for _, reason := range slices.Sorted(mapKeysSeq(stws)) {
-		var longest time.Duration
-		var impacts []Impact
-		for _, r := range stws[reason] {
-			longest = max(longest, r.End-r.Start)
-			impacts = append(impacts, Impact{Goroutine: r.Goroutine, Entry: c.Entries[r.Goroutine], Reason: r.Reason, Duration: r.End - r.Start})
-		}
-		out = append(out, Finding{Kind: IssueLongSTW, Subject: reason, Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: longest.Seconds(),
-			Reason: fmt.Sprintf("one stop-the-world took %s (1ms or more)", longest), Impacts: topImpacts(impacts)})
-	}
-	if c.Threads > threadLimit/2 {
-		out = append(out, Finding{Kind: IssueThreadExplosion, Subject: string(service), Certainty: CertaintyInference, Judge: JudgeByThreshold, Value: float64(c.Threads),
-			Reason: fmt.Sprintf("%d OS threads (over half of the limit %d)", c.Threads, threadLimit), Impacts: append(topByCause(c, CauseIOWait), topByCause(c, CauseCgo)...)})
-	}
-	return out
+	return ""
 }
 
-func mapKeysSeq[K comparable, V any](m map[K]V) func(func(K) bool) {
-	return func(yield func(K) bool) {
-		for k := range m {
-			if !yield(k) {
-				return
+func (i *Issue) Occurrence(n int) (Occurrence, bool) {
+	if n < 1 || n > len(i.Occurrences) {
+		return Occurrence{}, false
+	}
+	return i.Occurrences[n-1], true
+}
+
+// TargetLabel は Issue の対象。アプリ全体で判定するものは "app"
+func (i *Issue) TargetLabel() string {
+	if i.Target == "" {
+		return "app"
+	}
+	return i.Target
+}
+
+type issueKey struct {
+	kind   IssueKind
+	target string
+}
+
+// IssueBook はセッションで見つけた Issue。解決の状態は持たない
+type IssueBook struct {
+	issues        []*Issue
+	byKey         map[issueKey]*Issue
+	DetectedUntil time.Duration
+	Pending       []PendingLeakCheck
+}
+
+// PendingLeakCheck は届いた goroutineleak プロファイルのうち、取った時刻の trace がまだ index に届いていないもの
+type PendingLeakCheck struct {
+	Seq    uint64
+	Stacks []LeakProfileStack
+}
+
+func NewIssueBook() *IssueBook {
+	return &IssueBook{byKey: map[issueKey]*Issue{}}
+}
+
+func (b *IssueBook) issueOf(d Detection) *Issue {
+	k := issueKey{kind: d.Kind, target: d.Target}
+	is, ok := b.byKey[k]
+	if !ok {
+		is = &Issue{ID: IssueID("I" + strconv.Itoa(len(b.issues)+1)), Kind: d.Kind, Target: d.Target}
+		b.byKey[k] = is
+		b.issues = append(b.issues, is)
+	}
+	return is
+}
+
+// Record は定期の判定で見つけた問題を足す。前の発生から間を空けずに続いていれば、同じ発生を延ばす
+func (b *IssueBook) Record(d Detection, phase string) {
+	is := b.issueOf(d)
+	if n := len(is.Occurrences); n > 0 {
+		last := &is.Occurrences[n-1]
+		if d.From <= last.To+BucketSize && d.From >= last.From {
+			last.To = max(last.To, d.To)
+			last.Certainty = stronger(last.Certainty, d.Certainty)
+			last.Value = d.Value
+			if d.Leaks != nil {
+				last.Leaks = d.Leaks
 			}
+			if last.Phase == "" {
+				last.Phase = phase
+			}
+			return
 		}
 	}
+	is.Occurrences = append(is.Occurrences, Occurrence{From: d.From, To: d.To, Phase: phase, Certainty: d.Certainty, Value: d.Value, Leaks: d.Leaks})
+	sortOccurrences(is)
 }
 
-func topImpacts(in []Impact) []Impact {
-	slices.SortStableFunc(in, func(a, b Impact) int {
-		return cmp.Or(cmp.Compare(b.Duration, a.Duration), cmp.Compare(b.Count, a.Count), cmp.Compare(a.Goroutine, b.Goroutine))
+// RecordPhase は phase ごとの判定で見つけた問題を足す。phase にかかる発生がすでにあれば、その発生に phase を添える
+func (b *IssueBook) RecordPhase(d Detection, phase string) IssueID {
+	is := b.issueOf(d)
+	for i := range is.Occurrences {
+		o := &is.Occurrences[i]
+		if o.From <= d.To && d.From <= o.To {
+			if o.Phase == "" {
+				o.Phase = phase
+			}
+			o.Certainty = stronger(o.Certainty, d.Certainty)
+			if d.Leaks != nil {
+				o.Leaks = d.Leaks
+			}
+			return is.ID
+		}
+	}
+	is.Occurrences = append(is.Occurrences, Occurrence{From: d.From, To: d.To, Phase: phase, Certainty: d.Certainty, Value: d.Value, Leaks: d.Leaks})
+	sortOccurrences(is)
+	return is.ID
+}
+
+func sortOccurrences(is *Issue) {
+	slices.SortStableFunc(is.Occurrences, func(a, b Occurrence) int {
+		switch {
+		case a.From < b.From:
+			return -1
+		case a.From > b.From:
+			return 1
+		}
+		return 0
 	})
-	return in[:min(len(in), impactLimit)]
 }
 
-// topByCause は cause の状態にいた時間が長かった goroutine
-func topByCause(c observation.TraceChunk, cause MainCause) []Impact {
-	var out []Impact
-	for _, g := range Goroutines(c, 0, c.Duration) {
-		var total time.Duration
-		var place StopPlace
-		for _, s := range Stretches(c, g) {
-			if s.Cause != cause {
-				continue
-			}
-			total += s.Duration()
-			if s.Duration() > place.Duration {
-				place = StopPlace{Function: s.Enter.Function, Location: s.Enter.Location, WaitReason: s.Enter.Place.Reason, Duration: s.Duration()}
-			}
-		}
-		if total > 0 {
-			out = append(out, Impact{Goroutine: g, Entry: c.Entries[g], Function: place.Function, Location: place.Location, Reason: place.WaitReason, Duration: total, Max: place.Duration})
+func (b *IssueBook) Issues() []*Issue { return b.issues }
+
+func (b *IssueBook) Issue(id IssueID) (*Issue, bool) {
+	for _, is := range b.issues {
+		if is.ID == id {
+			return is, true
 		}
 	}
-	return topImpacts(out)
+	return nil, false
 }
 
-func topMarkAssist(c observation.TraceChunk) []Impact {
-	per := map[observation.GoroutineID]time.Duration{}
-	for _, r := range c.GC {
-		if r.Kind == observation.GCMarkAssist {
-			per[r.Goroutine] += r.End - r.Start
-		}
-	}
-	var out []Impact
-	for g, d := range per {
-		out = append(out, Impact{Goroutine: g, Entry: c.Entries[g], Duration: d})
-	}
-	return topImpacts(out)
-}
-
-// lockSites は Lock を呼んだ場所ごとに、待ち時間の割合・回数・平均と最大と、待ちを終わらせた (ロックを持っていた) 側
-func lockSites(c observation.TraceChunk) []Impact {
-	holders := map[string]Impact{}
-	for _, g := range Goroutines(c, 0, c.Duration) {
-		for _, s := range Stretches(c, g) {
-			if s.Cause != CauseLockWait || !s.HasLeave || s.Leave.WokenBy == 0 {
-				continue
-			}
-			if _, ok := holders[s.Enter.Location]; !ok {
-				holders[s.Enter.Location] = Impact{HolderGoroutine: s.Leave.WokenBy, HolderFunction: s.Leave.WokenByFunction, HolderLocation: s.Leave.WokenByLocation}
+// IssuesIn は from から to にかかる発生のある Issue
+func (b *IssueBook) IssuesIn(from, to time.Duration) []*Issue {
+	var out []*Issue
+	for _, is := range b.issues {
+		for _, o := range is.Occurrences {
+			if o.From <= to && from <= o.To {
+				out = append(out, is)
+				break
 			}
 		}
-	}
-	bySite := map[string]*Impact{}
-	var total time.Duration
-	for _, w := range c.Stats.Waits {
-		if w.Kind != observation.PlaceWaiting || !IsLockFunction(w.Function) {
-			continue
-		}
-		total += w.Total
-		s, ok := bySite[w.Location]
-		if !ok {
-			h := holders[w.Location]
-			s = &Impact{Function: w.Function, Location: w.Location, Entry: w.Entry, HolderGoroutine: h.HolderGoroutine, HolderFunction: h.HolderFunction, HolderLocation: h.HolderLocation}
-			bySite[w.Location] = s
-		}
-		s.Count += w.Count
-		s.Duration += w.Total
-		s.Max = max(s.Max, w.Max)
-	}
-	out := make([]Impact, 0, len(bySite))
-	for _, s := range bySite {
-		s.Share = ratio(s.Duration, total)
-		out = append(out, *s)
-	}
-	return topImpacts(out)
-}
-
-// stackKey は runtime の内部を除いたスタック。goroutineleak プロファイルと trace のスタックで、runtime の内側の深さが違うことがあるため
-func stackKey(stack []observation.Frame) string {
-	var b strings.Builder
-	for _, f := range stack {
-		if strings.HasPrefix(f.Function, "runtime.") {
-			continue
-		}
-		b.WriteString(f.Function)
-		b.WriteByte('@')
-		b.WriteString(f.Location())
-		b.WriteByte('\n')
-	}
-	return b.String()
-}
-
-// JudgeByLeakCheck は runtime がリークと判定したスタックを、入口の関数ごとの Issue にする。snapshot は同じ時点の goroutine で、件数の M と goroutine を引くのに使う
-func JudgeLeakCheck(lc observation.GoroutineLeakCheck, snapshot observation.GoroutineSnapshot, hasSnapshot bool) []Finding {
-	if lc.Status != observation.LeakCheckDone {
-		return nil
-	}
-	var matches []LeakMatch
-	if hasSnapshot {
-		matches = MatchLeaks(lc, snapshot)
-	}
-	bySubject := map[string]*Finding{}
-	var subjects []string
-	for i, l := range lc.Leaks {
-		if l.Count <= 0 {
-			continue
-		}
-		subject := NormalizeFunction(observation.EntryFunction(l.Stack))
-		f, ok := bySubject[subject]
-		if !ok {
-			f = &Finding{Kind: IssueGoroutineLeak, Subject: subject, Certainty: CertaintyFact, Judge: JudgeByLeakCheck}
-			bySubject[subject] = f
-			subjects = append(subjects, subject)
-		}
-		cur := observation.CurrentFrame(l.Stack)
-		site := Impact{Entry: observation.EntryFunction(l.Stack), Function: cur.Function, Location: cur.Location(), Count: l.Count, Of: l.Count}
-		if i < len(matches) {
-			m := matches[i]
-			site.Of, site.Goroutines, site.Certainty = m.Of, m.Goroutines[:min(len(m.Goroutines), impactLimit)], m.Certainty
-			if m.CreatedBy.Function != "" {
-				site.CreatedBy, site.CreatedByLocation = m.CreatedBy.Function, m.CreatedBy.Location()
-			}
-		}
-		f.Value += float64(l.Count)
-		f.Sites = append(f.Sites, site)
-	}
-	out := make([]Finding, 0, len(subjects))
-	for _, s := range subjects {
-		f := bySubject[s]
-		f.Reason = fmt.Sprintf("the runtime goroutineleak profile found %d leaked goroutines", int(f.Value))
-		f.Sites = topImpacts(f.Sites)
-		f.Impacts = f.Sites
-		out = append(out, *f)
 	}
 	return out
 }
 
-// creatorOf は生成元の関数。分からなければ入口で代用する
-func creatorOf(g observation.Goroutine) string {
-	if g.CreatedBy.Function != "" {
-		return NormalizeFunction(g.CreatedBy.Function)
+// IssueNotFound は見つからない ID に、あるものを添えたエラー
+func IssueNotFound(id IssueID, issues []*Issue) error {
+	ids := make([]string, 0, len(issues))
+	for _, is := range issues {
+		ids = append(ids, string(is.ID))
 	}
-	return NormalizeFunction(g.Entry)
-}
-
-// JudgeByLeakGrowth は goroutineleak プロファイルのない古い Go 向けに、生成元ごとの待機中の数が減らずに増え続けているかを見る。
-// snapshots は時刻順で、1 分ごとに 1 つずつ間引いて比べる
-func JudgeLeakGrowth(snapshots []observation.GoroutineSnapshot) []Finding {
-	var samples []observation.GoroutineSnapshot
-	for _, s := range snapshots {
-		if n := len(samples); n > 0 && s.At.Truncate(time.Minute).Equal(samples[n-1].At.Truncate(time.Minute)) {
-			samples[n-1] = s
-			continue
-		}
-		samples = append(samples, s)
+	if len(ids) == 0 {
+		return ErrNotFound.With(fmt.Sprintf("issue %s does not exist; no issue has been found in this session yet", id))
 	}
-	if len(samples) < leakGrowthMinSamples {
-		return nil
-	}
-	counts := make([]map[string]int, len(samples))
-	for i, s := range samples {
-		counts[i] = map[string]int{}
-		for _, g := range s.Goroutines {
-			if g.State == observation.GoroutineWaiting {
-				counts[i][creatorOf(g)]++
-			}
-		}
-	}
-	last := counts[len(counts)-1]
-	var out []Finding
-	for _, creator := range slices.Sorted(mapKeysSeq(last)) {
-		growing := true
-		for i := 1; i < len(counts) && growing; i++ {
-			growing = counts[i][creator] >= counts[i-1][creator]
-		}
-		if !growing || last[creator]-counts[0][creator] < leakGrowthMinIncrease {
-			continue
-		}
-		f := Finding{Kind: IssueGoroutineLeak, Subject: creator, Certainty: CertaintyInference, Judge: JudgeByLeakGrowth, Value: float64(last[creator]),
-			Reason: fmt.Sprintf("waiting goroutines grew from %[2]d to %[3]d over %[1]d minutes without going down", len(samples), counts[0][creator], last[creator])}
-		sites := map[string]*Impact{}
-		for _, g := range samples[len(samples)-1].Goroutines {
-			if g.State != observation.GoroutineWaiting || creatorOf(g) != creator {
-				continue
-			}
-			k := g.Current.Location()
-			s, ok := sites[k]
-			if !ok {
-				s = &Impact{Entry: g.Entry, Function: g.Current.Function, Location: k, CreatedBy: g.CreatedBy.Function, CreatedByLocation: g.CreatedBy.Location(), Reason: g.WaitReason, Certainty: CertaintyInference}
-				sites[k] = s
-			}
-			s.Count++
-			s.Of++
-			if len(s.Goroutines) < impactLimit {
-				s.Goroutines = append(s.Goroutines, g.ID)
-			}
-		}
-		for _, s := range sites {
-			f.Sites = append(f.Sites, *s)
-		}
-		f.Sites = topImpacts(f.Sites)
-		f.Impacts = f.Sites
-		out = append(out, f)
-	}
-	return out
+	return ErrNotFound.With(fmt.Sprintf("issue %s does not exist; the issues are %v", id, ids))
 }

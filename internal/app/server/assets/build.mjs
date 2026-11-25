@@ -1,9 +1,9 @@
 // client のコードを esbuild で dist/ に書き出す。--test は単体テストを node_modules/gorviz-test-dist/ に書き出す
 import { build } from "esbuild"
-import { readdirSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 
 const test = process.argv.includes("--test")
-const controllers = readdirSync("src/controllers").filter((f) => f.endsWith("_controller.ts")).map((f) => `src/controllers/${f}`)
+const controllers = existsSync("src/controllers") ? readdirSync("src/controllers").filter((f) => f.endsWith("_controller.ts")).map((f) => `src/controllers/${f}`) : []
 
 if (test) {
   const tests = readdirSync("src/gmp_replay").filter((f) => f.endsWith(".test.ts")).map((f) => `src/gmp_replay/${f}`)

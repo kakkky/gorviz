@@ -1,113 +1,77 @@
 package pages
 
 import (
-	"github.com/kakkky/hotwire-go/stimulus"
-
-	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 )
 
+// IssuesViewModel は検出した問題の一覧
 type IssuesViewModel struct {
-	Base      layout.BaseViewModel
-	Picker    components.TimeRangePickerViewModel
-	Search    components.SearchFormViewModel
-	Total     int
-	Kinds     []IssueKindTotalViewModel
-	Chart     components.ChartViewModel
-	Rows      []IssueRowViewModel
-	Filtered  bool
-	NextURL   string
-	Retention string
-}
-
-type IssueKindTotalViewModel struct {
-	Kind    string
-	Count   int
-	Percent string
-	Class   string
+	Base   layout.BaseViewModel
+	Kind   string
+	Text   string
+	Kinds  []string
+	Issues []IssueRowViewModel
 }
 
 type IssueRowViewModel struct {
-	Kind          string
-	Certainty     string
-	CertaintyNote string
-	Subject       string
-	Summary       string
-	Ongoing       bool
-	Count         int
-	Trend         []string
-	FirstSeen     string
-	LastSeen      string
-	URL           string
+	ID          string
+	URL         string
+	Kind        string
+	Target      string
+	Certainty   string
+	Occurrences int
+	FirstPhase  string
+	First       string
+	Last        string
+	Value       string
 }
 
 templ Issues(vm IssuesViewModel) {
 	@layout.Base(vm.Base) {
-		<div class="overview-head">
-			<h2>Issues</h2>
-			<span class="hint" title="FACT: read directly from the runtime's judgement or the recorded trace. INFERENCE: inferred by gorviz from thresholds, trends or comparison with the usual values.">FACT / INFERENCE?</span>
-			@components.TimeRangePicker(vm.Picker)
-		</div>
-		@components.SearchForm(vm.Search)
 		<section class="panel">
-			<div class="issue-trend">
-				<div class="issue-totals">
-					<div class="stat">
-						<div class="value">{ vm.Total }</div>
-						<div class="label">occurrences in range</div>
-					</div>
-					<ul class="kind-shares">
-						for _, k := range vm.Kinds {
-							<li class={ k.Class }>
-								<i></i>
-								<span class="kind">{ k.Kind }</span>
-								<span class="mono">{ k.Count }</span>
-								<span class="mono muted">{ k.Percent }</span>
-								<span class="share-bar"><span style={ templ.SafeCSS("width:" + k.Percent) }></span></span>
-							</li>
-						}
-					</ul>
-				</div>
-				@components.Chart(vm.Chart)
-			</div>
+			<form class="search-form" method="get" action="/issues">
+				<select name="kind">
+					<option value="">all kinds</option>
+					for _, k := range vm.Kinds {
+						<option value={ k } selected?={ k == vm.Kind }>{ k }</option>
+					}
+				</select>
+				<input type="search" name="text" value={ vm.Text } placeholder="function"/>
+				<button type="submit">Filter</button>
+			</form>
 		</section>
 		<section class="panel">
-			<p class="muted issue-count">{ len(vm.Rows) } issues seen in this range · { vm.Retention }</p>
-			if len(vm.Rows) == 0 {
-				if vm.Filtered {
-					<p class="muted">no issue matches the filter in this range</p>
-				} else {
-					<p class="muted">no issues seen in this range</p>
-				}
+			<h2>Issues <span class="muted">problems of the Go runtime found in this session</span></h2>
+			if len(vm.Issues) == 0 {
+				<p class="muted">No issue has been found yet.</p>
 			} else {
-				<table class="issues" { stimulus.AttrControllers(assets.RowLinkController.Name)... }>
-					<tr><th>kind</th><th></th><th>subject</th><th>now</th><th class="num">seen</th><th>trend in range</th><th>first / last seen</th></tr>
-					for _, i := range vm.Rows {
-						<tr class={ "clickable", templ.KV("inactive", !i.Ongoing) } data-href={ i.URL } title="open this issue: its occurrences and where to start looking">
-							<td>
-								<span class="badge kind">{ i.Kind }</span>
-								@components.OngoingDot(i.Ongoing)
-							</td>
-							<td>@components.CertaintyBadge(i.Certainty, i.CertaintyNote)</td>
-							<td class="origin" title={ i.Subject }>{ components.ShortPath(i.Subject) }</td>
-							<td class="muted">{ i.Summary }</td>
-							<td class="num mono">{ i.Count }</td>
-							<td>
-								<span class="trend-bars" title="occurrences, from the start of the range to now">
-									for _, h := range i.Trend {
-										<span style={ templ.SafeCSS("height:" + h) }></span>
-									}
-								</span>
-							</td>
-							<td class="mono muted">{ i.FirstSeen } / { i.LastSeen }</td>
-						</tr>
-					}
+				<table>
+					<thead><tr><th>id</th><th>kind</th><th>target</th><th>certainty</th><th class="num">occurrences</th><th>first phase</th><th>first</th><th>last</th><th>latest</th></tr></thead>
+					<tbody>
+						for _, is := range vm.Issues {
+							<tr>
+								<td><a href={ templ.SafeURL(is.URL) }>{ is.ID }</a></td>
+								<td>@components.Badge("kind", is.Kind)</td>
+								<td class="mono origin">{ is.Target }</td>
+								<td>@components.Badge(certainty(is.Certainty), is.Certainty)</td>
+								<td class="num">{ is.Occurrences }</td>
+								<td>{ is.FirstPhase }</td>
+								<td class="mono">{ is.First }</td>
+								<td class="mono">{ is.Last }</td>
+								<td class="muted">{ is.Value }</td>
+							</tr>
+						}
+					</tbody>
 				</table>
-				if vm.NextURL != "" {
-					<p><a class="btn" href={ templ.SafeURL(vm.NextURL) }>more issues</a></p>
-				}
 			}
 		</section>
 	}
+}
+
+func certainty(c string) string {
+	if c == "FACT" {
+		return "fact"
+	}
+	return "inference"
 }

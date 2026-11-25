@@ -1,0 +1,4 @@
+goroutineleak profile: total 3
+3 @ 0x1007a9a78 0x100742224 0x100741e38 0x100800318 0x1007afed4
+#	0x100800317	main.leak.func1+0x27	/private/tmp/claude-501/-Users-yutakakiki-gorviz/47ce43aa-1aba-4553-9c00-973711acbf81/scratchpad/gen/main.go:23
+

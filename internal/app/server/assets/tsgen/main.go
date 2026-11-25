@@ -11,7 +11,6 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
-	"github.com/kakkky/gorviz/internal/domain/observation"
 )
 
 type enum struct {
@@ -31,7 +30,7 @@ func values[T ~string](vs []T) []string {
 
 var enums = []enum{
 	{name: "MainCause", array: "MAIN_CAUSES", goType: reflect.TypeFor[domain.MainCause](), values: values(domain.MainCauses)},
-	{name: "PlaceKind", array: "PLACE_KINDS", goType: reflect.TypeFor[observation.PlaceKind](), values: values(components.ReplayPlaceKinds)},
+	{name: "PlaceKind", array: "PLACE_KINDS", goType: reflect.TypeFor[domain.PlaceKind](), values: components.ReplayPlaceKinds},
 	{name: "Certainty", array: "CERTAINTIES", goType: reflect.TypeFor[domain.Certainty](), values: values([]domain.Certainty{domain.CertaintyFact, domain.CertaintyInference})},
 }
 

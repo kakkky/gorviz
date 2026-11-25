@@ -1,9 +1,6 @@
 package components
 
-import (
-	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/domain/observation"
-)
+import "github.com/kakkky/gorviz/internal/app/server/domain"
 
 // GMPReplayProps は GMP の再生のアイランドの props。初期値だけを持ち、再生する窓は ReplayWindow の JSON で別に渡す。
 // GoroutineURL は G を選んだときに開く Goroutine の URL で、{goroutine} を G の番号に、from・to を見ている窓に置き換えて使う。
@@ -18,9 +15,7 @@ type GMPReplayProps struct {
 	Autoplay       bool               `json:"autoplay"`
 }
 
-// ReplayStateBefore は追っている G が最初の窓の頭でいた状態と、窓の頭から execution trace をさかのぼって見つけた、それに入った時刻 (unix ms)。
-// SinceMs が 0 なら、さかのぼった trace の頭 (RecordedFromMs) より前から続いている。URL はその時刻から始まる Goroutine の画面で、
-// それより前の trace が残っていなければ空
+// ReplayStateBefore は追っている G が最初の窓の頭でいた状態と、それに入った時刻 (セッションの始まりからの ms)。URL はその時刻から始まる Goroutine の画面
 type ReplayStateBefore struct {
 	Cause          domain.MainCause `json:"cause"`
 	SinceMs        float64          `json:"sinceMs"`
@@ -28,26 +23,26 @@ type ReplayStateBefore struct {
 	URL            string           `json:"url"`
 }
 
-// ReplayWindow は再生する execution trace の 1 区間。時刻は StartedAtMs からのナノ秒。
+// ReplayWindow は再生する execution trace の 1 区間。StartedAtMs はセッションの始まりからの ms で、時刻は StartedAtMs からのナノ秒。
 // Functions・Reasons は関数名と待機理由の表で、イベントはその番号で引く (-1 はなし)
 type ReplayWindow struct {
-	From          string         `json:"from"`
-	To            string         `json:"to"`
-	StartedAtMs   float64        `json:"startedAtMs"`
-	DurationNs    int64          `json:"durationNs"`
-	Procs         []int64        `json:"procs"`
-	Functions     []string       `json:"functions"`
-	Reasons       []string       `json:"reasons"`
-	Entries       map[string]int `json:"entries"`
-	Events        []ReplayEvent  `json:"events"`
-	ProcEvents    []ReplayProc   `json:"procEvents"`
-	Lanes         [][]ReplaySpan `json:"lanes"`
-	STW           []ReplayRange  `json:"stw"`
-	GCMark        []ReplayRange  `json:"gcMark"`
-	Leaks         []ReplayLeak   `json:"leaks"`
-	LeakCheckAt   string         `json:"leakCheckAt"`
-	FromPreserved bool           `json:"fromPreserved"`
-	Truncated     bool           `json:"truncated"`
+	From        string         `json:"from"`
+	To          string         `json:"to"`
+	StartedAtMs float64        `json:"startedAtMs"`
+	DurationNs  int64          `json:"durationNs"`
+	Procs       []int64        `json:"procs"`
+	Functions   []string       `json:"functions"`
+	Reasons     []string       `json:"reasons"`
+	Entries     map[string]int `json:"entries"`
+	Events      []ReplayEvent  `json:"events"`
+	ProcEvents  []ReplayProc   `json:"procEvents"`
+	Lanes       [][]ReplaySpan `json:"lanes"`
+	STW         []ReplayRange  `json:"stw"`
+	GCMark      []ReplayRange  `json:"gcMark"`
+	Leaks       []ReplayLeak   `json:"leaks"`
+	Agents      []int64        `json:"agents"`
+	Truncated   bool           `json:"truncated"`
+	Ended       bool           `json:"ended"`
 }
 
 // ReplayEvent は G の状態の変化 1 つ。Place は ReplayPlaceKinds、Cause は domain.MainCauses の番号。Proc が -1 なら P を持たない
@@ -95,7 +90,4 @@ type ReplayLeak struct {
 }
 
 // ReplayPlaceKinds は ReplayEvent.Place の番号の並び
-var ReplayPlaceKinds = []observation.PlaceKind{
-	observation.PlaceRunning, observation.PlaceLocalQueue, observation.PlaceGlobalQueue,
-	observation.PlaceWaiting, observation.PlaceSyscall, observation.PlaceDead,
-}
+var ReplayPlaceKinds = domain.PlaceKindNames

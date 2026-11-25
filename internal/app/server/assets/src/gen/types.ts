@@ -34,9 +34,9 @@ export interface ReplayWindow {
   stw: ReplayRange[]
   gcMark: ReplayRange[]
   leaks: ReplayLeak[]
-  leakCheckAt: string
-  fromPreserved: boolean
+  agents: number[]
   truncated: boolean
+  ended: boolean
 }
 
 export interface ReplayStateBefore {

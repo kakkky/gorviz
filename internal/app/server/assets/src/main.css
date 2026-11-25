@@ -115,8 +115,6 @@ tbody tr:hover td { background: rgba(255, 255, 255, .02); }
 .badge.cause { background: rgba(94, 200, 242, .15); color: var(--accent); }
 /* 主因のバッジは、内訳の棒・再生の点 (cause-bg-*) と同じ色にする */
 .badge.cause-RUNNING { --c: var(--g-running); }
-.badge.cause-CPU_WAIT { --c: var(--g-runnable); }
-.badge.cause-BLOCKED { --c: var(--danger); }
 .badge.cause-IO_WAIT { --c: var(--g-syscall); }
 .badge.cause-SLEEP { --c: #9aa2b4; }
 .badge.cause-GC { --c: var(--warn); }
@@ -199,8 +197,6 @@ details.chunks a { display: inline-block; margin: 4px 8px 0 0; font: 12px var(--
 
 /* 状態ごとの色。内訳・推移の帯・Goroutine 画面の内訳で共通 */
 .cause-bg-RUNNING { background: var(--g-running); }
-.cause-bg-CPU_WAIT { background: var(--g-runnable); }
-.cause-bg-BLOCKED { background: var(--danger); }
 .cause-bg-IO_WAIT { background: var(--g-syscall); }
 .cause-bg-SLEEP { background: #6b7387; }
 .cause-bg-GC { background: var(--warn); }
@@ -564,7 +560,6 @@ a.agent-switch.empty { color: var(--muted); }
 .gmp-row-area .keeps-running { margin-left: 10px; font: 400 11px var(--sans); text-transform: none; letter-spacing: 0; color: var(--g-syscall); }
 .gmp-stopped { margin: 0 0 10px; padding: 8px 14px; border: 1px solid var(--warn); border-radius: 8px; background: rgba(245, 196, 81, .08); color: var(--warn); font: 600 13px var(--sans); }
 
-/* --- design.md の主因の名前 (旧 PoC の CPU_WAIT・BLOCKED を分けたもの) を、同じ色の考え方で足す --- */
 .badge.cause-RUNNABLE { --c: var(--g-runnable); }
 .badge.cause-LOCK_WAIT { --c: var(--danger); }
 .badge.cause-SYNC_WAIT { --c: #e0a060; }
@@ -597,7 +592,7 @@ a.agent-group-head.current { color: var(--text); }
 .logout-button:hover { color: var(--text); }
 .search-form input.narrow-input { flex: 0 1 200px; min-width: 140px; }
 
-/* 旧 PoC になかった欄を、同じ部品の見た目で足したもの */
+/* 同じ部品の見た目で足した欄 */
 body.bare main { max-width: 480px; margin: 12vh auto 0; }
 .login { display: grid; gap: 10px; }
 .login h2 { margin: 0; }
@@ -629,3 +624,41 @@ tr.is-open > td { background: rgba(255, 255, 255, .03); }
 .cause-bg-UNRECORDED { background: repeating-linear-gradient(135deg, #2a2f3a 0 4px, transparent 4px 8px); }
 table.detail-table td.origin { max-width: none; width: auto; white-space: normal; overflow: visible; word-break: break-word; }
 table.detail-table th:first-child, table.detail-table td:first-child { width: 1%; }
+
+/* セッションの時間軸。phase は帯、出来事は線 */
+.timeline { margin: 0 0 16px; }
+.timeline-track { position: relative; height: 34px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.timeline-phase { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding: 0 6px; border-right: 1px solid var(--bg); background: rgba(94, 200, 242, .14); color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; }
+.timeline-phase:hover { background: rgba(94, 200, 242, .28); color: var(--text); }
+.timeline-phase.phase-shutdown { background: rgba(255, 107, 107, .16); }
+.timeline-focus { position: absolute; top: 0; bottom: 0; background: rgba(77, 255, 136, .18); border-left: 1px solid var(--g-focus); border-right: 1px solid var(--g-focus); pointer-events: none; }
+.timeline-event { position: absolute; top: 0; bottom: 0; width: 0; }
+.timeline-event i { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--warn); }
+.timeline-event small { position: absolute; bottom: 1px; left: 3px; color: var(--warn); font-size: 10px; white-space: nowrap; }
+.timeline-axis { display: flex; justify-content: space-between; color: var(--faint); font: 11px var(--mono); margin-top: 2px; }
+
+header.app .app-pill { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); }
+.agent-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); display: inline-block; }
+.agent-dot.connected { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+
+.charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.chart { margin: 0; }
+.chart figcaption { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.chart-svg { width: 100%; height: 80px; display: block; }
+.chart-line { fill: none; stroke: var(--series-1); stroke-width: 1.5; }
+.chart-mark { stroke: var(--warn); stroke-dasharray: 2 3; opacity: .6; }
+
+.cause-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--panel-2); margin: 8px 0 4px; }
+.cause-bar > span { display: block; height: 100%; }
+.cause-key { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; }
+.cause-key i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.badge.agent { color: var(--faint); border-color: var(--faint); }
+.goroutine-card.is-agent { opacity: .7; }
+.gchip.is-agent { opacity: .45; }
+.gchip .agent-mark { color: var(--faint); }
+tr.current td { background: var(--panel-2); }
+pre.stack { font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; margin: 8px 0 0; }
+.small { font-size: 12px; }
+.panel { overflow-x: auto; }
+td.mono, td .mono, .goroutine-card table.kv td { overflow-wrap: anywhere; word-break: break-word; }
+main > * { min-width: 0; }

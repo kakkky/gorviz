@@ -47,9 +47,16 @@ export class Replay {
   private nextEvent = 0
   private nextProc = 0
   private at = -1
+  private agents: Set<number>
 
   constructor(readonly window: ReplayWindow) {
+    this.agents = new Set(window.agents ?? [])
     this.reset()
+  }
+
+  // isAgent は gorviz の agent の G か。隠さず、目立たない色で見せる
+  isAgent(g: number): boolean {
+    return this.agents.has(g)
   }
 
   get duration(): number {

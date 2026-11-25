@@ -7,58 +7,42 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 )
 
-// SchedulerViewModel の Replay は再生のアイランド (trace がなければ nil)。Unavailable と Nearby は再生できないときの理由と、近くに残した trace
+// SchedulerViewModel はスケジューラの動きの再生。StreamURL があれば、新しく届いた分を SSE で足していく
 type SchedulerViewModel struct {
-	Base          layout.BaseViewModel
-	Instance      string
-	Picker        components.TimeRangePickerViewModel
-	Past          bool
-	LatestURL     string
-	Replay        *components.GMPReplayViewModel
-	StreamURL     string
-	FromPreserved bool
-	Unavailable   []components.UnavailableViewModel
-	Nearby        []components.LinkItemViewModel
-	LeakNote      string
+	Base      layout.BaseViewModel
+	Range     string
+	Live      bool
+	LiveURL   string
+	Replay    components.GMPReplayViewModel
+	StreamURL string
+	Truncated bool
 }
 
 templ Scheduler(vm SchedulerViewModel) {
 	@layout.Base(vm.Base) {
 		<div class="overview-head">
 			<h2>Scheduler</h2>
-			if vm.Past {
-				<span class="muted">a past moment</span>
-				<a class="btn" href={ templ.SafeURL(vm.LatestURL) }>Latest</a>
+			if vm.Live {
+				<span class="muted">following the latest { vm.Range }</span>
+			} else {
+				<span class="muted mono">{ vm.Range }</span>
+				<a class="btn small" href={ templ.SafeURL(vm.LiveURL) }>Follow the latest</a>
 			}
-			@components.TimeRangePicker(vm.Picker)
 		</div>
-		@ReplayPanel(vm.Replay, vm.StreamURL, vm.Unavailable, vm.Nearby, vm.LeakNote)
+		@ReplayPanel(vm.Replay, vm.StreamURL, vm.Truncated)
 	}
 }
 
-// ReplayPanel は GMP の再生と、再生できないときの理由。Scheduler と Goroutine で使う
-templ ReplayPanel(replay *components.GMPReplayViewModel, streamURL string, unavailable []components.UnavailableViewModel, nearby []components.LinkItemViewModel, leakNote string) {
-	for _, u := range unavailable {
-		@components.Unavailable(u)
-	}
-	if len(nearby) > 0 {
-		<section class="panel">
-			<h2>Execution traces kept near this time <span class="muted">they stay after the full trace is gone</span></h2>
-			@components.LinkList(nearby)
-		</section>
-	}
+// ReplayPanel は GMP の再生。Scheduler と Goroutine で使う
+templ ReplayPanel(replay components.GMPReplayViewModel, streamURL string, truncated bool) {
 	if streamURL != "" {
 		@turbo.StreamSSESource("gmp-stream", streamURL)
 	}
-	if replay != nil {
-		@components.GMPReplay(*replay)
-		<p class="faint small replay-footnote">
-			The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded.
-			if leakNote != "" {
-				{ leakNote }
-			}
-		</p>
-	} else if len(unavailable) == 0 {
-		<section class="panel muted">no execution trace of this instance in this range</section>
-	}
+	@components.GMPReplay(replay)
+	<p class="faint small replay-footnote">
+		The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded. Goroutines of the gorviz agent are dimmed.
+		if truncated {
+			This range has too many state changes, so the replay stops early. Open a shorter range.
+		}
+	</p>
 }

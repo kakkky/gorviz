@@ -1,10 +1,6 @@
 package domain
 
-import (
-	"strings"
-
-	"github.com/kakkky/gorviz/internal/domain/observation"
-)
+import "strings"
 
 // MainCause は goroutine が止まっていた (走っていた) 理由の分類
 type MainCause string
@@ -27,69 +23,25 @@ var lockFunctions = []string{
 	"sync.(*Mutex).Lock",
 	"sync.(*RWMutex).Lock",
 	"sync.(*RWMutex).RLock",
-	// 待ちに入ったときに一番上に残る sync の関数。sync.(*Mutex).Lock からしか呼ばれない
 	"sync.runtime_SemacquireMutex",
 	"sync.runtime_SemacquireRWMutex",
+	"internal/sync.(*Mutex).Lock",
+	"internal/sync.runtime_SemacquireMutex",
 }
 
-// IsLockFunction は sync.Mutex・sync.RWMutex の Lock での待ちか。sync.(*WaitGroup).Wait などの「sync」の待ちを除くため
-func IsLockFunction(fn string) bool {
-	for _, p := range lockFunctions {
-		if strings.HasPrefix(fn, p) {
-			return true
-		}
-	}
-	return false
-}
-
-func IsLockStack(stack []observation.Frame) bool {
+// IsLockStack は sync.Mutex・sync.RWMutex の Lock での待ちか。待機理由の「sync」には sync.(*WaitGroup).Wait などの待ちも入るので、スタックで見分ける
+func IsLockStack(stack []Frame) bool {
 	for _, f := range stack {
-		if IsLockFunction(f.Function) {
-			return true
+		for _, p := range lockFunctions {
+			if strings.HasPrefix(f.Function, p) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// CauseOfWait は待機理由と、待ちに入ったときに止まった関数から主因を決める。
-// trace の理由 ("network"・"sync" など) と、スタックから推定した理由 ("IO wait"・"semacquire" など) のどちらも受け付ける
-func CauseOfWait(reason string, lock bool) MainCause {
-	r := strings.ToLower(reason)
-	switch {
-	case r == "network" || strings.Contains(r, "io wait"):
-		return CauseIOWait
-	case strings.Contains(r, "sleep") || strings.Contains(r, "timer"):
-		return CauseSleep
-	case strings.Contains(r, "gc"):
-		return CauseGC
-	case lock:
-		return CauseLockWait
-	}
-	return CauseSyncWait
-}
-
-// CauseOfPlace は状態の変化 1 つが移った先の主因。dead は主因を持たない
-func CauseOfPlace(p observation.Place, function string) (MainCause, bool) {
-	switch p.Kind {
-	case observation.PlaceRunning:
-		return CauseRunning, true
-	case observation.PlaceLocalQueue, observation.PlaceGlobalQueue:
-		return CauseRunnable, true
-	case observation.PlaceSyscall:
-		if p.Cgo {
-			return CauseCgo, true
-		}
-		return CauseIOWait, true
-	case observation.PlaceWaiting:
-		if p.Cgo {
-			return CauseCgo, true
-		}
-		return CauseOfWait(p.Reason, IsLockFunction(function)), true
-	}
-	return "", false
-}
-
-func hasCgoCall(stack []observation.Frame) bool {
+func isCgoStack(stack []Frame) bool {
 	for _, f := range stack {
 		if strings.HasPrefix(f.Function, "runtime.cgocall") {
 			return true
@@ -98,18 +50,52 @@ func hasCgoCall(stack []observation.Frame) bool {
 	return false
 }
 
-// CauseOfSnapshot はスナップショットの 1 時点の状態から主因を決める
-func CauseOfSnapshot(g observation.Goroutine) MainCause {
-	switch g.State {
-	case observation.GoroutineRunning:
-		return CauseRunning
-	case observation.GoroutineRunnable:
-		return CauseRunnable
-	case observation.GoroutineSyscall:
-		if hasCgoCall(g.Stack) {
-			return CauseCgo
-		}
+// CauseOfWait は trace の待機理由と、待ちに入ったときのスタックから主因を決める
+func CauseOfWait(reason string, stack []Frame) MainCause {
+	r := strings.ToLower(reason)
+	switch {
+	case isCgoStack(stack):
+		return CauseCgo
+	case r == "network" || strings.Contains(r, "io wait") || r == "system goroutine wait" && hasFunction(stack, "internal/poll."):
 		return CauseIOWait
+	case strings.Contains(r, "sleep") || strings.Contains(r, "timer"):
+		return CauseSleep
+	case strings.Contains(r, "gc") || strings.Contains(r, "garbage"):
+		return CauseGC
+	case IsLockStack(stack):
+		return CauseLockWait
 	}
-	return CauseOfWait(g.WaitReason, IsLockStack(g.Stack))
+	return CauseSyncWait
+}
+
+// InferWaitReason は agent より前に待ちに入っていて待機理由が分からない goroutine の待機理由を、スタックの上の方の runtime の関数から推定する
+func InferWaitReason(stack []Frame) string {
+	for _, f := range stack {
+		switch {
+		case strings.HasPrefix(f.Function, "runtime.chanrecv"):
+			return "chan receive"
+		case strings.HasPrefix(f.Function, "runtime.chansend"):
+			return "chan send"
+		case strings.HasPrefix(f.Function, "runtime.selectgo"):
+			return "select"
+		case strings.HasPrefix(f.Function, "runtime.block"):
+			return "select (no cases)"
+		case strings.HasPrefix(f.Function, "time.Sleep"):
+			return "sleep"
+		case strings.HasPrefix(f.Function, "internal/poll.") || strings.HasPrefix(f.Function, "runtime.netpollblock"):
+			return "network"
+		case strings.HasPrefix(f.Function, "sync."), strings.HasPrefix(f.Function, "internal/sync."):
+			return "sync"
+		}
+	}
+	return "unknown"
+}
+
+func hasFunction(stack []Frame, prefix string) bool {
+	for _, f := range stack {
+		if strings.HasPrefix(f.Function, prefix) {
+			return true
+		}
+	}
+	return false
 }

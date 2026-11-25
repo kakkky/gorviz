@@ -1,0 +1,45 @@
+package components
+
+// TimelineViewModel はセッションの時間軸。Phases は帯、Events は線で出す。Focus は画面が見ている範囲 (なければ Has が false)
+type TimelineViewModel struct {
+	Elapsed  string
+	Phases   []TimelinePhaseViewModel
+	Events   []TimelineEventViewModel
+	HasFocus bool
+	FocusX   string
+	FocusW   string
+}
+
+type TimelinePhaseViewModel struct {
+	Name  string
+	X     string
+	W     string
+	URL   string
+	Title string
+	Kind  string
+}
+
+type TimelineEventViewModel struct {
+	X     string
+	Label string
+	Title string
+}
+
+templ Timeline(vm TimelineViewModel) {
+	<section class="timeline" aria-label="session timeline">
+		<div class="timeline-track">
+			for _, p := range vm.Phases {
+				<a class={ "timeline-phase", "phase-" + p.Kind } style={ "left:" + p.X + ";width:" + p.W } href={ templ.SafeURL(p.URL) } title={ p.Title }>
+					<span>{ p.Name }</span>
+				</a>
+			}
+			if vm.HasFocus {
+				<span class="timeline-focus" style={ "left:" + vm.FocusX + ";width:" + vm.FocusW }></span>
+			}
+			for _, e := range vm.Events {
+				<span class="timeline-event" style={ "left:" + e.X } title={ e.Title }><i></i><small>{ e.Label }</small></span>
+			}
+		</div>
+		<div class="timeline-axis"><span>0s</span><span>{ vm.Elapsed }</span></div>
+	</section>
+}

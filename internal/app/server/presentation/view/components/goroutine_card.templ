@@ -1,0 +1,148 @@
+package components
+
+// GoroutineCardViewModel は 1 つの goroutine が何に止まっていたか
+type GoroutineCardViewModel struct {
+	ID         string
+	URL        string
+	Agent      bool
+	Entry      string
+	CreatedBy  string
+	Range      string
+	Note       string
+	Value      string
+	MainCause  string
+	Certainty  string
+	Breakdown  []CauseShareViewModel
+	StoppedAt  string
+	StoppedIn  string
+	StoppedFor string
+	Reason     string
+	WokenBy    []WakerViewModel
+	Leak       string
+	LeakCert   string
+	Ended      string
+	Truncated  bool
+	Stack      []string
+}
+
+type CauseShareViewModel struct {
+	Cause    string
+	Share    string
+	Duration string
+}
+
+type WakerViewModel struct {
+	G        string
+	URL      string
+	Function string
+	Location string
+	Waited   string
+	Times    int
+}
+
+templ Badge(class, text string) {
+	<span class={ "badge", class }>{ text }</span>
+}
+
+templ GoroutineCard(vm GoroutineCardViewModel) {
+	<article class={ "panel goroutine-card", templ.KV("is-agent", vm.Agent) }>
+		<div class="goroutine-card-head">
+			<a class="gchip is-static" href={ templ.SafeURL(vm.URL) }><span class={ "gdot", "cause-bg-" + vm.MainCause }></span>G{ vm.ID }</a>
+			if vm.Agent {
+				@Badge("agent", "agent")
+			}
+			<strong class="goroutine-entry mono">{ vm.Entry }</strong>
+			if vm.MainCause != "" {
+				@Badge("cause cause-"+vm.MainCause, vm.MainCause)
+			}
+			@Badge(certaintyClass(vm.Certainty), vm.Certainty)
+			if vm.Value != "" {
+				<span class="muted">{ vm.Value }</span>
+			}
+		</div>
+		if vm.Note != "" {
+			<p class="muted small">{ vm.Note }</p>
+		}
+		if len(vm.Breakdown) > 0 {
+			<div class="cause-bar" title="time by state">
+				for _, b := range vm.Breakdown {
+					<span class={ "cause-bg-" + b.Cause } style={ "width:" + b.Share } title={ b.Cause + " " + b.Duration }></span>
+				}
+			</div>
+			<p class="small">
+				for _, b := range vm.Breakdown {
+					<span class="cause-key"><i class={ "cause-bg-" + b.Cause }></i>{ b.Cause } <span class="mono">{ b.Duration }</span></span>
+				}
+			</p>
+		}
+		<table class="kv">
+			<tr><th>range</th><td class="mono">{ vm.Range }</td></tr>
+			if vm.StoppedAt != "" {
+				<tr>
+					<th>stopped at</th>
+					<td class="mono">
+						{ vm.StoppedAt }
+						if vm.StoppedIn != "" {
+							<span class="faint">{ "in " + vm.StoppedIn }</span>
+						}
+						<span class="muted">{ "for " + vm.StoppedFor }</span>
+						if vm.Reason != "" {
+							<span class="faint">({ vm.Reason })</span>
+						}
+					</td>
+				</tr>
+			}
+			if vm.CreatedBy != "" {
+				<tr><th>created by</th><td class="mono">{ vm.CreatedBy }</td></tr>
+			}
+			if vm.Leak != "" {
+				<tr>
+					<th>leak</th>
+					<td>
+						{ vm.Leak }
+						@Badge(certaintyClass(vm.LeakCert), vm.LeakCert)
+					</td>
+				</tr>
+			}
+			if vm.Ended != "" {
+				<tr><th>ended</th><td class="mono">{ vm.Ended }</td></tr>
+			}
+			if vm.Truncated {
+				<tr><th>trace</th><td class="error">the end of the execution trace is missing (the app ended on the spot)</td></tr>
+			}
+		</table>
+		if len(vm.WokenBy) > 0 {
+			<h3>Woken by <span class="faint">the goroutines that ended its waits</span></h3>
+			<table>
+				<thead><tr><th>goroutine</th><th>where</th><th class="num">waited</th><th class="num">times</th></tr></thead>
+				<tbody>
+					for _, w := range vm.WokenBy {
+						<tr>
+							<td><a class="gchip is-static" href={ templ.SafeURL(w.URL) }>G{ w.G }</a></td>
+							<td class="mono">{ w.Function } <span class="faint">{ w.Location }</span></td>
+							<td class="num">{ w.Waited }</td>
+							<td class="num">{ w.Times }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+		if len(vm.Stack) > 0 {
+			<details>
+				<summary>stack where it stopped the longest</summary>
+				<pre class="stack">
+					for _, f := range vm.Stack {
+						{ f + "\n" }
+					}
+				</pre>
+			</details>
+		}
+	</article>
+}
+
+func certaintyClass(c string) string {
+	if c == "FACT" {
+		return "fact"
+	}
+	return "inference"
+}

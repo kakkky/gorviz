@@ -5,78 +5,63 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/domain/observation"
 )
 
-// overviewMaxPoints は推移の点の数の上限。期間が長ければ区切りを粗くする
-const overviewMaxPoints = 360
-
-type GetOverviewUsecaseInput struct {
-	Service observation.ServiceName
-	From    time.Time
-	To      time.Time
-	Now     time.Time
-}
-
-// GetOverviewUsecaseOutput の Points はサービスの値を Step ごとに束ねたもの。値は MetricSample の SchedP99・GCShare などで読む
-type GetOverviewUsecaseOutput struct {
-	Service       observation.ServiceName
-	From          time.Time
-	To            time.Time
-	Step          time.Duration
-	Points        []domain.MetricSample
-	OngoingIssues []IssueSummary
-	Lifecycle     []domain.LifecycleEvent
-	RetainedSince time.Time
-}
-
+// GetOverviewUsecase はセッション全体の様子 (phase ごとの Issue の数と、時間幅ごとの値の推移) を返す
 type GetOverviewUsecase struct {
-	retention domain.Retention
-	inventory domain.InventoryAccessor
-	metrics   domain.MetricAccessor
-	issues    domain.IssueAccessor
-	lifecycle domain.LifecycleAccessor
+	sessions domain.SessionStore
+	index    domain.TraceIndexStore
+	issues   domain.IssueBookStore
+}
+
+type GetOverviewUsecaseInput struct{}
+
+type PhaseIssues struct {
+	Phase  string
+	From   time.Duration
+	To     time.Duration
+	Issues map[domain.IssueKind]int
+}
+
+type GetOverviewUsecaseOutput struct {
+	Session  domain.Session
+	Procs    int
+	Elapsed  time.Duration
+	Buckets  []domain.Bucket
+	Timeline []domain.SessionEvent
+	Phases   []PhaseIssues
+	Issues   map[domain.IssueKind]int
 }
 
 func (us *UseCase) NewGetOverviewUsecase() *GetOverviewUsecase {
-	return &GetOverviewUsecase{retention: us.settings.Retention, inventory: us.inventory, metrics: us.metrics, issues: us.issues, lifecycle: us.lifecycle}
+	return &GetOverviewUsecase{sessions: us.sessions, index: us.index, issues: us.issues}
 }
 
-func (u *GetOverviewUsecase) Exec(ctx context.Context, in GetOverviewUsecaseInput) (GetOverviewUsecaseOutput, error) {
-	if err := requireService(ctx, u.inventory, in.Service); err != nil {
-		return GetOverviewUsecaseOutput{}, err
-	}
-	from, to := in.From, in.To
-	if to.IsZero() {
-		to = in.Now
-	}
-	if from.IsZero() {
-		from = to.Add(-time.Hour)
-	}
-	if !from.Before(to) {
-		return GetOverviewUsecaseOutput{}, domain.ErrInvalidArgument.With("from must be before to")
-	}
-	step := domain.MetricStepFor(to.Sub(from), overviewMaxPoints)
-	samples, err := u.metrics.ListMetrics(ctx, in.Service, from.Truncate(step), to)
-	if err != nil {
-		return GetOverviewUsecaseOutput{}, err
-	}
-	days, err := u.issues.ListIssues(ctx, in.Service, u.retention.RetainedSince(domain.DataIssues, in.Now), in.Now)
-	if err != nil {
-		return GetOverviewUsecaseOutput{}, err
-	}
-	var ongoing []IssueSummary
-	for _, is := range summarizeIssues(days, time.Time{}, in.Now) {
-		if is.Ongoing {
-			ongoing = append(ongoing, is)
+func (u *GetOverviewUsecase) Exec(_ context.Context, _ GetOverviewUsecaseInput) (GetOverviewUsecaseOutput, error) {
+	out := GetOverviewUsecaseOutput{Session: u.sessions.Session(), Issues: map[domain.IssueKind]int{}}
+	var phases []domain.PhaseRange
+	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) {
+		out.Procs, out.Elapsed = ix.Procs(), ix.Last()
+		out.Buckets = append([]domain.Bucket(nil), ix.Buckets(0, ix.Last()+domain.BucketSize)...)
+		out.Timeline = domain.TimelineOf(ix.Marks(), out.Session)
+		phases = domain.PhasesOf(ix.Marks(), ix.Last())
+	})
+	u.issues.ViewIssueBook(func(b *domain.IssueBook) {
+		for _, is := range b.Issues() {
+			out.Issues[is.Kind]++
 		}
-	}
-	events, err := u.lifecycle.ListLifecycle(ctx, in.Service, from, to)
-	if err != nil {
-		return GetOverviewUsecaseOutput{}, err
-	}
-	return GetOverviewUsecaseOutput{
-		Service: in.Service, From: from, To: to, Step: step, Points: domain.Rollup(samples, from, to, step), OngoingIssues: ongoing,
-		Lifecycle: events, RetainedSince: u.retention.RetainedSince(domain.DataMetrics, in.Now),
-	}, nil
+		for _, p := range phases {
+			pi := PhaseIssues{Phase: p.Name, From: p.From, To: p.To, Issues: map[domain.IssueKind]int{}}
+			for _, is := range b.Issues() {
+				for _, o := range is.Occurrences {
+					if o.Phase == p.Name && o.From >= p.From && o.From <= p.To {
+						pi.Issues[is.Kind]++
+						break
+					}
+				}
+			}
+			out.Phases = append(out.Phases, pi)
+		}
+	})
+	return out, nil
 }

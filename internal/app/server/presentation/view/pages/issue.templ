@@ -1,221 +1,147 @@
 package pages
 
 import (
-	"github.com/kakkky/hotwire-go/stimulus"
-
-	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 )
 
+// IssueViewModel は 1 つの Issue。発生の時間軸と、選んだ発生で影響の大きかった goroutine
 type IssueViewModel struct {
-	Base          layout.BaseViewModel
-	Picker        components.TimeRangePickerViewModel
-	Kind          string
-	Subject       string
-	Certainty     string
-	CertaintyNote string
-	Ongoing       bool
-	Instances     string
-	FirstSeen     string
-	LastSeen      string
-	Total         int
-	Counts        components.ChartViewModel
-	Occurrences   []OccurrenceViewModel
-	Retention     string
-	IssuesURL     string
+	Base         layout.BaseViewModel
+	ID           string
+	Kind         string
+	Target       string
+	Certainty    string
+	FirstPhase   string
+	NextAction   string
+	Occurrences  []OccurrenceRowViewModel
+	Showing      int
+	Range        string
+	SchedulerURL string
+	Leaks        []LeakRowViewModel
+	LockSites    []LockSiteRowViewModel
+	Goroutines   []components.GoroutineCardViewModel
 }
 
-// OccurrenceViewModel は発生 1 回。Leaks は GOROUTINE_LEAK のスタックごと、Locks は LOCK_CONTENTION の Lock を呼んだ関数ごとの行。
-// Trace は前後の execution trace を Scheduler で開けないときの理由
-type OccurrenceViewModel struct {
-	Instance      string
-	Period        string
-	Ongoing       bool
-	Judge         string
-	Certainty     string
-	CertaintyNote string
-	Reason        string
-	SchedulerURL  string
-	Trace         *components.UnavailableViewModel
-	Leaks         []LeakSiteViewModel
-	Locks         []LockSiteViewModel
-	Impacts       []ImpactViewModel
-	ImpactsTitle  string
-	Open          bool
-}
-
-type LeakSiteViewModel struct {
-	CreatedBy         string
-	CreatedByLocation string
-	Function          string
-	Location          string
-	Reason            string
-	Leak              string
-	Certainty         string
-	CertaintyNote     string
-	Goroutines        string
-	URL               string
-}
-
-type LockSiteViewModel struct {
-	Function       string
-	Location       string
-	Share          string
-	Count          int
-	Average        string
-	Max            string
-	HolderFunction string
-	HolderLocation string
-	HolderURL      string
-	HolderLabel    string
-}
-
-type ImpactViewModel struct {
-	Goroutine string
-	Entry     string
-	Function  string
-	Location  string
-	Reason    string
-	Duration  string
+type OccurrenceRowViewModel struct {
+	N         int
 	URL       string
+	Current   bool
+	Range     string
+	Phase     string
+	Certainty string
+	Value     string
+}
+
+type LeakRowViewModel struct {
+	CreatedBy  string
+	BlockedAt  string
+	Reason     string
+	Leaked     string
+	Certainty  string
+	Goroutines []LinkRowViewModel
+}
+
+type LinkRowViewModel struct {
+	Label string
+	URL   string
+}
+
+type LockSiteRowViewModel struct {
+	Function string
+	Location string
+	Share    string
+	Count    int
+	Mean     string
+	Max      string
+	HeldBy   []LinkRowViewModel
 }
 
 templ Issue(vm IssueViewModel) {
 	@layout.Base(vm.Base) {
-		<div class="overview-head">
-			<a class="btn" href={ templ.SafeURL(vm.IssuesURL) }>← Issues</a>
-			<h2>Issue</h2>
-			@components.TimeRangePicker(vm.Picker)
-		</div>
 		<section class="panel">
 			<h2>
-				<span class="badge kind">{ vm.Kind }</span>
-				@components.CertaintyBadge(vm.Certainty, vm.CertaintyNote)
-				<span class="origin issue-subject" title={ vm.Subject }>{ components.ShortPath(vm.Subject) }</span>
-				@components.OngoingDot(vm.Ongoing)
+				{ vm.ID }
+				@components.Badge("kind", vm.Kind)
+				@components.Badge(certainty(vm.Certainty), vm.Certainty)
+				<span class="mono">{ vm.Target }</span>
 			</h2>
-			if vm.Ongoing {
-				<p>going on in <span class="mono">{ vm.Instances }</span></p>
-			} else {
-				<p class="muted">not going on in any instance</p>
+			if vm.FirstPhase != "" {
+				<p class="muted">first seen in { vm.FirstPhase }</p>
 			}
-			<div class="meta">
-				<span>first seen<span class="value">{ vm.FirstSeen }</span></span>
-				<span>last seen<span class="value">{ vm.LastSeen }</span></span>
-				<span>occurrences in range<span class="value">{ vm.Total }</span></span>
-				<span>kept since<span class="value">{ vm.Retention }</span></span>
-			</div>
+			<p class="hint">{ vm.NextAction }</p>
 		</section>
 		<section class="panel">
-			<h2>Occurrences per day</h2>
-			@components.Chart(vm.Counts)
-		</section>
-		<section class="panel">
-			<h2>Occurrences <span class="muted">newest first · open one to see the goroutines it hit the most</span></h2>
-			if len(vm.Occurrences) == 0 {
-				<p class="muted">not seen in this range</p>
-			} else {
-				<table class="issues log-table occurrences" { stimulus.AttrControllers(assets.RowDetailController.Name)... }>
-					<tr><th></th><th>started</th><th>instance</th><th></th><th>judged by</th><th></th></tr>
+			<h2>Occurrences <span class="muted">each stretch of time the condition held</span></h2>
+			<table>
+				<thead><tr><th>#</th><th>range</th><th>phase</th><th>certainty</th><th>value</th></tr></thead>
+				<tbody>
 					for _, o := range vm.Occurrences {
-						<tr class="openable" { stimulus.AttrActions("click->" + assets.RowDetailController.Name + "#toggleRow")... }>
-							<td class="log-toggle"><button type="button" class="row-toggle" aria-expanded={ boolText(o.Open) } title="show the goroutines it hit the most" { stimulus.AttrActions("click->" + assets.RowDetailController.Name + "#toggle")... }></button></td>
-							<td class="mono">
-								{ o.Period }
-								@components.OngoingDot(o.Ongoing)
-							</td>
-							<td class="mono">{ o.Instance }</td>
-							<td>@components.CertaintyBadge(o.Certainty, o.CertaintyNote)</td>
-							<td class="muted"><span class="faint">{ o.Judge }</span> { o.Reason }</td>
-							<td class="links">
-								<a class="btn small" href={ templ.SafeURL(o.SchedulerURL) } title="replay the scheduler around this occurrence">Scheduler →</a>
-							</td>
-						</tr>
-						<tr class="log-detail occurrence-detail" hidden?={ !o.Open } data-open?={ o.Open }>
-							<td></td>
-							<td colspan="5">
-								@occurrenceDetail(o)
-							</td>
+						<tr class={ templ.KV("current", o.Current) }>
+							<td><a href={ templ.SafeURL(o.URL) }>{ o.N }</a></td>
+							<td class="mono">{ o.Range }</td>
+							<td>{ o.Phase }</td>
+							<td>@components.Badge(certainty(o.Certainty), o.Certainty)</td>
+							<td class="muted">{ o.Value }</td>
 						</tr>
 					}
+				</tbody>
+			</table>
+		</section>
+		<section class="panel">
+			<h2>Occurrence { vm.Showing } <span class="muted mono">{ vm.Range }</span></h2>
+			<p><a class="btn" href={ templ.SafeURL(vm.SchedulerURL) }>Replay the scheduler →</a></p>
+			if len(vm.Leaks) > 0 {
+				<h3>Leaked goroutines, per place they wait at</h3>
+				<table>
+					<thead><tr><th>created by</th><th>blocked at</th><th>leaked</th><th>certainty</th><th>goroutines</th></tr></thead>
+					<tbody>
+						for _, l := range vm.Leaks {
+							<tr>
+								<td class="mono">{ l.CreatedBy }</td>
+								<td class="mono">{ l.BlockedAt } <span class="faint">{ l.Reason }</span></td>
+								<td>{ l.Leaked }</td>
+								<td>@components.Badge(certainty(l.Certainty), l.Certainty)</td>
+								<td>
+									for _, g := range l.Goroutines {
+										<a class="gchip is-static" href={ templ.SafeURL(g.URL) }>{ g.Label }</a>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
 				</table>
 			}
+			if len(vm.LockSites) > 0 {
+				<h3>Lock wait, per function that called Lock <span class="faint">many short waits mean the lock is taken too often; few long ones mean it is held for long</span></h3>
+				<table>
+					<thead><tr><th>called Lock</th><th class="num">share</th><th class="num">count</th><th class="num">mean</th><th class="num">max</th><th>held by</th></tr></thead>
+					<tbody>
+						for _, s := range vm.LockSites {
+							<tr>
+								<td class="mono">{ s.Function } <span class="faint">{ s.Location }</span></td>
+								<td class="num">{ s.Share }</td>
+								<td class="num">{ s.Count }</td>
+								<td class="num">{ s.Mean }</td>
+								<td class="num">{ s.Max }</td>
+								<td>
+									for _, h := range s.HeldBy {
+										<a class="mono" href={ templ.SafeURL(h.URL) }>{ h.Label }</a>
+										<br/>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+			<h3>Goroutines affected the most</h3>
+			if len(vm.Goroutines) == 0 {
+				<p class="muted">No goroutine of the app was recorded in this range.</p>
+			}
 		</section>
+		for _, g := range vm.Goroutines {
+			@components.GoroutineCard(g)
+		}
 	}
-}
-
-templ occurrenceDetail(o OccurrenceViewModel) {
-	if o.Trace != nil {
-		@components.Unavailable(*o.Trace)
-	}
-	if len(o.Leaks) > 0 {
-		<h3>Leaked goroutines, per stack</h3>
-		<table class="origins detail-table">
-			<tr><th>created by (go statement)</th><th>stopped at</th><th>wait reason</th><th>leak</th><th></th><th></th></tr>
-			for _, l := range o.Leaks {
-				<tr>
-					<td class="origin wrap" title={ l.CreatedBy + " " + l.CreatedByLocation }>{ components.ShortPath(l.CreatedBy) }<div class="faint">{ components.ShortPath(l.CreatedByLocation) }</div></td>
-					<td class="origin wrap" title={ l.Function + " " + l.Location }>{ components.ShortPath(l.Function) }<div class="faint">{ components.ShortPath(l.Location) }</div></td>
-					<td class="reason-cell">{ l.Reason }</td>
-					<td>{ l.Leak }<div class="faint mono">{ l.Goroutines }</div></td>
-					<td>@components.CertaintyBadge(l.Certainty, l.CertaintyNote)</td>
-					<td class="links">
-						if l.URL != "" {
-							<a class="btn small" href={ templ.SafeURL(l.URL) }>Goroutine →</a>
-						}
-					</td>
-				</tr>
-			}
-		</table>
-	}
-	if len(o.Locks) > 0 {
-		<h3>Lock wait, per function that called Lock</h3>
-		<table class="origins detail-table">
-			<tr><th>called Lock at</th><th class="num">share</th><th class="num">times</th><th class="num">avg</th><th class="num">max</th><th>held by (made it wait)</th></tr>
-			for _, l := range o.Locks {
-				<tr>
-					<td class="origin wrap" title={ l.Function + " " + l.Location }>{ components.ShortPath(l.Function) }<div class="faint">{ components.ShortPath(l.Location) }</div></td>
-					<td class="num mono">{ l.Share }</td>
-					<td class="num mono">{ l.Count }</td>
-					<td class="num mono">{ l.Average }</td>
-					<td class="num mono">{ l.Max }</td>
-					<td class="origin wrap" title={ l.HolderFunction + " " + l.HolderLocation }>
-						if l.HolderURL != "" {
-							<a class="gchip" href={ templ.SafeURL(l.HolderURL) } title="open the goroutine that held the lock"><span class="gdot cause-bg-RUNNING"></span>{ l.HolderLabel }</a>
-						}
-						{ components.ShortPath(l.HolderFunction) }<div class="faint">{ components.ShortPath(l.HolderLocation) }</div>
-					</td>
-				</tr>
-			}
-		</table>
-	}
-	if len(o.Impacts) > 0 {
-		<h3>{ o.ImpactsTitle }</h3>
-		<table class="origins detail-table">
-			<tr><th>goroutine</th><th>entry</th><th>where</th><th>reason</th><th class="num">time</th></tr>
-			for _, m := range o.Impacts {
-				<tr>
-					<td class="nowrap">
-						if m.URL != "" {
-							<a class="gchip" href={ templ.SafeURL(m.URL) } title="open this goroutine around the occurrence"><span class="gdot cause-bg-RUNNING"></span>{ m.Goroutine }</a>
-						} else {
-							<span class="mono">{ m.Goroutine }</span>
-						}
-					</td>
-					<td class="origin wrap" title={ m.Entry }>{ components.ShortPath(m.Entry) }</td>
-					<td class="origin wrap" title={ m.Function + " " + m.Location }>{ components.ShortPath(m.Function) }<div class="faint">{ components.ShortPath(m.Location) }</div></td>
-					<td class="reason-cell">{ m.Reason }</td>
-					<td class="num mono">{ m.Duration }</td>
-				</tr>
-			}
-		</table>
-	}
-}
-
-func boolText(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }

@@ -2,105 +2,116 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/app/server/usecase"
-	"github.com/kakkky/gorviz/internal/domain/observation"
 	"github.com/kakkky/gorviz/internal/protocol/serverapi"
 )
 
-// dur は時間の長さを 1.5ms のような読める形で書く
-type dur time.Duration
+// pageBudget は一覧を区切る量。件数ではなく返す量で区切り、LLM エージェントのコンテキストを埋めないようにする
+const pageBudget = 6 << 10
 
-func (d dur) MarshalJSON() ([]byte, error) { return json.Marshal(time.Duration(d).String()) }
+func wantsJSON(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), serverapi.MediaJSON)
+}
 
-func utc(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
+func encode(r *http.Request, v any) ([]byte, string, error) {
+	if wantsJSON(r) {
+		b, err := json.MarshalIndent(v, "", "  ")
+		return append(b, '\n'), serverapi.MediaJSON, err
 	}
-	u := t.UTC()
-	return &u
+	b, err := marshalTOON(v)
+	return b, serverapi.MediaTOON + "; charset=utf-8", err
 }
 
-type periodJSON struct {
-	From      *time.Time `json:"from"`
-	To        *time.Time `json:"to"`
-	DecidedBy string     `json:"decidedBy,omitempty"`
-}
-
-func toPeriod(p domain.Period) periodJSON {
-	return periodJSON{From: utc(p.From), To: utc(p.To), DecidedBy: string(p.By)}
-}
-
-type unavailableJSON struct {
-	Field         string     `json:"field"`
-	Reason        string     `json:"reason"`
-	RetainedSince *time.Time `json:"retainedSince"`
-}
-
-func toUnavailable(us []usecase.Unavailable) []unavailableJSON {
-	out := []unavailableJSON{}
-	for _, u := range us {
-		out = append(out, unavailableJSON{Field: u.Field, Reason: u.Reason, RetainedSince: utc(u.RetainedSince)})
+// write は Accept に応じた形 (TOON / JSON) で書く
+func write(rw http.ResponseWriter, r *http.Request, v any, exitCode int) error {
+	b, media, err := encode(r, v)
+	if err != nil {
+		return domain.ErrInternal.Wrap(err, "encode response")
 	}
-	return out
+	rw.Header().Set("Content-Type", media)
+	rw.Header().Set(serverapi.HeaderExitCode, strconv.Itoa(exitCode))
+	_, _ = rw.Write(b)
+	return nil
 }
 
-type preservedJSON struct {
-	Kind         string     `json:"kind"`
-	Dir          string     `json:"dir"`
-	At           *time.Time `json:"at"`
-	From         *time.Time `json:"from"`
-	To           *time.Time `json:"to"`
-	SchedulerURL string     `json:"schedulerUrl"`
+type errorBody struct {
+	Error string   `json:"error"`
+	Docs  string   `json:"docs"`
+	Next  []string `json:"next,omitempty"`
 }
 
-func toPreserved(gui domain.GUI, s observation.ServiceName, i observation.InstanceName, ps []domain.PreservedTrace) []preservedJSON {
-	out := []preservedJSON{}
-	for _, p := range ps {
-		out = append(out, preservedJSON{Kind: string(p.Kind), Dir: p.Dir, At: utc(p.At), From: utc(p.From), To: utc(p.To), SchedulerURL: gui.Scheduler(s, i, p.From, p.To)})
+// ErrorWriter は API のエラーを、Accept に応じた形で書く。エラーにはドキュメントを引くサブコマンドを添える
+type ErrorWriter struct{}
+
+func NewErrorWriter() *ErrorWriter { return &ErrorWriter{} }
+
+func (ErrorWriter) WriteError(rw http.ResponseWriter, r *http.Request, status int, err error) {
+	b, media, encErr := encode(r, errorBody{Error: err.Error(), Docs: "gorviz docs"})
+	if encErr != nil {
+		http.Error(rw, err.Error(), status)
+		return
 	}
-	return out
+	rw.Header().Set("Content-Type", media)
+	rw.Header().Set(serverapi.HeaderExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
+	rw.WriteHeader(status)
+	_, _ = rw.Write(b)
 }
 
-func rfc(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+// at はセッションの始まりからの経過時間。gorviz goroutine の --from・--to にそのまま渡せる形で書く
+func at(d time.Duration) string {
+	return strconv.FormatFloat(d.Seconds(), 'f', 3, 64) + "s"
+}
 
-// apiPath は次に呼ぶ API の、パスと query。値を {name} のまま残した引数は、呼ぶ側が埋める
-func apiPath(route serverapi.Route, params map[string]string, q url.Values) string {
-	p := strings.NewReplacer("%7B", "{", "%7D", "}").Replace(route.Path(params))
-	if len(q) > 0 {
-		p += "?" + q.Encode()
+func dur(d time.Duration) string {
+	return domain.FormatDuration(d)
+}
+
+func frame(f domain.Frame) string {
+	if f.Function == "" {
+		return ""
 	}
-	return p
-}
-
-func diagnosisPath(s observation.ServiceName, i observation.InstanceName, g observation.GoroutineID, q url.Values) string {
-	return apiPath(serverapi.DiagnoseGoroutine, map[string]string{"service": string(s), "instance": string(i), "goroutine": strconv.FormatInt(int64(g), 10)}, q)
-}
-
-func rangeQuery(from, to time.Time) url.Values {
-	q := url.Values{}
-	if !from.IsZero() {
-		q.Set("from", rfc(from))
+	if loc := f.Location(); loc != "" {
+		return f.Function + " (" + loc + ")"
 	}
-	if !to.IsZero() {
-		q.Set("to", rfc(to))
-	}
-	return q
+	return f.Function
 }
 
-func certaintyNote(c domain.Certainty) string {
-	switch c {
-	case domain.CertaintyFact:
-		return "FACT: read directly from the runtime's judgement or the recorded trace"
-	case domain.CertaintyInference:
-		return "INFERENCE: inferred by gorviz from trends or comparison"
-	}
-	return ""
+// paths は cli に返す GUI の URL を組む
+type paths struct {
+	base string
 }
 
-func itoa(n int) string { return strconv.Itoa(n) }
+func (p paths) issue(id domain.IssueID, occurrence int) string {
+	u := p.base + "/issues/" + url.PathEscape(string(id))
+	if occurrence > 0 {
+		u += "?occurrence=" + strconv.Itoa(occurrence)
+	}
+	return u
+}
+
+func (p paths) goroutine(id domain.GoroutineID, from, to time.Duration) string {
+	return fmt.Sprintf("%s/goroutines/%d?from=%s&to=%s", p.base, id, at(from), at(to))
+}
+
+func (p paths) scheduler(from, to time.Duration) string {
+	return fmt.Sprintf("%s/scheduler?from=%s&to=%s", p.base, at(from), at(to))
+}
+
+func goroutineCommand(id domain.GoroutineID, from, to time.Duration) string {
+	return fmt.Sprintf("gorviz goroutine %d --from %s --to %s", id, at(from), at(to))
+}
+
+func parseAt(s string) (time.Duration, error) {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, domain.ErrInvalidArgument.With(fmt.Sprintf("%q is not a time since the start of the session; write it like 12.5s", s))
+	}
+	return d, nil
+}

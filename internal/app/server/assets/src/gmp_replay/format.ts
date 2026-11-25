@@ -10,11 +10,9 @@ function trim(v: number, prec: number): string {
   return String(parseFloat(v.toFixed(prec)))
 }
 
-// clock は窓の始まり (unix ms) からのナノ秒を、ブラウザの時刻にする
+// clock は窓の始まり (セッションの始まりからの ms) からのナノ秒を、セッションの始まりからの秒にする
 export function clock(startedAtMs: number, ns: number): string {
-  const d = new Date(startedAtMs + ns / 1e6)
-  const pad = (v: number, n = 2) => String(v).padStart(n, "0")
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
+  return `${((startedAtMs + ns / 1e6) / 1000).toFixed(3)}s`
 }
 
 // short はパッケージパスを落とす (net/http.(*conn).serve → http.(*conn).serve)

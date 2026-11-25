@@ -8,196 +8,149 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/domain/observation"
-	"github.com/kakkky/gorviz/internal/pkg/histogram"
 )
 
-func sched(d time.Duration, n int) histogram.Histogram {
-	var h histogram.Histogram
-	for range n {
-		h.Observe(d)
-	}
-	return h
-}
-
-func TestJudgeChunk(t *testing.T) {
+func TestIssueBook(t *testing.T) {
 	t.Parallel()
-	base := observation.TraceChunk{StartedAt: time.Date(2026, 11, 21, 14, 0, 0, 0, time.UTC), Duration: time.Second, Stats: observation.TraceStats{Procs: 4}}
-	with := func(f func(c *observation.TraceChunk)) observation.TraceChunk {
-		c := base
-		f(&c)
-		return c
+	lock := func(from, to time.Duration) domain.Detection {
+		return domain.Detection{Kind: domain.IssueLockContention, From: from, To: to, Certainty: domain.CertaintyInference}
 	}
 	tests := []struct {
 		name  string
-		chunk observation.TraceChunk
-		want  map[domain.IssueKind]domain.Certainty
+		run   func(b *domain.IssueBook)
+		check func(t *testing.T, b *domain.IssueBook)
 	}{
-		{name: "finds nothing in a quiet chunk", chunk: base, want: map[domain.IssueKind]domain.Certainty{}},
 		{
-			name:  "judges cpu contention when the runnable p99 reaches 1ms",
-			chunk: with(func(c *observation.TraceChunk) { c.Stats.SchedLatency = sched(2*time.Millisecond, 50) }),
-			want:  map[domain.IssueKind]domain.Certainty{domain.IssueCPUContention: domain.CertaintyInference},
+			name: "extends an occurrence that continues without a gap",
+			run: func(b *domain.IssueBook) {
+				b.Record(lock(0, time.Second), "")
+				b.Record(lock(time.Second, 2*time.Second), "smoke")
+			},
+			check: func(t *testing.T, b *domain.IssueBook) {
+				require.Len(t, b.Issues(), 1)
+				require.Len(t, b.Issues()[0].Occurrences, 1)
+				assert.Equal(t, 2*time.Second, b.Issues()[0].Occurrences[0].To)
+				assert.Equal(t, "smoke", b.Issues()[0].FirstPhase())
+			},
 		},
 		{
-			name:  "does not judge cpu contention below 1ms",
-			chunk: with(func(c *observation.TraceChunk) { c.Stats.SchedLatency = sched(200*time.Microsecond, 50) }),
-			want:  map[domain.IssueKind]domain.Certainty{},
+			name: "starts a new occurrence after a gap and keeps one issue per kind and target",
+			run: func(b *domain.IssueBook) {
+				b.Record(lock(0, time.Second), "")
+				b.Record(lock(5*time.Second, 6*time.Second), "")
+				b.Record(domain.Detection{Kind: domain.IssueLongSTW, Target: "GC mark termination", From: 0, To: time.Second}, "")
+			},
+			check: func(t *testing.T, b *domain.IssueBook) {
+				require.Len(t, b.Issues(), 2)
+				assert.Len(t, b.Issues()[0].Occurrences, 2)
+				assert.Equal(t, domain.IssueID("I2"), b.Issues()[1].ID)
+			},
 		},
 		{
-			name:  "judges gc pressure as a fact when gc takes half of the cpu",
-			chunk: with(func(c *observation.TraceChunk) { c.Stats.ProcGC = 2 * time.Second }),
-			want:  map[domain.IssueKind]domain.Certainty{domain.IssueGCPressure: domain.CertaintyFact},
+			name: "tags the phase on an occurrence that the phase judgment overlaps",
+			run: func(b *domain.IssueBook) {
+				b.Record(lock(2*time.Second, 3*time.Second), "")
+				b.RecordPhase(lock(time.Second, 4*time.Second), "ramp-up 2")
+			},
+			check: func(t *testing.T, b *domain.IssueBook) {
+				require.Len(t, b.Issues()[0].Occurrences, 1)
+				assert.Equal(t, "ramp-up 2", b.Issues()[0].Occurrences[0].Phase)
+			},
 		},
 		{
-			name: "judges gc pressure as an inference when mark assist takes over 5%",
-			chunk: with(func(c *observation.TraceChunk) {
-				c.GC = []observation.GCRange{{Kind: observation.GCMarkAssist, Goroutine: 3, Start: 0, End: 300 * time.Millisecond}}
-				c.Procs = []observation.ProcLane{{Proc: 0, Spans: []observation.ProcSpan{{Goroutine: 3, Start: 0, End: 300 * time.Millisecond}}}}
-			}),
-			want: map[domain.IssueKind]domain.Certainty{domain.IssueGCPressure: domain.CertaintyInference},
+			name: "answers a missing issue with the issues that exist",
+			run: func(b *domain.IssueBook) {
+				b.Record(lock(0, time.Second), "")
+			},
+			check: func(t *testing.T, b *domain.IssueBook) {
+				err := domain.IssueNotFound("I9", b.Issues())
+				require.ErrorIs(t, err, domain.ErrNotFound)
+				assert.Contains(t, err.Error(), "I1")
+			},
 		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			b := domain.NewIssueBook()
+			tt.run(b)
+			tt.check(t, b)
+		})
+	}
+}
+
+func TestDetectRuntimeIssues(t *testing.T) {
+	t.Parallel()
+	slow := domain.Histogram{}
+	for range 100 {
+		slow.Add(5 * time.Millisecond)
+	}
+	tests := []struct {
+		name string
+		w    domain.WindowStats
+		want map[domain.IssueKind]domain.Certainty
+	}{
 		{
-			name: "judges lock contention when mutex waits exceed running time",
-			chunk: with(func(c *observation.TraceChunk) {
-				c.Stats.ProcRunning = 100 * time.Millisecond
-				c.Stats.Waits = []observation.WaitSite{{Kind: observation.PlaceWaiting, Reason: "sync", Function: "sync.(*Mutex).Lock", Location: "a.go:1", Count: 3, Total: 500 * time.Millisecond}}
-			}),
-			want: map[domain.IssueKind]domain.Certainty{domain.IssueLockContention: domain.CertaintyInference},
-		},
-		{
-			name: "does not count waitgroup waits as lock waits",
-			chunk: with(func(c *observation.TraceChunk) {
-				c.Stats.ProcRunning = 100 * time.Millisecond
-				c.Stats.Waits = []observation.WaitSite{{Kind: observation.PlaceWaiting, Reason: "sync", Function: "sync.(*WaitGroup).Wait", Location: "a.go:1", Count: 3, Total: 500 * time.Millisecond}}
-			}),
+			name: "finds nothing in a quiet second",
+			w:    domain.WindowStats{From: 0, To: time.Second, Procs: 4, Running: 100 * time.Millisecond},
 			want: map[domain.IssueKind]domain.Certainty{},
 		},
 		{
-			name: "judges a long stw of 1ms or more",
-			chunk: with(func(c *observation.TraceChunk) {
-				c.GC = []observation.GCRange{{Kind: observation.GCStopTheWorld, Reason: "ReadMemStats", Start: 0, End: 2 * time.Millisecond}}
-			}),
-			want: map[domain.IssueKind]domain.Certainty{domain.IssueLongSTW: domain.CertaintyInference},
+			name: "finds CPU contention when p99 of the wait for a P reaches 1ms",
+			w:    domain.WindowStats{From: 0, To: time.Second, Procs: 4, RunnableWait: slow},
+			want: map[domain.IssueKind]domain.Certainty{domain.IssueCPUContention: domain.CertaintyInference},
 		},
 		{
-			name:  "judges thread explosion over half of the limit",
-			chunk: with(func(c *observation.TraceChunk) { c.Threads = 5001 }),
-			want:  map[domain.IssueKind]domain.Certainty{domain.IssueThreadExplosion: domain.CertaintyInference},
+			name: "finds GC pressure as a fact when GC used half of the CPU",
+			w:    domain.WindowStats{From: 0, To: time.Second, Procs: 2, GCWorker: time.Second},
+			want: map[domain.IssueKind]domain.Certainty{domain.IssueGCPressure: domain.CertaintyFact},
+		},
+		{
+			name: "finds lock contention when goroutines waited on locks longer than they ran",
+			w:    domain.WindowStats{From: 0, To: time.Second, Procs: 4, LockWait: time.Second, Running: 200 * time.Millisecond},
+			want: map[domain.IssueKind]domain.Certainty{domain.IssueLockContention: domain.CertaintyInference},
+		},
+		{
+			name: "finds a long stop-the-world and too many threads",
+			w: domain.WindowStats{From: 0, To: time.Second, Procs: 4, MaxThreads: 6000,
+				STWs: []domain.TimeRange{{Start: 0, End: 2 * time.Millisecond, Reason: "GC mark termination"}}},
+			want: map[domain.IssueKind]domain.Certainty{domain.IssueLongSTW: domain.CertaintyInference, domain.IssueThreadExplosion: domain.CertaintyInference},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := map[domain.IssueKind]domain.Certainty{}
-			for _, f := range domain.JudgeChunk("checkout", tt.chunk) {
-				got[f.Kind] = f.Certainty
+			for _, d := range domain.DetectRuntimeIssues(tt.w) {
+				got[d.Kind] = d.Certainty
 			}
 			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
-func TestModifiedZScore(t *testing.T) {
+func TestHistogramQuantile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name   string
-		v      float64
-		ref    []float64
-		want   float64
-		wantOK bool
+		values []time.Duration
+		q      float64
+		lo, hi time.Duration
 	}{
-		{name: "uses the median and the mad", v: 10, ref: []float64{1, 2, 3, 4, 5}, want: 0.6745 * (10 - 3) / 1, wantOK: true},
-		{name: "falls back to the mean absolute deviation when the mad is zero", v: 5, ref: []float64{1, 1, 1, 1, 9}, want: 0.6745 * (5 - 1) / (1.253314 * 8.0 / 5), wantOK: true},
-		{name: "does not judge when every reference is the same", v: 5, ref: []float64{2, 2, 2}, wantOK: false},
-		{name: "does not judge without references", v: 5, wantOK: false},
+		{name: "returns 0 for no values", q: 0.99},
+		{name: "answers within an eighth of the value", values: []time.Duration{time.Millisecond}, q: 0.5, lo: time.Millisecond, hi: time.Millisecond * 9 / 8},
+		{name: "puts p99 on the slow tail", values: append(make([]time.Duration, 98), 10*time.Millisecond, 10*time.Millisecond), q: 0.99, lo: 10 * time.Millisecond, hi: 12 * time.Millisecond},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := domain.ModifiedZScore(tt.v, tt.ref)
-			require.Equal(t, tt.wantOK, ok)
-			assert.InDelta(t, tt.want, got, 1e-9)
-		})
-	}
-}
-
-func TestJudgeBaseline(t *testing.T) {
-	t.Parallel()
-	sample := func(gc time.Duration) domain.MetricSample {
-		return domain.MetricSample{Traced: time.Second, ProcCapacity: 10 * time.Second, GC: gc}
-	}
-	week := []domain.MetricSample{sample(100 * time.Millisecond), sample(110 * time.Millisecond), sample(90 * time.Millisecond), sample(105 * time.Millisecond)}
-	tests := []struct {
-		name      string
-		current   domain.MetricSample
-		reference [][]domain.MetricSample
-		want      []domain.IssueKind
-	}{
-		{name: "judges a value far above the usual", current: sample(5 * time.Second), reference: [][]domain.MetricSample{week}, want: []domain.IssueKind{domain.IssueGCPressure}},
-		{name: "does not judge a usual value", current: sample(100 * time.Millisecond), reference: [][]domain.MetricSample{week}},
-		{name: "does not judge a value far below the usual", current: sample(0), reference: [][]domain.MetricSample{week}},
-		{name: "does not judge until a week of history exists", current: sample(5 * time.Second), reference: [][]domain.MetricSample{nil, nil, nil}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			var got []domain.IssueKind
-			for _, f := range domain.JudgeBaseline("checkout", tt.current, tt.reference) {
-				got = append(got, f.Kind)
-				assert.Equal(t, domain.CertaintyInference, f.Certainty)
+			var h domain.Histogram
+			for _, v := range tt.values {
+				h.Add(v)
 			}
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func TestTracker(t *testing.T) {
-	t.Parallel()
-	inst := observation.Instance{Service: "checkout", Name: "a", Incarnation: "1"}
-	t0 := time.Date(2026, 11, 21, 14, 0, 0, 0, time.UTC)
-	finding := domain.Finding{Kind: domain.IssueCPUContention, Subject: "checkout", Certainty: domain.CertaintyInference, Judge: domain.JudgeByThreshold, Value: 1}
-	tests := []struct {
-		name        string
-		steps       [][]domain.Finding
-		wantStarted int
-		wantOpen    int
-		wantEnded   bool
-	}{
-		{name: "starts an occurrence once and keeps it while the condition holds", steps: [][]domain.Finding{{finding}, {finding}}, wantStarted: 1, wantOpen: 1},
-		{name: "ends the occurrence when the condition stops holding", steps: [][]domain.Finding{{finding}, nil}, wantStarted: 1, wantOpen: 1, wantEnded: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			tr := domain.NewTracker(nil)
-			for n, fs := range tt.steps {
-				tr.Observe(t0.Add(time.Duration(n)*time.Second), inst, []domain.Judge{domain.JudgeByThreshold}, fs)
-			}
-			assert.Len(t, tr.Started(), tt.wantStarted)
-			require.Len(t, tr.Open(), tt.wantOpen)
-			assert.Equal(t, tt.wantEnded, !tr.Open()[0].Occurrence.Ongoing())
-		})
-	}
-}
-
-func TestShouldNotify(t *testing.T) {
-	t.Parallel()
-	t0 := time.Date(2026, 11, 21, 14, 0, 0, 0, time.UTC)
-	mine := domain.TrackedOccurrence{Issue: "X", Occurrence: domain.Occurrence{Instance: "a", Judge: domain.JudgeByThreshold, StartedAt: t0}}
-	tests := []struct {
-		name   string
-		others []domain.TrackedOccurrence
-		want   bool
-	}{
-		{name: "notifies when no instance has it ongoing", others: []domain.TrackedOccurrence{mine}, want: true},
-		{name: "does not notify while another instance has it ongoing", others: []domain.TrackedOccurrence{mine, {Issue: "X", Occurrence: domain.Occurrence{Instance: "b", StartedAt: t0.Add(-time.Minute)}}}, want: false},
-		{name: "notifies when another instance has already ended it", others: []domain.TrackedOccurrence{{Issue: "X", Occurrence: domain.Occurrence{Instance: "b", StartedAt: t0.Add(-time.Minute), EndedAt: t0}}}, want: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			assert.Equal(t, tt.want, domain.ShouldNotify(mine, tt.others))
+			got := h.Quantile(tt.q)
+			assert.GreaterOrEqual(t, got, tt.lo)
+			assert.LessOrEqual(t, got, tt.hi)
 		})
 	}
 }

@@ -12,45 +12,539 @@ package mock
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	domain "github.com/kakkky/gorviz/internal/app/server/domain"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockNotificationClient is a mock of NotificationClient interface.
-type MockNotificationClient struct {
+// MockAgentInstructor is a mock of AgentInstructor interface.
+type MockAgentInstructor struct {
 	ctrl     *gomock.Controller
-	recorder *MockNotificationClientMockRecorder
+	recorder *MockAgentInstructorMockRecorder
 	isgomock struct{}
 }
 
-// MockNotificationClientMockRecorder is the mock recorder for MockNotificationClient.
-type MockNotificationClientMockRecorder struct {
-	mock *MockNotificationClient
+// MockAgentInstructorMockRecorder is the mock recorder for MockAgentInstructor.
+type MockAgentInstructorMockRecorder struct {
+	mock *MockAgentInstructor
 }
 
-// NewMockNotificationClient creates a new mock instance.
-func NewMockNotificationClient(ctrl *gomock.Controller) *MockNotificationClient {
-	mock := &MockNotificationClient{ctrl: ctrl}
-	mock.recorder = &MockNotificationClientMockRecorder{mock}
+// NewMockAgentInstructor creates a new mock instance.
+func NewMockAgentInstructor(ctrl *gomock.Controller) *MockAgentInstructor {
+	mock := &MockAgentInstructor{ctrl: ctrl}
+	mock.recorder = &MockAgentInstructorMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockNotificationClient) EXPECT() *MockNotificationClientMockRecorder {
+func (m *MockAgentInstructor) EXPECT() *MockAgentInstructorMockRecorder {
 	return m.recorder
 }
 
-// Send mocks base method.
-func (m *MockNotificationClient) Send(ctx context.Context, dest domain.Destination, n domain.Notification) error {
+// Connected mocks base method.
+func (m *MockAgentInstructor) Connected() bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Send", ctx, dest, n)
+	ret := m.ctrl.Call(m, "Connected")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Connected indicates an expected call of Connected.
+func (mr *MockAgentInstructorMockRecorder) Connected() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connected", reflect.TypeOf((*MockAgentInstructor)(nil).Connected))
+}
+
+// Finish mocks base method.
+func (m *MockAgentInstructor) Finish(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Finish", ctx)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Send indicates an expected call of Send.
-func (mr *MockNotificationClientMockRecorder) Send(ctx, dest, n any) *gomock.Call {
+// Finish indicates an expected call of Finish.
+func (mr *MockAgentInstructorMockRecorder) Finish(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Send", reflect.TypeOf((*MockNotificationClient)(nil).Send), ctx, dest, n)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Finish", reflect.TypeOf((*MockAgentInstructor)(nil).Finish), ctx)
+}
+
+// ReadCoverage mocks base method.
+func (m *MockAgentInstructor) ReadCoverage(ctx context.Context) ([]domain.CoverageFile, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadCoverage", ctx)
+	ret0, _ := ret[0].([]domain.CoverageFile)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadCoverage indicates an expected call of ReadCoverage.
+func (mr *MockAgentInstructorMockRecorder) ReadCoverage(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadCoverage", reflect.TypeOf((*MockAgentInstructor)(nil).ReadCoverage), ctx)
+}
+
+// RequestGoroutineLeaks mocks base method.
+func (m *MockAgentInstructor) RequestGoroutineLeaks(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestGoroutineLeaks", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RequestGoroutineLeaks indicates an expected call of RequestGoroutineLeaks.
+func (mr *MockAgentInstructorMockRecorder) RequestGoroutineLeaks(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestGoroutineLeaks", reflect.TypeOf((*MockAgentInstructor)(nil).RequestGoroutineLeaks), ctx)
+}
+
+// RequestThreadCount mocks base method.
+func (m *MockAgentInstructor) RequestThreadCount(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestThreadCount", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RequestThreadCount indicates an expected call of RequestThreadCount.
+func (mr *MockAgentInstructorMockRecorder) RequestThreadCount(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestThreadCount", reflect.TypeOf((*MockAgentInstructor)(nil).RequestThreadCount), ctx)
+}
+
+// ResetCoverage mocks base method.
+func (m *MockAgentInstructor) ResetCoverage(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetCoverage", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetCoverage indicates an expected call of ResetCoverage.
+func (mr *MockAgentInstructorMockRecorder) ResetCoverage(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetCoverage", reflect.TypeOf((*MockAgentInstructor)(nil).ResetCoverage), ctx)
+}
+
+// WaitConnected mocks base method.
+func (m *MockAgentInstructor) WaitConnected(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WaitConnected", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WaitConnected indicates an expected call of WaitConnected.
+func (mr *MockAgentInstructorMockRecorder) WaitConnected(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitConnected", reflect.TypeOf((*MockAgentInstructor)(nil).WaitConnected), ctx)
+}
+
+// WaitDisconnected mocks base method.
+func (m *MockAgentInstructor) WaitDisconnected(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WaitDisconnected", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WaitDisconnected indicates an expected call of WaitDisconnected.
+func (mr *MockAgentInstructorMockRecorder) WaitDisconnected(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitDisconnected", reflect.TypeOf((*MockAgentInstructor)(nil).WaitDisconnected), ctx)
+}
+
+// WriteTraceEvent mocks base method.
+func (m *MockAgentInstructor) WriteTraceEvent(ctx context.Context, event string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WriteTraceEvent", ctx, event)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WriteTraceEvent indicates an expected call of WriteTraceEvent.
+func (mr *MockAgentInstructorMockRecorder) WriteTraceEvent(ctx, event any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteTraceEvent", reflect.TypeOf((*MockAgentInstructor)(nil).WriteTraceEvent), ctx, event)
+}
+
+// MockAppBuilder is a mock of AppBuilder interface.
+type MockAppBuilder struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppBuilderMockRecorder
+	isgomock struct{}
+}
+
+// MockAppBuilderMockRecorder is the mock recorder for MockAppBuilder.
+type MockAppBuilderMockRecorder struct {
+	mock *MockAppBuilder
+}
+
+// NewMockAppBuilder creates a new mock instance.
+func NewMockAppBuilder(ctrl *gomock.Controller) *MockAppBuilder {
+	mock := &MockAppBuilder{ctrl: ctrl}
+	mock.recorder = &MockAppBuilderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppBuilder) EXPECT() *MockAppBuilderMockRecorder {
+	return m.recorder
+}
+
+// BuildApp mocks base method.
+func (m *MockAppBuilder) BuildApp(ctx context.Context, in domain.BuildAppInput, build domain.AppBuild, overlay domain.Overlay) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BuildApp", ctx, in, build, overlay)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BuildApp indicates an expected call of BuildApp.
+func (mr *MockAppBuilderMockRecorder) BuildApp(ctx, in, build, overlay any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildApp", reflect.TypeOf((*MockAppBuilder)(nil).BuildApp), ctx, in, build, overlay)
+}
+
+// LoadMainPackage mocks base method.
+func (m *MockAppBuilder) LoadMainPackage(ctx context.Context, in domain.BuildAppInput) (domain.MainPackage, domain.AppBuild, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadMainPackage", ctx, in)
+	ret0, _ := ret[0].(domain.MainPackage)
+	ret1, _ := ret[1].(domain.AppBuild)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// LoadMainPackage indicates an expected call of LoadMainPackage.
+func (mr *MockAppBuilderMockRecorder) LoadMainPackage(ctx, in any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadMainPackage", reflect.TypeOf((*MockAppBuilder)(nil).LoadMainPackage), ctx, in)
+}
+
+// MockAppProcess is a mock of AppProcess interface.
+type MockAppProcess struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppProcessMockRecorder
+	isgomock struct{}
+}
+
+// MockAppProcessMockRecorder is the mock recorder for MockAppProcess.
+type MockAppProcessMockRecorder struct {
+	mock *MockAppProcess
+}
+
+// NewMockAppProcess creates a new mock instance.
+func NewMockAppProcess(ctrl *gomock.Controller) *MockAppProcess {
+	mock := &MockAppProcess{ctrl: ctrl}
+	mock.recorder = &MockAppProcessMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppProcess) EXPECT() *MockAppProcessMockRecorder {
+	return m.recorder
+}
+
+// Kill mocks base method.
+func (m *MockAppProcess) Kill() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Kill")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Kill indicates an expected call of Kill.
+func (mr *MockAppProcessMockRecorder) Kill() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Kill", reflect.TypeOf((*MockAppProcess)(nil).Kill))
+}
+
+// Terminate mocks base method.
+func (m *MockAppProcess) Terminate() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Terminate")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Terminate indicates an expected call of Terminate.
+func (mr *MockAppProcessMockRecorder) Terminate() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Terminate", reflect.TypeOf((*MockAppProcess)(nil).Terminate))
+}
+
+// Wait mocks base method.
+func (m *MockAppProcess) Wait() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Wait")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// Wait indicates an expected call of Wait.
+func (mr *MockAppProcessMockRecorder) Wait() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Wait", reflect.TypeOf((*MockAppProcess)(nil).Wait))
+}
+
+// MockAppStarter is a mock of AppStarter interface.
+type MockAppStarter struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppStarterMockRecorder
+	isgomock struct{}
+}
+
+// MockAppStarterMockRecorder is the mock recorder for MockAppStarter.
+type MockAppStarterMockRecorder struct {
+	mock *MockAppStarter
+}
+
+// NewMockAppStarter creates a new mock instance.
+func NewMockAppStarter(ctrl *gomock.Controller) *MockAppStarter {
+	mock := &MockAppStarter{ctrl: ctrl}
+	mock.recorder = &MockAppStarterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppStarter) EXPECT() *MockAppStarterMockRecorder {
+	return m.recorder
+}
+
+// StartApp mocks base method.
+func (m *MockAppStarter) StartApp(ctx context.Context, build domain.AppBuild, args, env []string) (domain.AppProcess, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartApp", ctx, build, args, env)
+	ret0, _ := ret[0].(domain.AppProcess)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// StartApp indicates an expected call of StartApp.
+func (mr *MockAppStarterMockRecorder) StartApp(ctx, build, args, env any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartApp", reflect.TypeOf((*MockAppStarter)(nil).StartApp), ctx, build, args, env)
+}
+
+// MockLoadClient is a mock of LoadClient interface.
+type MockLoadClient struct {
+	ctrl     *gomock.Controller
+	recorder *MockLoadClientMockRecorder
+	isgomock struct{}
+}
+
+// MockLoadClientMockRecorder is the mock recorder for MockLoadClient.
+type MockLoadClientMockRecorder struct {
+	mock *MockLoadClient
+}
+
+// NewMockLoadClient creates a new mock instance.
+func NewMockLoadClient(ctrl *gomock.Controller) *MockLoadClient {
+	mock := &MockLoadClient{ctrl: ctrl}
+	mock.recorder = &MockLoadClientMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockLoadClient) EXPECT() *MockLoadClientMockRecorder {
+	return m.recorder
+}
+
+// Send mocks base method.
+func (m *MockLoadClient) Send(ctx context.Context, r domain.Request) domain.Response {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Send", ctx, r)
+	ret0, _ := ret[0].(domain.Response)
+	return ret0
+}
+
+// Send indicates an expected call of Send.
+func (mr *MockLoadClientMockRecorder) Send(ctx, r any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Send", reflect.TypeOf((*MockLoadClient)(nil).Send), ctx, r)
+}
+
+// MockAppRequester is a mock of AppRequester interface.
+type MockAppRequester struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppRequesterMockRecorder
+	isgomock struct{}
+}
+
+// MockAppRequesterMockRecorder is the mock recorder for MockAppRequester.
+type MockAppRequesterMockRecorder struct {
+	mock *MockAppRequester
+}
+
+// NewMockAppRequester creates a new mock instance.
+func NewMockAppRequester(ctrl *gomock.Controller) *MockAppRequester {
+	mock := &MockAppRequester{ctrl: ctrl}
+	mock.recorder = &MockAppRequesterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppRequester) EXPECT() *MockAppRequesterMockRecorder {
+	return m.recorder
+}
+
+// NewLoadClient mocks base method.
+func (m *MockAppRequester) NewLoadClient() domain.LoadClient {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewLoadClient")
+	ret0, _ := ret[0].(domain.LoadClient)
+	return ret0
+}
+
+// NewLoadClient indicates an expected call of NewLoadClient.
+func (mr *MockAppRequesterMockRecorder) NewLoadClient() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewLoadClient", reflect.TypeOf((*MockAppRequester)(nil).NewLoadClient))
+}
+
+// MockToolchain is a mock of Toolchain interface.
+type MockToolchain struct {
+	ctrl     *gomock.Controller
+	recorder *MockToolchainMockRecorder
+	isgomock struct{}
+}
+
+// MockToolchainMockRecorder is the mock recorder for MockToolchain.
+type MockToolchainMockRecorder struct {
+	mock *MockToolchain
+}
+
+// NewMockToolchain creates a new mock instance.
+func NewMockToolchain(ctrl *gomock.Controller) *MockToolchain {
+	mock := &MockToolchain{ctrl: ctrl}
+	mock.recorder = &MockToolchainMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockToolchain) EXPECT() *MockToolchainMockRecorder {
+	return m.recorder
+}
+
+// CoverageProfile mocks base method.
+func (m *MockToolchain) CoverageProfile(ctx context.Context, files []domain.CoverageFile) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CoverageProfile", ctx, files)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CoverageProfile indicates an expected call of CoverageProfile.
+func (mr *MockToolchainMockRecorder) CoverageProfile(ctx, files any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CoverageProfile", reflect.TypeOf((*MockToolchain)(nil).CoverageProfile), ctx, files)
+}
+
+// ReadAppSources mocks base method.
+func (m *MockToolchain) ReadAppSources(build domain.AppBuild, files []string) map[string][]byte {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadAppSources", build, files)
+	ret0, _ := ret[0].(map[string][]byte)
+	return ret0
+}
+
+// ReadAppSources indicates an expected call of ReadAppSources.
+func (mr *MockToolchainMockRecorder) ReadAppSources(build, files any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAppSources", reflect.TypeOf((*MockToolchain)(nil).ReadAppSources), build, files)
+}
+
+// MockAgentSources is a mock of AgentSources interface.
+type MockAgentSources struct {
+	ctrl     *gomock.Controller
+	recorder *MockAgentSourcesMockRecorder
+	isgomock struct{}
+}
+
+// MockAgentSourcesMockRecorder is the mock recorder for MockAgentSources.
+type MockAgentSourcesMockRecorder struct {
+	mock *MockAgentSources
+}
+
+// NewMockAgentSources creates a new mock instance.
+func NewMockAgentSources(ctrl *gomock.Controller) *MockAgentSources {
+	mock := &MockAgentSources{ctrl: ctrl}
+	mock.recorder = &MockAgentSourcesMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAgentSources) EXPECT() *MockAgentSourcesMockRecorder {
+	return m.recorder
+}
+
+// AgentFiles mocks base method.
+func (m *MockAgentSources) AgentFiles() ([]domain.SourceFile, []domain.SourceFile, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AgentFiles")
+	ret0, _ := ret[0].([]domain.SourceFile)
+	ret1, _ := ret[1].([]domain.SourceFile)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// AgentFiles indicates an expected call of AgentFiles.
+func (mr *MockAgentSourcesMockRecorder) AgentFiles() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AgentFiles", reflect.TypeOf((*MockAgentSources)(nil).AgentFiles))
+}
+
+// MockClock is a mock of Clock interface.
+type MockClock struct {
+	ctrl     *gomock.Controller
+	recorder *MockClockMockRecorder
+	isgomock struct{}
+}
+
+// MockClockMockRecorder is the mock recorder for MockClock.
+type MockClockMockRecorder struct {
+	mock *MockClock
+}
+
+// NewMockClock creates a new mock instance.
+func NewMockClock(ctrl *gomock.Controller) *MockClock {
+	mock := &MockClock{ctrl: ctrl}
+	mock.recorder = &MockClockMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockClock) EXPECT() *MockClockMockRecorder {
+	return m.recorder
+}
+
+// Now mocks base method.
+func (m *MockClock) Now() time.Time {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Now")
+	ret0, _ := ret[0].(time.Time)
+	return ret0
+}
+
+// Now indicates an expected call of Now.
+func (mr *MockClockMockRecorder) Now() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Now", reflect.TypeOf((*MockClock)(nil).Now))
+}
+
+// Sleep mocks base method.
+func (m *MockClock) Sleep(ctx context.Context, d time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Sleep", ctx, d)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Sleep indicates an expected call of Sleep.
+func (mr *MockClockMockRecorder) Sleep(ctx, d any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Sleep", reflect.TypeOf((*MockClock)(nil).Sleep), ctx, d)
 }

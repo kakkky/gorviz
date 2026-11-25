@@ -1,0 +1,17 @@
+package pages
+
+templ Error(status int, message string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<title>error · gorviz</title>
+			<style>body{background:#0f1115;color:#e6e8ee;font:14px/1.55 ui-sans-serif,system-ui,sans-serif;padding:32px} a{color:#5ec8f2}</style>
+		</head>
+		<body>
+			<h1>{ status }</h1>
+			<p>{ message }</p>
+			<p><a href="/">Back to the overview</a></p>
+		</body>
+	</html>
+}

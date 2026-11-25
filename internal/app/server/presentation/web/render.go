@@ -12,6 +12,6 @@ import (
 func render(rw http.ResponseWriter, r *http.Request, c templ.Component) {
 	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := c.Render(r.Context(), rw); err != nil {
-		middleware.SetError(r, domain.ErrInternal.Wrap(err, "render a page"))
+		middleware.Fail(r, domain.ErrInternal.Wrap(err, "render a page"))
 	}
 }
