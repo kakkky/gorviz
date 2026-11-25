@@ -235,11 +235,12 @@ read the code at the reported file:line, and give me the cause and the GUI URL s
 ## Development
 
 ```sh
-make build         # bin/gorviz
-make test          # go test ./...
-make gen           # templ and mocks
-make assets.build  # the GUI's TypeScript and CSS (needs Node; the output is committed)
-make example       # run and diagnose example/todo-app
+make build                       # bin/gorviz
+make run APP=./example/todo-app  # build, then run the app under gorviz (APP defaults to ./example/todo-app)
+make stop                        # stop the session
+make vet                         # go vet ./...
+make gen                         # templ, mocks, TS types and the GUI's TypeScript and CSS (needs Node; the output is committed)
+make test                        # go test ./... and the GUI's tests
 ```
 
 - [docs/design.md](docs/design.md) — the specification
