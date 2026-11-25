@@ -66,7 +66,7 @@
   - アプリをビルドするときに差し込まれ、アプリのプロセスの中で動く
   - execution trace を server へ流し、server に言われたものを書き出す。判断も、データを溜めることもしない
 - server
-  - アプリをビルドして起動し、終わるまで見届ける
+  - アプリをビルドして子プロセスとして起動し、終わるまで見届ける
   - シナリオのとおりにアプリへ負荷をかける
   - agent から届いた観測データ[^observation]を整形して観測データの index として持ち、Issue を判定する。結果を GUI (Web) と HTTP API で提供する
 - cli
@@ -100,6 +100,8 @@ flowchart LR
 
 - agent から server へは、agent のほうから接続する。server はアプリの居場所を知らなくてよく、アプリが終われば接続も切れる
 - server は手元のマシンからの接続だけを受ける。手元で使う前提なので、ログイン・トークン・暗号化は持たない
+- server は決まったアドレスで待ち受け、cli はそのアドレスにつなぐ。別のアドレスで動かすときは、cli の引数で渡す
+  - 同じアドレスで動かせる server は 1 つなので、手元で同時に動かせるセッションも 1 つ
 
 ### 3.3 データフロー
 
@@ -124,7 +126,7 @@ sequenceDiagram
         S-->>C: コンパイルエラー
         C-->>L: コンパイルエラー
     end
-    S->>App: アプリを起動する
+    S->>App: アプリを子プロセスとして起動する
     A->>S: server に接続する
     A->>A: trace を取り始める
     A->>App: アプリを動かす
@@ -257,12 +259,12 @@ sequenceDiagram
         participant App as アプリ
     end
 
-    alt 普通に終わる
+    alt 普通に終わる (main が戻る・main の goroutine の panic)
         App-->>A: アプリが終わる
         A->>A: 残った goroutine を記録し、trace を止める
         A->>S: 最後の trace・leak・coverage
         A->>S: 終わりの合図
-    else その場で終わる (os.Exit・log.Fatal・panic)
+    else その場で終わる (os.Exit・log.Fatal・main 以外の goroutine の panic)
         App->>App: アプリがその場で終わる
         A--xS: 切れる
         S->>S: trace の末尾が欠けたと記録する
@@ -383,8 +385,12 @@ agent が取るのは、アプリのプロセスの中からしか取れない�
 - agent より先に作られた goroutine は、作られたときの記録がない。import したパッケージの初期化で起動される goroutine がこれにあたる
   - 生成元は、入口の関数で代用する
   - 待機理由は、スタックの上の方の runtime の関数 (channel の受信・ロック・スリープ・ネットワークなど) から推定する (`INFERENCE`)
-- アプリがその場で終わったとき (`os.Exit`・`log.Fatal`・panic、止める合図を受ける処理がないとき) は、trace の末尾が欠ける。欠けたことは時間軸と Issue に示す
-- agent 自身の goroutine は、判定に数えない
+- アプリがその場で終わったとき (`os.Exit`・`log.Fatal`・main 以外の goroutine の panic、止める合図を受ける処理がないとき) は、trace の末尾が欠ける。欠けたことは時間軸と Issue に示す
+  - main の goroutine の panic では、trace を書き切ってから panic が続く
+- agent 自身の goroutine は、隠さず、agent のものだと分かるように示す。agent がアプリの中で何をしているかも、観測の対象として見られるようにするため
+  - 見分けるのは、作られたときのスタックに agent があるかどうか。agent はアプリの中で別のパッケージとして動くので、確かに見分けられる
+  - Issue の判定と、影響の大きかった goroutine には数えない。Issue はアプリの問題だけを出すため
+  - goroutine 数などの推移も、アプリの goroutine だけで数える
 
 #### 4.1.6 依存コンポーネント
 
@@ -418,6 +424,8 @@ agent が取るのは、アプリのプロセスの中からしか取れない�
 
 - `go run` と同じ形で、パッケージとアプリの引数を受け取る (`gorviz run ./cmd/api -- --port 8080`)。環境変数は `gorviz run` のものを、ビルドにもアプリにもそのまま渡す。ふだんのビルドに付けている設定 (ビルドタグ・cgo の有無など) も、環境変数で同じものを渡せるようにするため
 - ビルドを済ませたバイナリは受け取らない。agent を差し込めないため
+- アプリの標準出力・標準エラーは扱わない。エラーはアプリ層の話で、gorviz は Go ランタイムの健康だけを扱うため
+- アプリは server の子プロセスとして起動する。server がアプリの終わりと終了コードを見届け、止める合図を送れるようにするため。server が止まるときにアプリが残っていれば、アプリも止める
 
 ##### 4.2.2.2 外から取るもの
 
@@ -454,7 +462,7 @@ agent が取るのは、アプリのプロセスの中からしか取れない�
   - 前のレスポンスから値を拾い、次のリクエストで使うこと。作ってから更新する、のような状態のある経路まで届かせるため
 - シナリオに書かないもの
   - 負荷のかけ方 (同時実行数・時間・順番)。gorviz が決める (「[診断](#425-診断)」)
-- `gorviz validate` で、流さずに確かめられる。誤りには、どこがどう違うかと直し方を返す
+- シナリオの誤りは、`gorviz diagnose` が負荷をかける前に返す。どこがどう違うかと直し方を添える
 
 #### 4.2.5 診断
 
@@ -680,6 +688,7 @@ Issue の確かさは「[判定](#4262-判定)」の表のとおり。goroutine 
   - 待たせていた関数から、その goroutine の Goroutine へ移れる。待たせていた側がロックを持っている間に何をしていたかを見るため
 - Scheduler と Goroutine では、goroutine ごとのリークを、確かさ (`FACT` / `INFERENCE`) が分かる形で示す
 - trace の末尾が欠けたところは、隠さず欠けたと示す
+- agent の goroutine は、目立たない色と「agent」の印で示す。cli の `gorviz goroutine` でも、agent のものだと分かるようにする
 
 #### 4.2.9 依存コンポーネント
 
@@ -720,7 +729,6 @@ cli は、LLM エージェントに診断を任せるときの使い方に合わ
 
 | サブコマンド | すること |
 | --- | --- |
-| `gorviz validate <シナリオ>` | シナリオを、流さずに確かめる。誤りには、どこがどう違うかと直し方を返す |
 | `gorviz diagnose [シナリオ]` | アプリを動かして Issue を出す。シナリオがあれば負荷をかける。phase ごとの行を流し、最後に要約を返す (「[返すもの](#4251-返すもの)」) |
 
 #### 5.2.3 Issue
@@ -746,7 +754,7 @@ cli は、LLM エージェントに診断を任せるときの使い方に合わ
 
 1. 開発者が「gorviz でこのアプリを診断して」と頼む
 2. LLM エージェントが `gorviz docs` でシナリオの書き方を読み、`gorviz run ./cmd/api` で立てる
-3. handler・ルートを読んでシナリオを書き、`gorviz validate` で確かめてから `gorviz diagnose` で流す
+3. handler・ルートを読んでシナリオを書き、`gorviz diagnose` で流す。シナリオに誤りがあれば、返ってきた直し方に沿って直す
 4. smoke で通らない flow があれば、要約のステータスの内訳と coverage を見てシナリオを直し、もう一度流す
 5. 要約に Issue が出ていれば、`gorviz issue <id>` で原因を読む。待たせていた側を辿るときは `gorviz goroutine <id>` を使う。返ってきた関数と file:line から手元のコードを読む
 6. ネクストアクションとして、LLM エージェントが原因と、確かめるための GUI の URL を開発者に渡す。開発者は Goroutine や Scheduler の再生で確かめる
@@ -797,7 +805,7 @@ cli は、LLM エージェントに診断を任せるときの使い方に合わ
 [^coverage]: **coverage**: プログラムを動かしたときに通った行。`go build -cover` でビルドしたプログラムは、動かしながら通った行を数える
 [^vu]: **VU (仮想ユーザー)**: 負荷をかける側で、flow を繰り返し送る 1 本の流れ。同時実行数は、同時に動かす VU の数
 [^occurrence]: **発生**: 同じ Issue (種類と対象が同じもの) が起きた 1 回 1 回。条件を満たし始めてから満たさなくなるまでを 1 回と数える
-[^gmp]: **GMP**: Go のスケジューラの仕組み。G (goroutine) を、P (実行の権利。GOMAXPROCS 個) を持った M (OS のスレッド) が走らせる
+[^gmp]: **GMP**: Go のスケジューラの仕組み。G (goroutine) を、P (実行の権利。GOMAXPROCS 個) を持った M (machine。OS のスレッド) が走らせる
 [^stw]: **STW (Stop The World)**: 全 goroutine を止めること。GC の一部や、全 goroutine のスタックを書き出す goroutine dump で起きる
 [^markassist]: **mark assist**: 割り当ての多い goroutine が GC の作業を肩代わりさせられること。その間は本来の処理が進まない
 [^toon]: **TOON (Token-Oriented Object Notation)**: JSON と同じ中身を、インデントと表の形で少ないトークンに収める形式 ([toon-format/toon](https://github.com/toon-format/toon))
