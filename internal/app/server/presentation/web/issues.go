@@ -1,10 +1,11 @@
 package web
 
 import (
-	"fmt"
+	"math"
 	"net/http"
-	"strconv"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
@@ -13,7 +14,21 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
 
-// GetIssuesHandler は Issue の一覧を描く
+// ongoingWindow は発生が「今も続いている」とみなす直近の長さ
+const ongoingWindow = 2 * domain.BucketSize
+
+func certaintyNote(c domain.Certainty) string {
+	if c == domain.CertaintyFact {
+		return "said by the runtime or recorded in the execution trace"
+	}
+	return "inferred by gorviz from a threshold, a trend or a stack"
+}
+
+func ongoing(st usecase.GetSessionStatusUsecaseOutput, lastAt time.Duration) bool {
+	return st.Session.App.State == domain.AppRunning && lastAt >= st.Elapsed-ongoingWindow
+}
+
+// GetIssuesHandler は Issue の一覧を、種類ごとの発生の数と推移と一緒に描く
 type GetIssuesHandler struct {
 	status *usecase.GetSessionStatusUsecase
 	list   *usecase.ListIssuesUsecase
@@ -30,131 +45,129 @@ func (h *GetIssuesHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	kind := domain.IssueKind(strings.ToUpper(q.Get("kind")))
-	out, err := h.list.Exec(r.Context(), usecase.ListIssuesUsecaseInput{Kind: kind, Text: q.Get("text")})
+	tr, err := parseRange(q, st.Elapsed, fromSession)
 	if err != nil {
 		middleware.Fail(r, err)
 		return
 	}
-	vm := pages.IssuesViewModel{Base: baseOf("Issues", tabIssues, st, focus{}), Kind: string(kind), Text: q.Get("text")}
-	for _, k := range domain.IssueKinds {
-		vm.Kinds = append(vm.Kinds, string(k))
+	kind := domain.IssueKind(strings.ToUpper(q.Get("kind")))
+	out, err := h.list.Exec(r.Context(), usecase.ListIssuesUsecaseInput{Kind: kind, Text: q.Get("q")})
+	if err != nil {
+		middleware.Fail(r, err)
+		return
 	}
+	keep := url.Values{}
+	for _, k := range []string{"q", "kind"} {
+		if v := q.Get(k); v != "" {
+			keep.Set(k, v)
+		}
+	}
+	vm := pages.IssuesViewModel{Base: baseOf("Issues", tabIssues, st), Picker: picker("/issues", keep, tr, phasesOf(st.Timeline, st.Elapsed)), Filtered: len(keep) > 0,
+		Search: components.SearchFormViewModel{Action: "/issues", Query: q.Get("q"), Placeholder: "function", Keep: rangeKeep(tr),
+			Selects: []components.SearchSelectViewModel{{Name: "kind", All: "all kinds", Options: kindOptions(), Selected: string(kind)}}}}
+	var inRange []usecase.IssueSummary
 	for _, is := range out.Issues {
-		vm.Issues = append(vm.Issues, pages.IssueRowViewModel{ID: string(is.ID), URL: issueURL(is.ID, 0), Kind: string(is.Kind), Target: is.Target, Certainty: string(is.Certainty),
-			Occurrences: is.Occurrences, FirstPhase: is.FirstPhase, First: at(is.FirstAt), Last: at(is.LastAt), Value: is.Value})
+		if n := countIn(is.Starts, tr.From, tr.To); n > 0 || is.LastAt >= tr.From && is.FirstAt <= tr.To {
+			inRange = append(inRange, is)
+		}
+	}
+	vm.Total, vm.Kinds, vm.Chart = issueTrend(inRange, tr)
+	for _, is := range inRange {
+		vm.Rows = append(vm.Rows, pages.IssueRowViewModel{Kind: string(is.Kind), Certainty: string(is.Certainty), CertaintyNote: certaintyNote(is.Certainty), Subject: is.Target, Summary: is.Value,
+			Ongoing: ongoing(st, is.LastAt), Count: countIn(is.Starts, tr.From, tr.To), Trend: trendBars(is.Starts, tr.From, tr.To), FirstSeen: at(is.FirstAt), LastSeen: at(is.LastAt), URL: issueURL(is.ID, 0)})
 	}
 	render(rw, r, pages.Issues(vm))
 }
 
-// GetIssueHandler は 1 つの Issue と、選んだ発生で影響の大きかった goroutine を描く
-type GetIssueHandler struct {
-	status *usecase.GetSessionStatusUsecase
-	get    *usecase.GetIssueUsecase
+func rangeKeep(tr timeRange) []components.KeptParamViewModel {
+	out := []components.KeptParamViewModel{{Name: "from", Value: tr.FromRaw}}
+	if tr.ToRaw != "" {
+		out = append(out, components.KeptParamViewModel{Name: "to", Value: tr.ToRaw})
+	}
+	return out
 }
 
-func NewGetIssueHandler(status *usecase.GetSessionStatusUsecase, get *usecase.GetIssueUsecase) *GetIssueHandler {
-	return &GetIssueHandler{status: status, get: get}
+func kindOptions() []components.SearchOptionViewModel {
+	out := make([]components.SearchOptionViewModel, 0, len(domain.IssueKinds))
+	for _, k := range domain.IssueKinds {
+		out = append(out, components.SearchOptionViewModel{Value: string(k), Label: string(k)})
+	}
+	return out
 }
 
-func (h *GetIssueHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+func countIn(starts []time.Duration, from, to time.Duration) int {
 	n := 0
-	if v := r.URL.Query().Get("occurrence"); v != "" {
-		var err error
-		if n, err = strconv.Atoi(v); err != nil || n < 1 {
-			middleware.Fail(r, domain.ErrInvalidArgument.With("occurrence must be a number from 1"))
-			return
+	for _, s := range starts {
+		if s >= from && s <= to {
+			n++
 		}
 	}
-	st, err := h.status.Exec(r.Context(), usecase.GetSessionStatusUsecaseInput{})
-	if err != nil {
-		middleware.Fail(r, err)
-		return
-	}
-	out, err := h.get.Exec(r.Context(), usecase.GetIssueUsecaseInput{ID: domain.IssueID(strings.ToUpper(r.PathValue("id"))), Occurrence: n})
-	if err != nil {
-		middleware.Fail(r, err)
-		return
-	}
-	render(rw, r, pages.Issue(issueViewModel(st, out)))
+	return n
 }
 
-func issueViewModel(st usecase.GetSessionStatusUsecaseOutput, out usecase.GetIssueUsecaseOutput) pages.IssueViewModel {
-	is, imp := out.Issue, out.Impact
-	vm := pages.IssueViewModel{Base: baseOf(string(is.ID)+" "+string(is.Kind), tabIssues, st, focus{from: imp.From, to: imp.To, has: true}),
-		ID: string(is.ID), Kind: string(is.Kind), Target: is.TargetLabel(), Certainty: string(out.Certainty), FirstPhase: is.FirstPhase(), NextAction: out.NextAction,
-		Showing: out.Occurrence, Range: span(imp.From, imp.To), SchedulerURL: schedulerURL(imp.From, imp.To)}
-	for i, o := range is.Occurrences {
-		vm.Occurrences = append(vm.Occurrences, pages.OccurrenceRowViewModel{N: i + 1, URL: issueURL(is.ID, i+1), Current: i+1 == out.Occurrence, Range: span(o.From, o.To), Phase: o.Phase, Certainty: string(o.Certainty), Value: o.Value})
+const trendBuckets = 24
+
+// trendBars は期間を区切り、区切りごとの発生の数を、いちばん多い区切りに対する高さにする
+func trendBars(starts []time.Duration, from, to time.Duration) []string {
+	counts := make([]int, trendBuckets)
+	span := to - from
+	top := 0
+	for _, t := range starts {
+		if span <= 0 || t < from || t > to {
+			continue
+		}
+		i := min(int(float64(trendBuckets)*float64(t-from)/float64(span)), trendBuckets-1)
+		counts[i]++
+		top = max(top, counts[i])
 	}
-	for _, l := range imp.Leaks {
-		row := pages.LeakRowViewModel{CreatedBy: frameText(l.Creator), BlockedAt: frameText(l.Blocked), Reason: l.Reason, Certainty: string(l.Certainty),
-			Leaked: fmt.Sprintf("%d of the %d goroutines waiting at the same place leaked", l.Count, l.Of)}
-		for i, g := range l.Goroutines {
-			if i == 20 {
-				break
+	out := make([]string, trendBuckets)
+	for i, c := range counts {
+		out[i] = "0%"
+		if top > 0 {
+			out[i] = itoa(c*100/top) + "%"
+		}
+	}
+	return out
+}
+
+// issueTrend は種類ごとの発生の数と、区切りごとに種類で積み上げた発生の推移
+func issueTrend(issues []usecase.IssueSummary, tr timeRange) (int, []pages.IssueKindTotalViewModel, components.ChartViewModel) {
+	const buckets = 48
+	span := max(tr.To-tr.From, time.Second)
+	step := max(span/buckets, time.Second)
+	n := int((span + step - 1) / step)
+	times := make([]time.Duration, n)
+	for i := range times {
+		times[i] = tr.From + step*time.Duration(i)
+	}
+	byKind := map[domain.IssueKind][]float64{}
+	totals := map[domain.IssueKind]int{}
+	total := 0
+	for _, is := range issues {
+		v, ok := byKind[is.Kind]
+		if !ok {
+			v = make([]float64, n)
+			byKind[is.Kind] = v
+		}
+		for _, t := range is.Starts {
+			if t < tr.From || t > tr.To {
+				continue
 			}
-			row.Goroutines = append(row.Goroutines, pages.LinkRowViewModel{Label: "G" + strconv.FormatInt(int64(g), 10), URL: goroutineURL(g, imp.From, imp.To)})
+			v[min(int((t-tr.From)/step), n-1)]++
+			totals[is.Kind]++
+			total++
 		}
-		vm.Leaks = append(vm.Leaks, row)
 	}
-	for _, s := range imp.LockSites {
-		row := pages.LockSiteRowViewModel{Function: s.Function, Location: s.Location, Share: fmt.Sprintf("%.0f%%", s.Share*100), Count: s.Count, Mean: domain.FormatDuration(s.Mean), Max: domain.FormatDuration(s.Max)}
-		for _, hd := range s.Holders {
-			row.HeldBy = append(row.HeldBy, pages.LinkRowViewModel{Label: fmt.Sprintf("G%d %s %s", hd.G, hd.Function, hd.Location), URL: goroutineURL(hd.G, hd.WaitFrom, hd.WaitTo)})
+	var kinds []pages.IssueKindTotalViewModel
+	var ss []series
+	for i, k := range domain.IssueKinds {
+		class := "series-" + itoa(i%6+1)
+		if totals[k] > 0 {
+			kinds = append(kinds, pages.IssueKindTotalViewModel{Kind: string(k), Count: totals[k], Percent: itoa(totals[k]*100/total) + "%", Class: class})
 		}
-		vm.LockSites = append(vm.LockSites, row)
-	}
-	for _, g := range imp.Goroutines {
-		card := cardOf(g.Detail)
-		if g.Note != "" {
-			card.Note = g.Note
+		if v, ok := byKind[k]; ok {
+			ss = append(ss, series{label: string(k), class: class, bar: true, stack: true, values: v})
 		}
-		if g.Duration > 0 {
-			card.Value = domain.FormatDuration(g.Duration)
-		}
-		vm.Goroutines = append(vm.Goroutines, card)
 	}
-	return vm
-}
-
-func frameText(f domain.Frame) string {
-	if loc := f.Location(); loc != "" {
-		return f.Function + " " + loc
-	}
-	return f.Function
-}
-
-func cardOf(d domain.GoroutineDetail) components.GoroutineCardViewModel {
-	vm := components.GoroutineCardViewModel{ID: strconv.FormatInt(int64(d.ID), 10), URL: goroutineURL(d.ID, d.From, d.To), Agent: d.Agent, Entry: d.Entry, CreatedBy: frameText(d.Creator),
-		Range: span(d.From, d.To), MainCause: string(d.MainCause), Certainty: string(d.Certainty), Truncated: d.TraceTruncated}
-	if d.Agent {
-		vm.Note = "a goroutine of the gorviz agent; shown, but never counted in issues"
-	}
-	if d.Creator.Function == "" {
-		vm.CreatedBy = ""
-	}
-	var total int64
-	for _, b := range d.Breakdown {
-		total += int64(b.Duration)
-	}
-	for _, b := range d.Breakdown {
-		vm.Breakdown = append(vm.Breakdown, components.CauseShareViewModel{Cause: string(b.Cause), Share: fmt.Sprintf("%.2f%%", float64(b.Duration)*100/float64(max(total, 1))), Duration: domain.FormatDuration(b.Duration)})
-	}
-	if d.StoppedAt.Function != "" {
-		vm.StoppedAt, vm.StoppedIn, vm.StoppedFor, vm.Reason = frameText(d.StoppedAt), d.StoppedIn, domain.FormatDuration(d.StoppedFor), d.StoppedReason
-	}
-	for _, w := range d.Wakers {
-		vm.WokenBy = append(vm.WokenBy, components.WakerViewModel{G: strconv.FormatInt(int64(w.G), 10), URL: goroutineURL(w.G, w.WaitFrom, w.WaitTo), Function: w.Function, Location: w.Location, Waited: domain.FormatDuration(w.Total), Times: w.Count})
-	}
-	if d.Leak != nil {
-		vm.Leak, vm.LeakCert = fmt.Sprintf("%d of the %d goroutines waiting at the same place leaked", d.Leak.Count, d.Leak.Of), string(d.Leak.Certainty)
-	}
-	if d.Ended {
-		vm.Ended = at(d.EndedAt)
-	}
-	for _, f := range d.Stack {
-		vm.Stack = append(vm.Stack, frameText(f))
-	}
-	return vm
+	return total, kinds, buildChart(chartSpec{from: tr.From, to: tr.From + span, step: step, times: times, series: ss, format: count, threshold: math.NaN(), zoom: true})
 }

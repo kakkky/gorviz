@@ -1,0 +1,41 @@
+package components
+
+// UnavailableViewModel は保持期間を過ぎたか、記録されていなくて出せない欄
+type UnavailableViewModel struct {
+	Field string
+	Text  string
+	Since string
+}
+
+templ Notice() {
+	<div class="notice" role="status">
+		<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M8 7.25v3.75M8 4.9v.1" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+		<div class="notice-body">
+			{ children... }
+		</div>
+	</div>
+}
+
+templ Unavailable(vm UnavailableViewModel) {
+	@Notice() {
+		<strong>{ vm.Field }</strong>
+		<span>{ vm.Text }</span>
+		if vm.Since != "" {
+			<span class="faint">(kept since <span class="mono">{ vm.Since }</span>)</span>
+		}
+	}
+}
+
+type LinkItemViewModel struct {
+	Label string
+	URL   string
+	Note  string
+}
+
+templ LinkList(items []LinkItemViewModel) {
+	<div class="links">
+		for _, l := range items {
+			<a class="btn small" href={ templ.SafeURL(l.URL) } title={ l.Note }>{ l.Label }</a>
+		}
+	</div>
+}

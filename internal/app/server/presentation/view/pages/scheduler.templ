@@ -7,12 +7,12 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
 )
 
-// SchedulerViewModel はスケジューラの動きの再生。StreamURL があれば、新しく届いた分を SSE で足していく
+// SchedulerViewModel の StreamURL は最新を追っているときの SSE (なければ空)。Truncated は窓の変化が多すぎて途中で切ったこと
 type SchedulerViewModel struct {
 	Base      layout.BaseViewModel
-	Range     string
-	Live      bool
-	LiveURL   string
+	Picker    components.TimeRangePickerViewModel
+	Past      bool
+	LatestURL string
 	Replay    components.GMPReplayViewModel
 	StreamURL string
 	Truncated bool
@@ -22,12 +22,11 @@ templ Scheduler(vm SchedulerViewModel) {
 	@layout.Base(vm.Base) {
 		<div class="overview-head">
 			<h2>Scheduler</h2>
-			if vm.Live {
-				<span class="muted">following the latest { vm.Range }</span>
-			} else {
-				<span class="muted mono">{ vm.Range }</span>
-				<a class="btn small" href={ templ.SafeURL(vm.LiveURL) }>Follow the latest</a>
+			if vm.Past {
+				<span class="muted">a past moment</span>
+				<a class="btn" href={ templ.SafeURL(vm.LatestURL) }>Latest</a>
 			}
+			@components.TimeRangePicker(vm.Picker)
 		</div>
 		@ReplayPanel(vm.Replay, vm.StreamURL, vm.Truncated)
 	}
@@ -38,11 +37,14 @@ templ ReplayPanel(replay components.GMPReplayViewModel, streamURL string, trunca
 	if streamURL != "" {
 		@turbo.StreamSSESource("gmp-stream", streamURL)
 	}
+	if truncated {
+		@components.Notice() {
+			<strong>replay</strong>
+			<span>this range has too many state changes, so the replay stops early; pick a shorter range</span>
+		}
+	}
 	@components.GMPReplay(replay)
 	<p class="faint small replay-footnote">
-		The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded. Goroutines of the gorviz agent are dimmed.
-		if truncated {
-			This range has too many state changes, so the replay stops early. Open a shorter range.
-		}
+		The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded. Goroutines of the gorviz agent are folded at the end of the parked list; when shown, they are dimmed and marked with an antenna.
 	</p>
 }

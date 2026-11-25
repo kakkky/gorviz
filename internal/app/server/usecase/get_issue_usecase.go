@@ -13,17 +13,21 @@ type GetIssueUsecase struct {
 	issues domain.IssueBookStore
 }
 
-// GetIssueUsecaseInput の Occurrence は 1 から数える。0 なら最新
+// GetIssueUsecaseInput の Occurrence は 1 から数える。0 なら最新。AllImpacts なら、新しいほうから maxImpacts 個の発生それぞれの Impact も返す
 type GetIssueUsecaseInput struct {
 	ID         domain.IssueID
 	Occurrence int
+	AllImpacts bool
 }
+
+const maxImpacts = 20
 
 type GetIssueUsecaseOutput struct {
 	Issue      domain.Issue
 	Certainty  domain.Certainty
 	Occurrence int
 	Impact     domain.Impact
+	Impacts    map[int]domain.Impact
 	NextAction string
 	Phases     []domain.PhaseRange
 }
@@ -58,6 +62,12 @@ func (u *GetIssueUsecase) Exec(_ context.Context, in GetIssueUsecaseInput) (GetI
 	out := GetIssueUsecaseOutput{Issue: is, Certainty: is.Certainty(), Occurrence: n, NextAction: is.Kind.NextAction()}
 	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) {
 		out.Impact = domain.ImpactOf(ix, &is, o)
+		if in.AllImpacts {
+			out.Impacts = map[int]domain.Impact{}
+			for i := len(is.Occurrences); i >= 1 && i > len(is.Occurrences)-maxImpacts; i-- {
+				out.Impacts[i] = domain.ImpactOf(ix, &is, is.Occurrences[i-1])
+			}
+		}
 		out.Phases = domain.PhasesOf(ix.Marks(), ix.Last())
 	})
 	return out, nil

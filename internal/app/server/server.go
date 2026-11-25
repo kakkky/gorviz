@@ -83,6 +83,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	mux.Handle("POST "+serverapi.PathStop, api.NewPostStopHandler(uc.NewWaitAppShutdownUsecase(), stop))
 	mux.Handle("GET /{$}", web.NewGetRootHandler())
 	mux.Handle("GET /overview", web.NewGetOverviewHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
+	mux.Handle("GET /overview/stream", web.NewGetOverviewStreamHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
 	mux.Handle("GET /issues", web.NewGetIssuesHandler(uc.NewGetSessionStatusUsecase(), uc.NewListIssuesUsecase()))
 	mux.Handle("GET /issues/{id}", web.NewGetIssueHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetIssueUsecase()))
 	mux.Handle("GET /scheduler", web.NewGetSchedulerHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetSchedulerWindowUsecase()))

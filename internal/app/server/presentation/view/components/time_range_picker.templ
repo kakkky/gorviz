@@ -1,0 +1,89 @@
+package components
+
+import (
+	"github.com/kakkky/hotwire-go/stimulus"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+)
+
+// TimeRangePickerViewModel は期間を選ぶ部品。From・To は入力欄の初期値 (セッションの始まりからの秒)、Range は見出しに出す期間
+type TimeRangePickerViewModel struct {
+	Live    bool
+	Range   TimeRangeViewModel
+	Presets []PresetViewModel
+	Action  string
+	Keep    []KeptParamViewModel
+	From    string
+	To      string
+}
+
+type TimeRangeViewModel struct {
+	From   string
+	To     string
+	Length string
+}
+
+type PresetViewModel struct {
+	Label  string
+	URL    string
+	Active bool
+}
+
+type KeptParamViewModel struct {
+	Name  string
+	Value string
+}
+
+templ TimeRange(vm TimeRangeViewModel) {
+	<span class="time-range">
+		@clockIcon()
+		@TimeRangeBody(vm)
+	</span>
+}
+
+templ TimeRangeBody(vm TimeRangeViewModel) {
+	<time>{ vm.From }</time>
+	<span class="sep">→</span>
+	<time>{ vm.To }</time>
+	if vm.Length != "" {
+		<span class="len">{ vm.Length }</span>
+	}
+}
+
+templ TimeRangePicker(vm TimeRangePickerViewModel) {
+	<details class="trp" { stimulus.AttrControllers(assets.TimeRangePickerController.Name)... }>
+		<summary class="trp-button" title="change the time range">
+			@clockIcon()
+			if vm.Live {
+				<span class="trp-live" title="moves with the current time"></span>
+			}
+			<span class="trp-range">
+				@TimeRangeBody(vm.Range)
+			</span>
+			<span class="trp-caret" aria-hidden="true"></span>
+		</summary>
+		<div class="trp-pop">
+			<div class="trp-presets">
+				for _, p := range vm.Presets {
+					<a href={ templ.SafeURL(p.URL) } class={ templ.KV("active", p.Active) }>{ p.Label }</a>
+				}
+			</div>
+			<form method="get" action={ templ.SafeURL(vm.Action) } class="trp-custom">
+				for _, k := range vm.Keep {
+					<input type="hidden" name={ k.Name } value={ k.Value }/>
+				}
+				<label><span>from</span><input type="text" name="from" value={ vm.From } required/></label>
+				<label><span>to</span><input type="text" name="to" value={ vm.To } required/></label>
+				<div class="trp-actions">
+					<span class="faint">seconds since the session started</span>
+					<button type="button" { stimulus.AttrActions("click->" + assets.TimeRangePickerController.Name + "#close")... }>Cancel</button>
+					<button type="submit" class="primary">Apply</button>
+				</div>
+			</form>
+		</div>
+	</details>
+}
+
+templ clockIcon() {
+	<svg class="clock-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"></circle><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg>
+}

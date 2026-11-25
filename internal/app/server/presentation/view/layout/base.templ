@@ -5,18 +5,15 @@ import (
 	"github.com/kakkky/hotwire-go/turbo"
 
 	"github.com/kakkky/gorviz/internal/app/server/assets"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 )
 
-// BaseViewModel は全画面の外枠。App は見ているアプリ、Timeline はセッションの時間軸
+// BaseViewModel は全画面の外枠。見出しのピルはセッションで動かしているアプリと、その状態
 type BaseViewModel struct {
-	Title    string
-	App      string
-	State    string
-	Running  bool
-	Elapsed  string
-	Tabs     []LinkViewModel
-	Timeline components.TimelineViewModel
+	Title   string
+	App     string
+	State   string
+	Running bool
+	Tabs    []LinkViewModel
 }
 
 type LinkViewModel struct {
@@ -53,10 +50,11 @@ templ Base(vm BaseViewModel) {
 		<body>
 			<header class="app">
 				<h1><a href="/">gorviz</a></h1>
-				<span class="app-pill" title="the app of this session">
+				<span class="agent-switch" title="the app of this session">
 					<span class={ "agent-dot", templ.KV("connected", vm.Running) }></span>
 					<strong class="mono">{ vm.App }</strong>
-					<span class="faint">{ vm.State } · { vm.Elapsed }</span>
+					<span class="sep">·</span>
+					<span class="faint">{ vm.State }</span>
 				</span>
 				<nav>
 					for _, t := range vm.Tabs {
@@ -65,7 +63,6 @@ templ Base(vm BaseViewModel) {
 				</nav>
 			</header>
 			<main>
-				@components.Timeline(vm.Timeline)
 				{ children... }
 			</main>
 		</body>

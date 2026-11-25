@@ -1,0 +1,161 @@
+package partials
+
+import (
+	"github.com/kakkky/hotwire-go/stimulus"
+	"github.com/kakkky/hotwire-go/turbo"
+
+	"github.com/kakkky/gorviz/internal/app/server/assets"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+)
+
+// OverviewBodyViewModel は Overview の中身。最新を見ているあいだは SSE でこれだけを描き直す
+type OverviewBodyViewModel struct {
+	Error        string
+	Ongoing      []OngoingIssueViewModel
+	IssuesURL    string
+	Goroutines   string
+	GoroutinesAt string
+	Threads      string
+	Kinds        []string
+	Phases       []OverviewPhaseViewModel
+	Charts       OverviewChartsViewModel
+}
+
+type OverviewChartsViewModel struct {
+	Goroutines components.ChartViewModel
+	Heap       components.ChartViewModel
+	GC         components.ChartViewModel
+	MarkAssist components.ChartViewModel
+	WaitToRun  components.ChartViewModel
+	Runnable   components.ChartViewModel
+	LockWait   components.ChartViewModel
+	Threads    components.ChartViewModel
+}
+
+type OngoingIssueViewModel struct {
+	Kind          string
+	Subject       string
+	Certainty     string
+	CertaintyNote string
+	Phase         string
+	Last          string
+	URL           string
+}
+
+// OverviewPhaseViewModel は診断の phase 1 つと、その phase で出た Issue の種類ごとの数 (Kinds の順)
+type OverviewPhaseViewModel struct {
+	Name   string
+	Range  string
+	URL    string
+	Counts []string
+}
+
+templ OverviewBody(vm OverviewBodyViewModel) {
+	if vm.Error != "" {
+		@components.Notice() {
+			<strong>the app did not start</strong>
+			<span class="mono">{ vm.Error }</span>
+		}
+	}
+	@components.SectionTitle("Status", "now, regardless of the range")
+	<div class="grid-even">
+		<section class="panel">
+			<h2>Ongoing issues</h2>
+			<a class="stat" href={ templ.SafeURL(vm.IssuesURL) }>
+				<div class={ "value", templ.KV("error", len(vm.Ongoing) > 0) }>{ len(vm.Ongoing) }</div>
+				<div class="label">issues going on now</div>
+			</a>
+			if len(vm.Ongoing) > 0 {
+				<table class="overview-issues" { stimulus.AttrControllers(assets.RowLinkController.Name)... }>
+					for _, o := range vm.Ongoing {
+						<tr class="clickable" data-href={ o.URL } title="open this issue">
+							<td><span class="badge kind">{ o.Kind }</span></td>
+							<td>@components.CertaintyBadge(o.Certainty, o.CertaintyNote)</td>
+							<td class="origin"><span title={ o.Subject }>{ components.ShortPath(o.Subject) }</span><div class="muted">{ o.Phase }</div></td>
+							<td class="num faint">{ o.Last }</td>
+						</tr>
+					}
+				</table>
+			}
+		</section>
+		<section class="panel">
+			<h2>Goroutines</h2>
+			<div class="stat">
+				<div class="value">{ vm.Goroutines }</div>
+				<div class="label">goroutines of the app<span class="mono">{ vm.GoroutinesAt }</span></div>
+			</div>
+			<p class="faint footnote">OS threads <span class="mono">{ vm.Threads }</span> · goroutines of the gorviz agent are not counted</p>
+		</section>
+	</div>
+	@components.SectionTitle("Goroutines", "how many there were")
+	<section class="panel">
+		<h2>Goroutines <span class="muted">of the app</span></h2>
+		@components.Chart(vm.Charts.Goroutines)
+	</section>
+	@components.SectionTitle("Diagnosis", "issues per phase of gorviz diagnose and the shutdown")
+	<section class="panel">
+		if len(vm.Phases) == 0 {
+			<p class="muted">no diagnosis in this range · run <span class="mono">gorviz diagnose scenario.yaml</span>, or <span class="mono">gorviz diagnose</span> alone when the app is not an API server</p>
+		} else {
+			<table class="origins">
+				<tr>
+					<th>phase</th>
+					<th>range</th>
+					for _, k := range vm.Kinds {
+						<th class="num">{ k }</th>
+					}
+				</tr>
+				for _, p := range vm.Phases {
+					<tr>
+						<td><a href={ templ.SafeURL(p.URL) }>{ p.Name }</a></td>
+						<td class="mono muted">{ p.Range }</td>
+						for _, c := range p.Counts {
+							<td class="num mono">{ c }</td>
+						}
+					</tr>
+				}
+			</table>
+		}
+	</section>
+	@components.SectionTitle("Memory & GC", "whether the heap keeps growing and how much CPU the GC takes")
+	<div class="grid-3">
+		<section class="panel">
+			<h2>Heap</h2>
+			@components.Chart(vm.Charts.Heap)
+		</section>
+		<section class="panel">
+			<h2 title="share of the CPU (all P) used by the GC workers and its stop-the-world pauses">GC <span class="muted">% of CPU</span></h2>
+			@components.Chart(vm.Charts.GC)
+		</section>
+		<section class="panel">
+			<h2 title="share of the CPU goroutines were made to spend helping the GC instead of running">Mark assist <span class="muted">% of CPU</span></h2>
+			@components.Chart(vm.Charts.MarkAssist)
+		</section>
+	</div>
+	@components.SectionTitle("CPU", "whether there are enough P for the goroutines ready to run")
+	<div class="grid-3">
+		<section class="panel">
+			<h2 title="how long a goroutine that became ready to run (RUNNABLE) waited until it got a P (RUNNING), 99th percentile">Wait to run <span class="muted">RUNNABLE → RUNNING p99</span></h2>
+			@components.Chart(vm.Charts.WaitToRun)
+		</section>
+		<section class="panel">
+			<h2 title="how many goroutines were ready to run but waiting for a P, averaged over time: 0.5 = one goroutine was waiting half of the time">Waiting for P <span class="muted">goroutines at a time</span></h2>
+			@components.Chart(vm.Charts.Runnable)
+		</section>
+		<section class="panel">
+			<h2 title="OS threads the runtime holds. the process dies over the limit (10,000 by default)">OS threads</h2>
+			@components.Chart(vm.Charts.Threads)
+		</section>
+	</div>
+	@components.SectionTitle("Locks", "whether goroutines spend more time waiting for locks than working")
+	<section class="panel">
+		<h2 title="time goroutines waited in sync.Mutex / RWMutex Lock, divided by the time they were running">Lock wait <span class="muted">per running time</span></h2>
+		@components.Chart(vm.Charts.LockWait)
+	</section>
+}
+
+templ OverviewStream(vm OverviewBodyViewModel) {
+	@turbo.StreamUpdate("overview-body") {
+		@OverviewBody(vm)
+	}
+}

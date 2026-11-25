@@ -1,18 +1,22 @@
 package web
 
 import (
-	"fmt"
+	"context"
+	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kakkky/hotwire-go/turbo"
+
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/pages"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
+
+const overviewPoll = 2 * time.Second
 
 // GetRootHandler は Overview へ移す
 type GetRootHandler struct{}
@@ -23,7 +27,7 @@ func (GetRootHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	http.Redirect(rw, r, "/overview", http.StatusSeeOther)
 }
 
-// GetOverviewHandler はセッション全体の様子を描く
+// GetOverviewHandler はセッション全体の様子を描く。期間が動く (セッション全体・直近) ときは、SSE で中身を描き直す
 type GetOverviewHandler struct {
 	status   *usecase.GetSessionStatusUsecase
 	overview *usecase.GetOverviewUsecase
@@ -39,109 +43,178 @@ func (h *GetOverviewHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) 
 		middleware.Fail(r, err)
 		return
 	}
-	out, err := h.overview.Exec(r.Context(), usecase.GetOverviewUsecaseInput{})
+	tr, err := parseRange(r.URL.Query(), st.Elapsed, fromSession)
 	if err != nil {
 		middleware.Fail(r, err)
 		return
 	}
-	render(rw, r, pages.Overview(overviewViewModel(st, out)))
+	out, err := h.overview.Exec(r.Context(), usecase.GetOverviewUsecaseInput{From: tr.From, To: tr.To, HasRange: true})
+	if err != nil {
+		middleware.Fail(r, err)
+		return
+	}
+	vm := pages.OverviewViewModel{Base: baseOf("Overview", tabOverview, st), Picker: picker("/overview", nil, tr, phasesOf(st.Timeline, st.Elapsed)), Body: overviewBody(st, out)}
+	if tr.Live() && st.Session.App.State == domain.AppRunning {
+		vm.StreamURL = "/overview/stream?" + tr.query().Encode()
+	}
+	render(rw, r, pages.Overview(vm))
 }
 
-func overviewViewModel(st usecase.GetSessionStatusUsecaseOutput, out usecase.GetOverviewUsecaseOutput) pages.OverviewViewModel {
+// GetOverviewStreamHandler は期間が動く Overview の中身を、SSE の turbo-stream で描き直す
+type GetOverviewStreamHandler struct {
+	status   *usecase.GetSessionStatusUsecase
+	overview *usecase.GetOverviewUsecase
+}
+
+func NewGetOverviewStreamHandler(status *usecase.GetSessionStatusUsecase, overview *usecase.GetOverviewUsecase) *GetOverviewStreamHandler {
+	return &GetOverviewStreamHandler{status: status, overview: overview}
+}
+
+func (h *GetOverviewStreamHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	sse, err := turbo.NewStreamSSEWriter(rw)
+	if err != nil {
+		middleware.Fail(r, domain.ErrInternal.Wrap(err, "open the overview stream"))
+		return
+	}
+	q := r.URL.Query()
+	streamEvery(r.Context(), overviewPoll, func(ctx context.Context) error {
+		st, err := h.status.Exec(ctx, usecase.GetSessionStatusUsecaseInput{})
+		if err != nil {
+			return err
+		}
+		tr, err := parseRange(q, st.Elapsed, fromSession)
+		if err != nil {
+			return err
+		}
+		out, err := h.overview.Exec(ctx, usecase.GetOverviewUsecaseInput{From: tr.From, To: tr.To, HasRange: true})
+		if err != nil {
+			return err
+		}
+		return sse.Write(ctx, partials.OverviewStream(overviewBody(st, out)))
+	})
+}
+
+func overviewBody(st usecase.GetSessionStatusUsecaseOutput, out usecase.GetOverviewUsecaseOutput) partials.OverviewBodyViewModel {
 	app := out.Session.App
-	vm := pages.OverviewViewModel{Base: baseOf("Overview", tabOverview, st, focus{})}
-	if msg := strings.TrimSpace(app.BuildError + app.StartError); msg != "" {
-		vm.Message = msg
+	vm := partials.OverviewBodyViewModel{Error: strings.TrimSpace(app.BuildError + app.StartError), IssuesURL: "/issues"}
+	for _, o := range out.Ongoing {
+		vm.Ongoing = append(vm.Ongoing, partials.OngoingIssueViewModel{Kind: string(o.Kind), Subject: o.Target, Certainty: string(o.Certainty), Phase: o.Phase, Last: at(o.LastAt), URL: issueURL(o.ID, 0)})
 	}
-	total := 0
-	for _, n := range out.Issues {
-		total += n
-	}
-	exit := "running"
-	if app.Exited {
-		exit = "exit " + strconv.Itoa(app.ExitCode)
-	}
-	vm.Stats = []pages.StatViewModel{
-		{Label: "issues", Value: strconv.Itoa(total), URL: "/issues"},
-		{Label: "app", Value: exit},
-		{Label: "Ps (GOMAXPROCS)", Value: strconv.Itoa(out.Procs)},
-		{Label: "Go", Value: app.GoVersion},
-		{Label: "diagnoses", Value: strconv.Itoa(len(out.Session.Diagnoses))},
+	vm.Goroutines, vm.Threads = "-", "-"
+	if n := len(out.Buckets); n > 0 {
+		last := out.Buckets[n-1]
+		vm.Goroutines, vm.GoroutinesAt, vm.Threads = itoa(last.Goroutines), " at "+at(out.To), itoa(last.Threads)
 	}
 	for _, k := range domain.IssueKinds {
 		vm.Kinds = append(vm.Kinds, string(k))
 	}
 	for _, p := range out.Phases {
-		row := pages.PhaseRowViewModel{Name: p.Phase, Range: span(p.From, p.To), URL: schedulerURL(p.From, min(p.To, p.From+2*time.Second))}
+		row := partials.OverviewPhaseViewModel{Name: p.Phase, Range: span(p.From, p.To), URL: "/issues?" + timeRange{FromRaw: at(p.From), ToRaw: at(p.To)}.query().Encode()}
 		for _, k := range domain.IssueKinds {
 			c := "·"
 			if n := p.Issues[k]; n > 0 {
-				c = strconv.Itoa(n)
+				c = itoa(n)
 			}
 			row.Counts = append(row.Counts, c)
 		}
 		vm.Phases = append(vm.Phases, row)
 	}
-	procs := time.Duration(max(out.Procs, 1))
-	series := []struct {
-		title, unit string
-		value       func(b domain.Bucket) float64
-		format      func(float64) string
-	}{
-		{"Goroutines of the app", "", func(b domain.Bucket) float64 { return float64(b.Goroutines) }, count},
-		{"RUNNABLE goroutines", "", func(b domain.Bucket) float64 { return float64(b.Runnable) }, count},
-		{"Wait for a P, p99", "ms", func(b domain.Bucket) float64 { return float64(b.RunnableWait.Quantile(0.99)) / 1e6 }, decimal},
-		{"GC CPU share", "%", func(b domain.Bucket) float64 {
-			return float64(b.GCWorker+b.MarkAssist+b.STW*procs) * 100 / float64(procs*domain.BucketSize)
-		}, decimal},
-		{"Lock wait", "s per s", func(b domain.Bucket) float64 { return b.LockWait.Seconds() }, decimal},
-		{"Heap objects", "MB", func(b domain.Bucket) float64 { return float64(b.HeapObjects) / (1 << 20) }, decimal},
-		{"OS threads", "", func(b domain.Bucket) float64 { return float64(b.Threads) }, count},
-	}
-	for _, s := range series {
-		vm.Charts = append(vm.Charts, chartOf(s.title, s.unit, out.Buckets, s.value, s.format, st.Timeline, out.Elapsed))
-	}
+	vm.Charts = overviewCharts(out, st.Timeline)
 	return vm
 }
 
-func count(v float64) string { return strconv.Itoa(int(v)) }
+// sample は時間幅をグラフの区切りの長さにまとめたもの
+type sample struct {
+	n                                    int
+	goroutines, runnable, threads        float64
+	heap, goal                           float64
+	wait                                 domain.Histogram
+	running, lock, gcWorker, assist, stw time.Duration
+}
 
-func decimal(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) }
+// samplesOf は 1 秒ごとの時間幅を、区切りが多くなりすぎないよう step ごとにまとめる。値の数・ヒープ・スレッドは区切りの終わりの値
+func samplesOf(bs []domain.Bucket, first time.Duration, step time.Duration) ([]time.Duration, []sample) {
+	per := max(1, int(step/domain.BucketSize))
+	var times []time.Duration
+	var out []sample
+	for i := 0; i < len(bs); i += per {
+		var s sample
+		for _, b := range bs[i:min(len(bs), i+per)] {
+			s.n++
+			s.goroutines, s.threads, s.heap, s.goal = float64(b.Goroutines), float64(b.Threads), float64(b.HeapObjects), float64(b.HeapGoal)
+			s.runnable += float64(b.Runnable)
+			s.wait.Merge(&b.RunnableWait)
+			s.running += b.Running
+			s.lock += b.LockWait
+			s.gcWorker += b.GCWorker
+			s.assist += b.MarkAssist
+			s.stw += b.STW
+		}
+		s.runnable /= float64(s.n)
+		times = append(times, first+time.Duration(i)*domain.BucketSize)
+		out = append(out, s)
+	}
+	return times, out
+}
 
-func chartOf(title, unit string, bs []domain.Bucket, value func(domain.Bucket) float64, format func(float64) string, events []domain.SessionEvent, elapsed time.Duration) components.ChartViewModel {
-	vm := components.ChartViewModel{Title: title, Unit: unit}
-	peak := 0.0
-	vals := make([]float64, len(bs))
-	for i, b := range bs {
-		vals[i] = value(b)
-		peak = max(peak, vals[i])
-	}
-	var pts []string
-	for i, v := range vals {
-		x := 0.0
-		if len(vals) > 1 {
-			x = float64(i) * 1000 / float64(len(vals)-1)
-		}
-		y := 100.0
-		if peak > 0 {
-			y = 100 - v*96/peak
-		}
-		pts = append(pts, fmt.Sprintf("%.1f,%.1f", x, y))
-	}
-	vm.Points = strings.Join(pts, " ")
-	vm.Max = format(peak)
-	if len(vals) > 0 {
-		vm.Last = format(vals[len(vals)-1])
-	}
-	total := max(elapsed, time.Millisecond)
-	for _, e := range events {
-		if e.Kind == domain.EventPhase || e.Kind == domain.EventShutdown {
-			name := e.Phase
-			if name == "" {
-				name = string(e.Kind)
+const maxChartPoints = 120
+
+func overviewCharts(out usecase.GetOverviewUsecaseOutput, events []domain.SessionEvent) partials.OverviewChartsViewModel {
+	span := max(out.To-out.From, time.Second)
+	step := max(domain.BucketSize, (span/maxChartPoints+domain.BucketSize-1)/domain.BucketSize*domain.BucketSize)
+	first := out.From / domain.BucketSize * domain.BucketSize
+	times, samples := samplesOf(out.Buckets, first, step)
+	procs := time.Duration(max(out.Procs, 1))
+	capacity := func(s sample) float64 { return float64(procs * time.Duration(s.n) * domain.BucketSize) }
+	vals := func(f func(s sample) (float64, bool)) []float64 {
+		v := make([]float64, len(samples))
+		for i, s := range samples {
+			if x, ok := f(s); ok {
+				v[i] = x
+			} else {
+				v[i] = math.NaN()
 			}
-			vm.Marks = append(vm.Marks, components.ChartMarkViewModel{X: fmt.Sprintf("%.1f", float64(e.At)*1000/float64(total)), Title: name + " at " + at(e.At)})
+		}
+		return v
+	}
+	var marks []chartMark
+	for _, e := range events {
+		if e.Kind != domain.EventAppStart {
+			marks = append(marks, chartMark{at: e.At, class: "start", title: eventText(e)})
 		}
 	}
-	return vm
+	spec := func(title string, format func(float64) string, ss ...series) chartSpec {
+		return chartSpec{title: title, from: out.From, to: max(out.To, out.From+time.Second), step: step, times: times, series: ss, format: format, threshold: math.NaN(), marks: marks, zoom: true,
+			hoverURL: func(i int) string { return schedulerURL(times[i], times[i]+min(step, 2*time.Second)) }}
+	}
+
+	goroutines := spec("Goroutines", count, series{label: "goroutines", class: "series-1", values: vals(func(s sample) (float64, bool) { return s.goroutines, true })})
+
+	cpu := spec("CPU wait: RUNNABLE → RUNNING p99", func(v float64) string { return duration(time.Duration(v)) },
+		series{label: "p99", class: "series-2", values: vals(func(s sample) (float64, bool) { return float64(s.wait.Quantile(0.99)), s.wait.Total > 0 })})
+	cpu.threshold, cpu.thLabel = float64(time.Millisecond), "CPU_CONTENTION: p99 ≥ 1ms"
+
+	runnable := spec("Waiting for P", func(v float64) string { return trimFloat(v, 2) },
+		series{label: "goroutines waiting", class: "series-2", values: vals(func(s sample) (float64, bool) { return s.runnable, true })})
+
+	heap := spec("Heap", bytesOf,
+		series{label: "heap", class: "series-3", values: vals(func(s sample) (float64, bool) { return s.heap, s.heap > 0 })},
+		series{label: "goal", class: "series-3", dashed: true, values: vals(func(s sample) (float64, bool) { return s.goal, s.goal > 0 })})
+
+	gc := spec("GC", percent, series{label: "GC", class: "series-4", values: vals(func(s sample) (float64, bool) {
+		return float64(s.gcWorker+s.assist+s.stw*procs) / capacity(s), true
+	})})
+	gc.threshold, gc.thLabel = 0.5, "GC_PRESSURE (FACT): GC ≥ 50%"
+	assist := spec("Mark assist", percent, series{label: "mark assist", class: "series-5", values: vals(func(s sample) (float64, bool) { return float64(s.assist) / capacity(s), true })})
+	assist.threshold, assist.thLabel = 0.05, "GC_PRESSURE: mark assist > 5%"
+
+	lock := spec("Lock wait per running time", percent,
+		series{label: "lock wait / running", class: "series-6", values: vals(func(s sample) (float64, bool) { return float64(s.lock) / float64(s.running), s.running > 0 })})
+	lock.threshold, lock.thLabel = 1, "LOCK_CONTENTION: lock wait > running"
+
+	threads := spec("OS threads", count, series{label: "threads", class: "series-1", values: vals(func(s sample) (float64, bool) { return s.threads, s.threads > 0 })})
+	threads.threshold, threads.thLabel = 5000, "THREAD_EXPLOSION: more than half of the 10,000 limit"
+
+	return partials.OverviewChartsViewModel{Goroutines: buildChart(goroutines), Heap: buildChart(heap), GC: buildChart(gc), MarkAssist: buildChart(assist),
+		WaitToRun: buildChart(cpu), Runnable: buildChart(runnable), LockWait: buildChart(lock), Threads: buildChart(threads)}
 }

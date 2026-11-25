@@ -28,33 +28,43 @@ func NewGetSchedulerHandler(status *usecase.GetSessionStatusUsecase, window *use
 }
 
 func (h *GetSchedulerHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	from, to, has, err := rangeOf(r)
-	if err != nil {
-		middleware.Fail(r, err)
-		return
-	}
 	st, err := h.status.Exec(r.Context(), usecase.GetSessionStatusUsecaseInput{})
 	if err != nil {
 		middleware.Fail(r, err)
 		return
 	}
-	out, err := h.window.Exec(r.Context(), usecase.GetSchedulerWindowUsecaseInput{From: from, To: to, HasRange: has})
+	in := usecase.GetSchedulerWindowUsecaseInput{}
+	var tr timeRange
+	if r.URL.Query().Get("from") != "" {
+		if tr, err = parseRange(r.URL.Query(), st.Elapsed, fromSession); err != nil {
+			middleware.Fail(r, err)
+			return
+		}
+		in.From, in.To, in.HasRange = tr.From, tr.To, true
+	}
+	out, err := h.window.Exec(r.Context(), in)
 	if err != nil {
 		middleware.Fail(r, err)
 		return
 	}
 	w := out.Window
-	vm := pages.SchedulerViewModel{Base: baseOf("Scheduler", tabScheduler, st, focus{from: w.From, to: w.To, has: true}), Range: span(w.From, w.To), Live: w.Live && !w.Ended, LiveURL: "/scheduler", Truncated: w.Truncated}
-	props := components.GMPReplayProps{Live: vm.Live, GoroutineURL: "/goroutines/{goroutine}", Autoplay: false}
-	if !w.Live {
+	if !in.HasRange {
+		tr = timeRange{FromRaw: "-" + usecase.LiveWindow.String(), From: w.From, To: w.To}
+	}
+	live := w.Live && !w.Ended
+	vm := pages.SchedulerViewModel{Base: baseOf("Scheduler", tabScheduler, st), Picker: picker("/scheduler", nil, tr, phasesOf(st.Timeline, st.Elapsed)), Past: in.HasRange, LatestURL: "/scheduler", Truncated: w.Truncated}
+	props := components.GMPReplayProps{Live: live, GoroutineURL: "/goroutines/{goroutine}"}
+	if in.HasRange {
 		d := w.To - w.From
-		props.PrevURL = schedulerURL(max(0, w.From-d), w.From)
+		if w.From > 0 {
+			props.PrevURL = schedulerURL(max(0, w.From-d), w.From)
+		}
 		if w.To < st.Elapsed {
 			props.NextURL = schedulerURL(w.To, min(st.Elapsed, w.To+d))
 		}
 	}
 	vm.Replay = components.GMPReplayViewModel{Props: propsJSON(props), Window: replayWindow(w, out.Leaks), FeedID: partials.ReplayFeed}
-	if vm.Live {
+	if live {
 		vm.StreamURL = "/scheduler/stream?after=" + at(w.To)
 	}
 	render(rw, r, pages.Scheduler(vm))

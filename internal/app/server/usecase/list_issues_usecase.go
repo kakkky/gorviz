@@ -29,6 +29,7 @@ type IssueSummary struct {
 	FirstAt     time.Duration
 	LastAt      time.Duration
 	Value       string
+	Starts      []time.Duration
 }
 
 type ListIssuesUsecaseOutput struct {
@@ -51,8 +52,16 @@ func (u *ListIssuesUsecase) Exec(_ context.Context, in ListIssuesUsecaseInput) (
 			}
 			first, last := is.Occurrences[0], is.Occurrences[len(is.Occurrences)-1]
 			out.Issues = append(out.Issues, IssueSummary{ID: is.ID, Kind: is.Kind, Target: is.TargetLabel(), Certainty: is.Certainty(), Occurrences: len(is.Occurrences),
-				FirstPhase: is.FirstPhase(), FirstAt: first.From, LastAt: last.To, Value: last.Value})
+				FirstPhase: is.FirstPhase(), FirstAt: first.From, LastAt: last.To, Value: last.Value, Starts: starts(is.Occurrences)})
 		}
 	})
 	return out, nil
+}
+
+func starts(os []domain.Occurrence) []time.Duration {
+	out := make([]time.Duration, 0, len(os))
+	for _, o := range os {
+		out = append(out, o.From)
+	}
+	return out
 }

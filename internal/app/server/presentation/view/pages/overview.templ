@@ -1,79 +1,32 @@
 package pages
 
 import (
+	"github.com/kakkky/hotwire-go/turbo"
+
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
 )
 
-// OverviewViewModel はセッション全体の様子
+// OverviewViewModel の StreamURL は最新を見ているときの SSE (なければ空)
 type OverviewViewModel struct {
-	Base    layout.BaseViewModel
-	Stats   []StatViewModel
-	Kinds   []string
-	Phases  []PhaseRowViewModel
-	Charts  []components.ChartViewModel
-	Message string
-}
-
-type StatViewModel struct {
-	Label string
-	Value string
-	URL   string
-}
-
-type PhaseRowViewModel struct {
-	Name   string
-	Range  string
-	URL    string
-	Counts []string
+	Base      layout.BaseViewModel
+	Picker    components.TimeRangePickerViewModel
+	Body      partials.OverviewBodyViewModel
+	StreamURL string
 }
 
 templ Overview(vm OverviewViewModel) {
 	@layout.Base(vm.Base) {
-		if vm.Message != "" {
-			<section class="panel error">{ vm.Message }</section>
+		if vm.StreamURL != "" {
+			@turbo.StreamSSESource("overview-stream", vm.StreamURL)
 		}
-		<section class="stats">
-			for _, s := range vm.Stats {
-				if s.URL != "" {
-					<a class="stat" href={ templ.SafeURL(s.URL) }><span class="value">{ s.Value }</span><span class="label">{ s.Label }</span></a>
-				} else {
-					<div class="stat"><span class="value">{ s.Value }</span><span class="label">{ s.Label }</span></div>
-				}
-			}
-		</section>
-		<section class="panel">
-			<h2>Issues per phase <span class="muted">the phases of gorviz diagnose and the shutdown</span></h2>
-			if len(vm.Phases) == 0 {
-				<p class="muted">No diagnosis yet. Run <code>gorviz diagnose scenario.yaml</code>, or <code>gorviz diagnose</code> alone when the app is not an API server.</p>
-			} else {
-				<table>
-					<thead>
-						<tr>
-							<th>phase</th><th>range</th>
-							for _, k := range vm.Kinds {
-								<th class="num">{ k }</th>
-							}
-						</tr>
-					</thead>
-					<tbody>
-						for _, p := range vm.Phases {
-							<tr>
-								<td><a href={ templ.SafeURL(p.URL) }>{ p.Name }</a></td>
-								<td class="mono">{ p.Range }</td>
-								for _, c := range p.Counts {
-									<td class="num">{ c }</td>
-								}
-							</tr>
-						}
-					</tbody>
-				</table>
-			}
-		</section>
-		<div class="charts">
-			for _, c := range vm.Charts {
-				@components.Chart(c)
-			}
+		<div class="overview-head">
+			<h2>Overview</h2>
+			@components.TimeRangePicker(vm.Picker)
+		</div>
+		<div id="overview-body" class="stack">
+			@partials.OverviewBody(vm.Body)
 		</div>
 	}
 }
