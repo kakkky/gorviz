@@ -121,6 +121,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 - struct に、呼ぶ usecase と必要な config の値を持つ。`NewXxx(...)` で作る
 - 1 つの入口は 1 つの usecase を呼ぶのを原則にする。画面のように複数をまとめて出すときだけ複数を許す
+- usecase のほかにエントリから受け取ってよいのは、自分のコンポーネントを止める口 (ctx の cancel) だけ。server の停止を頼む API のため
 - 受け取った形 (リクエスト・メッセージ・引数) から usecase の Input を組み、Output から返す形を組む。usecase の Output をそのまま外に出さない
 
 ### HTTP
@@ -144,22 +145,27 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - メッセージの読み書きと区切りは `protocol/agentsocket` の関数を呼ぶ。presentation の中で形式を書かない
 - エラーと panic は Handler の入口で拾い、接続を止めない。1 つのメッセージの失敗で、ほかのメッセージを読めなくしないため
 
-### 手順も判断も持たないコンポーネント
+### cli
 
-- presentation から protocol のクライアントを直接呼び、応答をそのまま出す。解釈・整形しない
+- サブコマンド・引数・フラグは [urfave/cli](https://github.com/urfave/cli) (v3) で組む。`command.Command` はその定義と、各サブコマンドの Action を持つ
+- 手順も判断も持たないので、presentation から protocol のクライアントを直接呼ぶ。usecase を挟まない
+- server の応答の中身は解釈・整形しない。そのまま出し、終了コードも server が載せた値を使う
+- シナリオのファイルは、サブコマンドの入力として presentation で読む
 - 利用者に見せる長い文言 (使い方・説明) はコードに直書きせず、埋め込んだドキュメントから引く
 
 ## worker (`internal/app/<コンポーネント>/worker/`)
 
-- 命名は `<動詞><対象>Worker`。呼ぶ usecase の名前に合わせる
+- 命名は呼ぶ usecase の名前に合わせ、`Usecase` を `Worker` に替える (`CollectAppObservationsWorker`)
 - `Run(ctx context.Context) error` を持ち、usecase の `Exec` を繰り返し呼ぶ。ctx が終わったら `nil` を返す
+  - 起動したときに 1 回だけ呼び、その `Exec` が終わるまで待つ worker もある (`RunAppWorker`)。資源を `Exec` の中で持ち、呼び出しをまたいで持たないため
 - 1 つの worker の `Exec` は重ねない。前の `Exec` が終わってから、間隔を待って次を呼ぶ
   - 間隔は `time.Ticker` で刻まず、`Exec` が終わるたびに待ち直す。重いときに間を空けずに回り続けて、負荷を詰まらせないため
   - 間を空けずに続けて呼ぶ worker (`Exec` の中で待つもの) は、間隔を 0 にする
 - usecase のエラーで止まらない。ログに出して次の周期に進む。`Run` がエラーを返すのは、続けられないときだけ
 - 1 回の `Exec` の中身 (何を対象に・何をするか) は usecase に書く。worker は「いつ呼ぶか」だけを持つ
-- 1 つの worker は 1 つの usecase を呼ぶ。複数の処理をまとめない
-  - 処理ごとに間隔が違うため
+- 1 つの worker は 1 つの usecase を呼ぶ
+- 関心が同じ処理 (同じ相手から観測データを取る、など) は、1 つの worker・usecase にまとめる。関心の違う処理はまとめない
+  - まとめた処理のあいだで間隔が違うときは、worker は短いほうの間隔で呼び、今回どれを行うかは usecase が domain に決めさせる
 
 ## usecase (`internal/app/<コンポーネント>/usecase/`)
 
@@ -174,6 +180,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - usecase の依存は `usecase.go` の `UseCase` にまとめて持ち、`NewUseCase(...)` で受け取る。個々の usecase は `(us *UseCase) New<Name>Usecase()` で使う依存だけを取り出す
   - 依存を作るのに失敗しうるときは `(*<Name>Usecase, error)` を返す
 - 何についての処理か (Issue の ID・期間など) は Input で受け取る。usecase の field に持たない
+- ctx が終わったあとにも流す手順 (アプリを止めるなど) は、`context.WithoutCancel` で切れない ctx を作り、時間の上限を付けて流す
 - 判断を含む処理は domain に書き、usecase から呼ぶ。usecase は読む・domain に渡す・書くの順番だけを持つ
 - domain のエラーはそのまま返す。usecase で HTTP の status を意識しない
 
@@ -206,18 +213,19 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 ### accessor
 
-- driver が持つメモリの置き場を、domain の interface の操作に対応づける
+- 状態 (driver が持つメモリの置き場や trace、runtime が持つ coverage のカウンタや goroutine) を、domain の interface の操作に対応づける
 - キーの決め方は accessor が持つ。usecase に組ませない
 
 ### client
 
-- 外への送信と、外からの取得を持つ
+- プロセスの外への送信と、外からの取得を持つ
 - `NewXxxClient(...)` は `(*XxxClient, error)` を返す。失敗しうるかに関わらず形を揃える
 - 接続先は、組み立てで config から渡す
 
 ## protocol (`internal/protocol/`)
 
 - 契約を相手ごとに 1 パッケージで持つ。両側のコンポーネントが同じパッケージを使う
+- `serverapi` は、server をデーモンとして起動する決まり (引数・環境変数) も持つ。起動する cli と起動される server が、同じ決まりを使うため
 - `agentsocket` は、標準ライブラリだけで書く。agent と一緒にアプリのビルドに持ち込まれるため
 - メッセージの種類を消すときは、その種類の番号を使い回さない。agent と server の版がずれても読み違えないようにするため
 
@@ -228,14 +236,16 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
 ### 使えるもの
 
 - 標準ライブラリと `protocol/agentsocket` だけを import する。`kakkky/scope`・envconfig も使わない
-  - テストのファイルはアプリに足さないので、テストでは testify・gomock を使ってよい
+  - テストのファイルはアプリに overlay しないので、テストでは testify・gomock を使ってよい
 - 設定は `os.Getenv` で読む
 
 ### 組み立てと並行処理
 
-- エントリは `Start()` と `Finish()` の 2 つだけを公開する
-  - `Start()` は init から呼ばれる。driver の用意と worker・待ち受けの起動を済ませたら戻る。アプリの main を待たせないため
-  - `Finish()` は main に足した defer から呼ばれる。受け口に渡し、最後の観測データを送り終えるまで戻らない
+- アプリの main に overlay する import と defer が、agent の cmd に当たる。cmd は main の defer で `Stop()` を呼ぶだけ
+- `Start()` はエントリの `init` から呼ぶ。main が agent を import するので、main パッケージの初期化より前に観測が始まる
+- エントリは `Start()` と `Stop()` の 2 つだけを公開する。組み立てと driver・worker の起動を持ち、観測を始める・終えるのは `function.FunctionCallHandler` に渡す。エントリから usecase を直接呼ばない
+  - `Start()` は観測が始まってから戻る。観測の始まりより後に、アプリの main を動かすため
+  - `Stop()` は最後の観測データを送り終え、driver の後始末を済ませてから戻る
 - goroutine は `go` 文で起動する。接続が閉じたら、すべての goroutine が終わるようにする
 - server につながらなければ、何も起動せずに戻る
 
@@ -245,7 +255,7 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
   - アプリの呼び出しの中でブロックしない。渡し先が詰まっていたら待たない
   - 呼び出しごとの割り当てを増やさない
   - panic をアプリに伝えない。agent の中で復旧して、agent だけを止める
-- アプリの終わり方を変えない。シグナルを横取りせず、`Finish()` の中で panic を握りつぶさない (main の panic はそのまま続ける)
+- アプリの終わり方を変えない。シグナルを横取りせず、`Stop()` の中で panic を握りつぶさない (main の panic はそのまま続ける)
 
 ## ログ
 
@@ -267,6 +277,7 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
 
 - 中身を表さない名前 (`shared`・`common`・`util`・`types`・`helper`) のパッケージ・ファイルを作らない
 - gorviz 自身は「コンポーネント」、観測される利用者のプログラムは「アプリ」と呼ぶ。名前でもこの区別を守る
+- usecase は、何の何をどうするかが分かる名前にする。`<動詞><何の><何>Usecase` (`CollectAppObservationsUsecase`・`StreamAppRuntimeTraceUsecase`)
 - usecase の Input / Output は usecase 名 + `Input` / `Output`
 - 値オブジェクトの型名は単数形で、型 + 意味 (`IssueID`・`GoroutineID` など)
 - パッケージ名は短い一語にし、何のものかは型名に含める (`kvs.InMemoryKVS`・`socket.SocketConn`・`accessor.IssueAccessor`)。対象の名前でパッケージを切らない (`issue.IssueAccessor` にしない)
