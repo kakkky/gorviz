@@ -1,0 +1,37 @@
+# gorviz diagnose で todo-app に送るもの。負荷のかけ方は gorviz が決める
+target: http://127.0.0.1:8090
+ready:
+  path: /
+setup:
+  - method: POST
+    path: /seed
+    expect: [303]
+flows:
+  - name: add-and-complete
+    weight: 4
+    steps:
+      - method: POST
+        path: /todos
+        headers: {Accept: application/json}
+        form: {title: "todo {{seq}}", reminder: "on"}
+        capture:
+          id: json:id
+      - method: POST
+        path: /todos/{{id}}/complete
+        expect: [303, 500]
+  - name: list
+    weight: 4
+    steps:
+      - path: /
+  - name: stats
+    steps:
+      - path: /
+        query: {stats: "1"}
+  - name: export
+    steps:
+      - path: /export.csv
+  - name: backup
+    steps:
+      - method: POST
+        path: /backup
+        expect: [303]

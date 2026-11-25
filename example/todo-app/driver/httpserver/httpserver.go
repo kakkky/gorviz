@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/http/pprof"
 	"time"
 )
 
@@ -16,17 +15,6 @@ type HTTPServer struct {
 
 func NewHTTPServer(name, addr string, h http.Handler) *HTTPServer {
 	return &HTTPServer{name: name, srv: &http.Server{Addr: addr, Handler: h}}
-}
-
-// NewPprofServer は net/http/pprof をアプリとは別の口で公開する。gorviz-agent はここから execution trace とプロファイルを取る
-func NewPprofServer(addr string) *HTTPServer {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	return NewHTTPServer("pprof", addr, mux)
 }
 
 func (s *HTTPServer) Run(ctx context.Context) error {

@@ -3,12 +3,14 @@ package web
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kakkky/gorviz/example/todo-app/domain"
@@ -97,6 +99,11 @@ func (h *PostTodosHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	out, err := h.uc.NewAddTodoUsecase().Exec(r.Context(), usecase.AddTodoUsecaseInput{Title: r.FormValue("title"), Reminder: r.FormValue("reminder") == "on"})
 	if err != nil {
 		middleware.SetError(r.Context(), err)
+		return
+	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": out.Todo.ID, "reminderRegistered": out.ReminderRegistered})
 		return
 	}
 	if out.Todo.Reminder && !out.ReminderRegistered {

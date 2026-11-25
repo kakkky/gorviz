@@ -1,4 +1,4 @@
-// todo-app は gorviz で観測するための例のアプリ。ブラウザで操作する Todo アプリで、実際の Web アプリにありがちな goroutine の不具合を含む。
+// todo-app は gorviz で診断するための例のアプリ。ブラウザで操作する Todo アプリで、実際の Web アプリにありがちな goroutine の不具合を含む。
 // 中の構成は gorviz 自身と同じ層 (docs/architecture.md) に分けてある
 package main
 
@@ -16,15 +16,12 @@ import (
 	"github.com/kakkky/gorviz/example/todo-app/config"
 	"github.com/kakkky/gorviz/example/todo-app/driver/httpserver"
 	"github.com/kakkky/gorviz/example/todo-app/driver/memstore"
-	"github.com/kakkky/gorviz/example/todo-app/driver/visitor"
 	"github.com/kakkky/gorviz/example/todo-app/presentation/web"
 	"github.com/kakkky/gorviz/example/todo-app/usecase"
 	"github.com/kakkky/gorviz/example/todo-app/worker"
-	"github.com/kakkky/gorviz/logger/gorvizslog"
 )
 
 func main() {
-	slog.SetDefault(slog.New(gorvizslog.NewHandler(slog.NewJSONHandler(os.Stderr, nil))))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	cfg, err := config.NewConfig()
@@ -65,14 +62,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	// driver (presentation を受けて待ち受ける)
 	app := httpserver.NewHTTPServer("todo-app", cfg.Addr, routes)
-	pprof := httpserver.NewPprofServer(cfg.PprofAddr)
-	visitors := visitor.NewVisitors(cfg.Addr, cfg.Visitors)
 
 	return scope.Run(ctx, func(sc *scope.Scope) error {
 		sc.Go(app.Run)
-		sc.Go(pprof.Run)
 		sc.Go(backupWorker.Run)
-		sc.Go(visitors.Run)
 		return nil
 	})
 }

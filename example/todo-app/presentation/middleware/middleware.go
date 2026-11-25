@@ -33,7 +33,7 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
-// Wrap は所要時間つきのアクセスログを出す。gorviz はこの duration でリクエストの区間を決める。
+// Wrap は所要時間つきのアクセスログを出す。
 // エラーは一覧の画面に戻して知らせる
 func Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
