@@ -43,7 +43,7 @@ func NewWindowStats(ix *TraceIndex, from, to time.Duration) WindowStats {
 		w.STW += b.STW
 		w.MaxThreads = max(w.MaxThreads, b.Threads)
 	}
-	w.STWs = ix.STW(from, to)
+	w.STWs = ix.AppSTW(from, to)
 	return w
 }
 

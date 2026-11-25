@@ -94,7 +94,7 @@ func ImpactOf(ix *TraceIndex, is *Issue, o Occurrence) Impact {
 		}
 	case IssueLongSTW:
 		scores = map[GoroutineID]time.Duration{}
-		for _, s := range ix.STW(from, to) {
+		for _, s := range ix.AppSTW(from, to) {
 			if s.Reason != is.Target || s.End-s.Start < longSTW || s.G == 0 {
 				continue
 			}

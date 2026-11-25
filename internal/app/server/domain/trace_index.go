@@ -452,6 +452,10 @@ func (ix *TraceIndex) closeRange(key rangeKey, start, end time.Duration) {
 	case strings.HasPrefix(key.name, "stop-the-world"):
 		reason := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(key.name, "stop-the-world"), " ("), ")")
 		ix.stw = append(ix.stw, TimeRange{Start: start, End: end, G: key.g, Reason: reason})
+		// agent が goroutineleak プロファイルのために走らせた GC などの STW は、アプリの問題ではないので数えない (再生には出す)
+		if ix.byAgent(key.g) {
+			return
+		}
 		ix.spread(start, end, func(b *Bucket, d time.Duration) { b.STW += d })
 		b := ix.bucket(start)
 		b.STWMax = max(b.STWMax, end-start)
@@ -602,7 +606,21 @@ func (ix *TraceIndex) identify(g *GoroutineRecord, ev trace.Event, from trace.Go
 	if IsAgentFunction(g.Entry) {
 		g.Agent = true
 	}
+	// GC の worker などは、作るきっかけが agent のコード (trace.Start で走った GC など) でも runtime のもの
+	if runtimeWorkers[g.Entry] {
+		g.Agent = false
+	}
 	g.System = !g.Agent && strings.HasPrefix(g.Entry, "runtime.") && g.Entry != "runtime.main"
+}
+
+// runtimeWorkers は runtime がいつも持っている goroutine の入口
+var runtimeWorkers = map[string]bool{
+	"runtime.gcBgMarkWorker": true,
+	"runtime.bgsweep":        true,
+	"runtime.bgscavenge":     true,
+	"runtime.forcegchelper":  true,
+	"runtime.runfinq":        true,
+	"runtime.runCleanups":    true,
 }
 
 // account は app の goroutine が今の状態にいた時間を、時間幅ごとに足す
@@ -650,6 +668,22 @@ func rangesIn(rs []TimeRange, from, to time.Duration) []TimeRange {
 }
 
 func (ix *TraceIndex) STW(from, to time.Duration) []TimeRange { return rangesIn(ix.stw, from, to) }
+
+// AppSTW は、agent の goroutine が起こしたものを除いた STW
+func (ix *TraceIndex) AppSTW(from, to time.Duration) []TimeRange {
+	var out []TimeRange
+	for _, r := range rangesIn(ix.stw, from, to) {
+		if !ix.byAgent(r.G) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (ix *TraceIndex) byAgent(g GoroutineID) bool {
+	rec, ok := ix.goroutines[g]
+	return ok && rec.Agent
+}
 
 func (ix *TraceIndex) GCMark(from, to time.Duration) []TimeRange {
 	return rangesIn(ix.gcMark, from, to)
