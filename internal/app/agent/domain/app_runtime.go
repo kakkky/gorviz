@@ -1,8 +1,8 @@
-//go:generate mockgen -source=$GOFILE -destination=../testhelper/mock/mock_runtime.go -package=mock
+//go:generate mockgen -source=$GOFILE -destination=../testhelper/mock/mock_app_runtime.go -package=mock
 package domain
 
-// AppProcess はアプリのプロセスの素性を読む
-type AppProcess interface {
+// AppRuntimeProcess はアプリのプロセスの素性を読む
+type AppRuntimeProcess interface {
 	GoVersion() string
 	Procs() int
 	PID() int
@@ -18,14 +18,14 @@ type AppRuntimeTrace interface {
 	WriteTraceEvent(event string)
 }
 
-// AppCoverage はアプリの coverage のカウンタを 0 にし、書き出す
-type AppCoverage interface {
+// AppRuntimeCoverage はアプリの coverage のカウンタを 0 にし、書き出す
+type AppRuntimeCoverage interface {
 	ResetCoverage() error
 	ReadCoverage() ([]CoverageFile, error)
 }
 
-// AppGoroutines はアプリの goroutine とスレッドについて runtime に問い合わせる
-type AppGoroutines interface {
+// AppRuntimeGoroutines はアプリの goroutine とスレッドについて runtime に問い合わせる
+type AppRuntimeGoroutines interface {
 	NextLeakCheckSeq() uint64
 	ReadGoroutineLeakProfile() ([]byte, error)
 	ThreadCount() int

@@ -8,7 +8,7 @@ import (
 
 // ResetAppCoverageUsecase はアプリの coverage のカウンタを 0 にする
 type ResetAppCoverageUsecase struct {
-	coverage domain.AppCoverage
+	coverage domain.AppRuntimeCoverage
 }
 
 type ResetAppCoverageUsecaseInput struct{}

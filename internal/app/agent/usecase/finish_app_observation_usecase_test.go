@@ -22,12 +22,12 @@ func TestFinishAppObservationUsecase_Exec(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		mock    func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppCoverage, gs *mock.MockAppGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection)
+		mock    func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppRuntimeCoverage, gs *mock.MockAppRuntimeGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection)
 		wantErr error
 	}{
 		{
 			name: "sends the last leak profile, writes the trace out, then sends the coverage and the bye",
-			mock: func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppCoverage, gs *mock.MockAppGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection) {
+			mock: func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppRuntimeCoverage, gs *mock.MockAppRuntimeGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection) {
 				gomock.InOrder(
 					c.EXPECT().BeginFinish().Return(true),
 					tr.EXPECT().WriteTraceEvent(domain.AppExitEvent),
@@ -46,14 +46,14 @@ func TestFinishAppObservationUsecase_Exec(t *testing.T) {
 		},
 		{
 			name: "waits for the finish already started without doing it again",
-			mock: func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppCoverage, gs *mock.MockAppGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection) {
+			mock: func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppRuntimeCoverage, gs *mock.MockAppRuntimeGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection) {
 				c.EXPECT().BeginFinish().Return(false)
 				c.EXPECT().WaitFinished()
 			},
 		},
 		{
 			name: "still writes the trace out and says bye when the leak profile fails",
-			mock: func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppCoverage, gs *mock.MockAppGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection) {
+			mock: func(tr *mock.MockAppRuntimeTrace, cov *mock.MockAppRuntimeCoverage, gs *mock.MockAppRuntimeGoroutines, s *mock.MockServerSender, c *mock.MockServerConnection) {
 				c.EXPECT().BeginFinish().Return(true)
 				tr.EXPECT().WriteTraceEvent(gomock.Any()).Times(2)
 				gs.EXPECT().NextLeakCheckSeq().Return(uint64(1))
@@ -72,8 +72,8 @@ func TestFinishAppObservationUsecase_Exec(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			tr := mock.NewMockAppRuntimeTrace(ctrl)
-			cov := mock.NewMockAppCoverage(ctrl)
-			gs := mock.NewMockAppGoroutines(ctrl)
+			cov := mock.NewMockAppRuntimeCoverage(ctrl)
+			gs := mock.NewMockAppRuntimeGoroutines(ctrl)
 			s := mock.NewMockServerSender(ctrl)
 			c := mock.NewMockServerConnection(ctrl)
 			tt.mock(tr, cov, gs, s, c)

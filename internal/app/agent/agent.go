@@ -47,16 +47,7 @@ func Start() {
 
 	// presentation
 	handler := function.NewFunctionCallHandler(uc.NewStartAppObservationUsecase(), uc.NewFinishAppObservationUsecase())
-	socketHandler := socketpresentation.NewSocketHandler(
-		uc.NewWriteAppRuntimeTraceEventUsecase(),
-		uc.NewResetAppCoverageUsecase(),
-		uc.NewReadAppCoverageUsecase(),
-		uc.NewSendAppGoroutineLeaksUsecase(),
-		uc.NewWriteAppThreadCountUsecase(),
-		uc.NewFinishAppObservationUsecase(),
-		uc.NewAbandonAppObservationUsecase(),
-		server,
-	)
+	socketHandler := socketpresentation.NewSocketHandler(uc, server)
 
 	// worker
 	streamWorker := worker.NewStreamAppRuntimeTraceWorker(uc.NewStreamAppRuntimeTraceUsecase())

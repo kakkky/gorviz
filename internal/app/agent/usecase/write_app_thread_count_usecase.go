@@ -9,7 +9,7 @@ import (
 // WriteAppThreadCountUsecase は OS のスレッドの数を execution trace に書く。trace に書けば、数えた時刻ごと server へ流れる
 type WriteAppThreadCountUsecase struct {
 	trace      domain.AppRuntimeTrace
-	goroutines domain.AppGoroutines
+	goroutines domain.AppRuntimeGoroutines
 }
 
 type WriteAppThreadCountUsecaseInput struct{}

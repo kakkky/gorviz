@@ -10,7 +10,7 @@ import (
 // 書き出す直前に trace へ印を書き、プロファイルを取った時刻を server が trace の上で知れるようにする
 type SendAppGoroutineLeaksUsecase struct {
 	trace      domain.AppRuntimeTrace
-	goroutines domain.AppGoroutines
+	goroutines domain.AppRuntimeGoroutines
 	sender     domain.ServerSender
 }
 

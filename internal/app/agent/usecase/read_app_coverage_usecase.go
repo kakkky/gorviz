@@ -8,7 +8,7 @@ import (
 
 // ReadAppCoverageUsecase はアプリの coverage を書き出して返す。返事に載せて送るのは presentation
 type ReadAppCoverageUsecase struct {
-	coverage domain.AppCoverage
+	coverage domain.AppRuntimeCoverage
 }
 
 type ReadAppCoverageUsecaseInput struct{}

@@ -8,7 +8,7 @@ import (
 
 // StartAppObservationUsecase は server にアプリの素性を伝え、execution trace を取り始める
 type StartAppObservationUsecase struct {
-	process domain.AppProcess
+	process domain.AppRuntimeProcess
 	trace   domain.AppRuntimeTrace
 	sender  domain.ServerSender
 }

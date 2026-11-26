@@ -10,7 +10,7 @@ import (
 // アプリの main の終わりと server の頼みのどちらからも呼ばれるので、2 度目以降は 1 度目が終わるのを待つだけにする
 type FinishAppObservationUsecase struct {
 	trace      domain.AppRuntimeTrace
-	coverage   domain.AppCoverage
+	coverage   domain.AppRuntimeCoverage
 	sender     domain.ServerSender
 	connection domain.ServerConnection
 	leaks      *SendAppGoroutineLeaksUsecase
