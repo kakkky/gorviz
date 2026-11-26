@@ -93,7 +93,7 @@ flowchart TD
 - `worker/` は定期的に動く、または何かを待ち続ける、独立した処理。外から呼ばれず、自分で usecase を呼ぶ。同じプロセスの中で、エントリが起動する
 - `usecase/` は処理の手順
 - `domain/` は判定・診断・組み立てのロジック / 型 / usecase が使う interface
-- `adapter/` は domain の interface の実装。外との接続だけを持つ (メモリの置き場・agent への指示・アプリへの負荷・Go のツールチェーン・runtime の操作など)。取る・送る・書く・読むまでで、判断はしない。取ってきたものを読み解く・それで何かを決めるのは domain
+- `adapter/` は domain の interface の実装。外との接続だけを持つ (メモリの置き場・agent への要求・アプリへの負荷・Go のツールチェーン・runtime の操作など)。取る・送る・書く・読むまでで、判断はしない。取ってきたものを読み解く・それで何かを決めるのは domain
 - `config/` は設定の組み立て
 
 - 依存の向きは図のとおり。矢印の先を使い、図にない向きでは使わない。`domain` はほかの層を使わない (使うのは `protocol/` と、形式を読むためだけの外部ライブラリ (`golang.org/x/exp/trace` など) だけ)
@@ -120,11 +120,14 @@ func init() { Start() }
 ```mermaid
 flowchart TD
     subgraph driverIn["driver"]
+        direction LR
         SocketConn["socket.SocketConn"]
+        RequestMux["socket.RequestMux"]
     end
     subgraph presentation["presentation"]
         direction LR
-        SocketHandler["socket.SocketHandler"]
+        Middleware["middleware.Middleware"]
+        SocketHandler["socket.Handler"]
         FunctionCallHandler["function.FunctionCallHandler"]
     end
     subgraph worker["worker"]
@@ -134,7 +137,7 @@ flowchart TD
         direction LR
         StartAppObservationUsecase
         StreamAppRuntimeTraceUsecase
-        InstructionUsecases["WriteAppRuntimeTraceEventUsecase など (指示ごと)"]
+        RequestUsecases["WriteAppRuntimeTraceEventUsecase など (method ごと)"]
         FinishAppObservationUsecase
     end
     subgraph domain["domain"]
@@ -151,8 +154,8 @@ flowchart TD
         SocketConnOut["socket.SocketConn"]
     end
 
-    SocketConn --> SocketHandler
-    SocketHandler --> InstructionUsecases
+    SocketConn --> RequestMux --> Middleware --> SocketHandler
+    SocketHandler --> RequestUsecases
     SocketHandler --> FinishAppObservationUsecase
     StreamAppRuntimeTraceWorker --> StreamAppRuntimeTraceUsecase
     FunctionCallHandler --> StartAppObservationUsecase
@@ -163,7 +166,8 @@ flowchart TD
     ServerClient --> SocketConnOut
 ```
 
-- `socket.SocketConn` は server への接続を張り、読んだ指示を `socket.SocketHandler` に、書く口を `client.ServerClient` に渡す
+- `socket.SocketConn` は server への接続を張り、読んだメッセージを `socket.RequestMux` に、書く口を `client.ServerClient` に渡す
+- `socket.RequestMux` は、`socket.Handler` が method ごとに並べた handler を、middleware で包んで登録する。server からの要求を method で引いて渡し、middleware が ID を付けた応答を返す
 - `accessor.AppRuntimeAccessor` は、runtime が持つ状態 (trace・coverage のカウンタ・goroutine・machine thread) を読み書きする。trace は `tracer.ExecutionTracer` を通し、coverage とプロファイルは `runtime/coverage`・`runtime/pprof` を直接触る
 - `tracer.ExecutionTracer` は、execution trace の状態と書き出し先を持ち、後始末で止める。始める・読む・止めるのは `accessor.AppRuntimeAccessor` を通して usecase が行う
 - `function.FunctionCallHandler` は、関数呼び出しで届くもの (エントリの init と、main の defer) を受ける。`Start` から `StartAppObservationUsecase` を、`Stop` から `FinishAppObservationUsecase` を呼ぶ。どちらも同期で、終わるまで戻らない
@@ -176,14 +180,15 @@ flowchart TD
     subgraph driverIn["driver"]
         direction LR
         SocketListener["socket.SocketListener"]
+        MessageMux["socket.MessageMux"]
         HTTPServer["httpserver.HTTPServer"]
     end
     subgraph presentation["presentation"]
         direction LR
-        SocketHandler["socket.SocketHandler"]
+        SocketHandler["socket.Handler"]
         Middleware["middleware.Middleware"]
-        Handler["web.WebHandler (+ Templ)"]
-        APIHandler["api.APIHandler"]
+        Handler["web.Handler (+ Templ)"]
+        APIHandler["api.Handler"]
     end
     subgraph worker["worker"]
         direction LR
@@ -220,7 +225,8 @@ flowchart TD
         SocketConn["socket.SocketConn"]
     end
 
-    SocketListener --> SocketHandler --> IngestAppObservationsUsecase
+    SocketListener --> MessageMux --> Middleware
+    Middleware --> SocketHandler --> IngestAppObservationsUsecase
     HTTPServer --> Middleware
     Middleware --> Handler
     Middleware --> APIHandler
@@ -237,7 +243,8 @@ flowchart TD
     AgentClient --> SocketConn
 ```
 
-- `socket.SocketListener` は agent の接続を受け入れて `socket.SocketConn` にする。接続から読んだもののうち、観測データは `socket.SocketHandler` に、指示への返事は `client.AgentClient` に渡る
+- `httpserver.HTTPServer` は、`api.Handler`・`web.Handler` が並べた handler を mux に登録し、middleware で包んで待ち受ける。各 handler の組み立ては Handler が `*usecase.UseCase` から行う
+- `socket.SocketListener` は agent の接続を受け入れて `socket.SocketConn` にする。接続から読んだもののうち、観測データは `socket.MessageMux` に、要求への応答は `client.AgentClient` に渡る。`socket.MessageMux` は、`socket.Handler` がメッセージの型ごとに並べた handler を、middleware で包んで登録する
 - `RunAppWorker` は server が起動したときに `RunAppUsecase` を 1 回だけ呼ぶ。`RunAppUsecase` は、アプリのビルドと起動から、アプリが終わるか server が止まるまでを 1 回の Exec の中で見届ける。アプリのプロセスは、`client.AppClient` が返した値を Exec の中で持つ
 - `client.AppClient` は、アプリとのやり取り (ビルド・子プロセスとしての起動・合図・負荷のリクエスト) をすべて持つ
 - 層の外に `assets/` (CSS・JS・Stimulus controllers) を持つ
@@ -272,7 +279,7 @@ internal/app/cli/
 アクセスログ・エラーの返し方・panic の復旧は、各層に書かず、入口の手前でまとめて扱う。
 
 - HTTP (GUI・HTTP API) は、`presentation/middleware` で扱う
-- agent からの接続は、`socket.SocketHandler` の入口で扱う
+- socket (agent と server の間) も、`presentation/middleware` で扱う。server はログに出して捨て、agent は応答に載せて返す
 - driver には置かない。エラーの種別 (domain) や画面 (view) を使うため
 - handler・usecase は、エラーのレスポンスを自分で書かない
 

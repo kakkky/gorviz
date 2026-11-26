@@ -19,7 +19,7 @@
 - driver の後始末は、コンストラクタが返す cleanup を `defer` で呼ぶ
 - driver・worker の `Run` は、最後に `scope.Run` の下で起動する
 - 組み立て以外の処理 (値の変換・分岐) は書かない。必要ならその層に置く
-- 層をまたいでパッケージ名がぶつかるとき (driver の `socket` と presentation の `socket` など) は、エントリでだけ別名を付ける。ほかの層では別名を使わない
+- 層をまたいでパッケージ名がぶつかるとき (driver の `socket` と presentation の `socket` など) は、`<層><パッケージ>` の別名を付ける (`socketpresentation`)。ぶつからないときは別名を使わない
 
 ```go
 // cmd/gorviz/main.go (server・cli のどちらか 1 つを呼ぶ)
@@ -111,6 +111,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - 使えるかどうか (排他・形式) は、コンストラクタで確かめる。使えなければエラーを返して起動させない。使い始めてから気づかせない
 - 待ち受けるものは `Run(ctx context.Context) error` を持ち、ctx が終わったら閉じて `nil` を返す
 - 待ち受けは presentation を、接続は adapter を受け取る。driver から usecase を呼ばない
+  - HTTP の待ち受けは、presentation の `Handler` の `Routes()` を mux に登録し、middleware で包む (`httpserver.NewAPIMux`・`NewGUIMux`)
 - テストのために driver を歪めない
 
 ## presentation (`internal/app/<コンポーネント>/presentation/`)
@@ -120,6 +121,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 ### 共通
 
 - struct に、呼ぶ usecase と必要な config の値を持つ。`NewXxx(...)` で作る
+- 入口ごとのパッケージに、入口を集める型を 1 つ置く。エントリはそれに `*usecase.UseCase` を渡すだけで、個々の入口を知らない
+  - 集める型が、各入口に渡す usecase を `NewXxxUsecase()` で作り、入口を組み立てて並べる
+  - HTTP は `handler.go` の `Handler` が `Routes() []Route` (pattern と handler の組) を返し、driver がそれを待ち受けに登録する
 - 1 つの入口は 1 つの usecase を呼ぶのを原則にする。画面のように複数をまとめて出すときだけ複数を許す
 - usecase のほかにエントリから受け取ってよいのは、自分のコンポーネントを止める口 (ctx の cancel) だけ。server の停止を頼む API のため
 - 受け取った形 (リクエスト・メッセージ・引数) から usecase の Input を組み、Output から返す形を組む。usecase の Output をそのまま外に出さない
@@ -143,13 +147,17 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 ### socket
 
-- `socket.SocketHandler` は、メッセージの種類ごとに 1 つの usecase を呼ぶ
+- HTTP と同じ形にする。`handler.go` の `Handler` が `Routes() []Route` を返し、driver の mux が登録する
+  - route の鍵は、agent から server へはメッセージの型 (`agent.MessageType`)、server から agent へは要求の method (`agent.Method`)
+  - handler は 1 つ 1 ファイルで、名前は型か method から付ける (`hello_handler.go`・`write_coverage_handler.go`)
+  - 接続の終わりは route ではないので、`DisconnectHandler()` で別に返す
 - メッセージの読み書きと区切りは `protocol/agent` の関数を呼ぶ。presentation の中で形式を書かない
-- エラーと panic は Handler の入口で拾い、接続を止めない。1 つのメッセージの失敗で、ほかのメッセージを読めなくしないため
+- エラーと panic は middleware で拾い、接続を止めない。1 つのメッセージの失敗で、ほかのメッセージを読めなくしないため
 
 ### cli
 
-- サブコマンド・引数・フラグは [urfave/cli](https://github.com/urfave/cli) (v3) で組む。`command.Command` はその定義と、各サブコマンドの Action を持つ
+- サブコマンド・引数・フラグは [urfave/cli](https://github.com/urfave/cli) (v3) で組む
+- `command.Command` が集める型になる。サブコマンドは 1 つ 1 ファイル (`run_command.go`) で、定義を返すメソッドと Action を置き、`Command` が並べる
 - 手順も判断も持たないので、presentation から adapter の `client.ServerClient` を直接呼ぶ。usecase を挟まない
 - server の応答の中身は解釈・整形しない。そのまま出し、終了コードも server が載せた値を使う
 - シナリオのファイルは、サブコマンドの入力として presentation で読む
@@ -273,7 +281,7 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
   ```
 
 - 返すエラーは、その場でログに出さない。最後に受け取った側が 1 回だけ出す
-  - HTTP のリクエストのエラーと panic は middleware が、socket のメッセージのエラーと panic は `socket.SocketHandler` が出す
+  - HTTP のリクエストと socket のメッセージのエラーと panic は、middleware が出す
   - worker の周期のエラーは worker が出す
   - 起動・停止のエラーは `main` が出す
   - その場で出すのは、エラーを処理して先に進むときだけ
