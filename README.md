@@ -187,7 +187,7 @@ Times are seconds since the session started. Every answer has the GUI URL of the
 | `gorviz goroutine <id>` | What one goroutine was blocked on (`--from`, `--to`) |
 | `gorviz docs [name]` | The built-in documents: `getting-started`, `scenario`, `issues`, `goroutines` |
 
-Global flags are `--socket` (the unix socket of the server, a fixed path in the temp directory by default, also `GORVIZ_SOCKET`) and `--json`.
+Global flags are `--socket` (the unix socket of the server, a fixed path in the temp directory by default, also `GORVIZ_SOCKET`) and `--format` (`toon` by default, or `json`).
 Only one session runs per socket. The GUI listens on `127.0.0.1:24678` (`GORVIZ_GUI_ADDR` to change it).
 
 ## Issues

@@ -52,8 +52,8 @@ func (r *Response) ExitCode() int {
 	return n
 }
 
-// Do は socket で待ち受ける server を method と path (エンドポイントの {id} は埋めたもの) で呼ぶ。json が true なら JSON で、そうでなければ TOON で返させる
-func (c *ServerClient) Do(ctx context.Context, socket, method, path string, query url.Values, body []byte, json bool) (*Response, error) {
+// Do は socket で待ち受ける server を method と path (エンドポイントの {id} は埋めたもの) で呼び、accept の形で返させる
+func (c *ServerClient) Do(ctx context.Context, socket, method, path string, query url.Values, body []byte, accept string) (*Response, error) {
 	u := "http://gorviz" + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -61,10 +61,6 @@ func (c *ServerClient) Do(ctx context.Context, socket, method, path string, quer
 	req, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
-	}
-	accept := server.MediaTOON
-	if json {
-		accept = server.MediaJSON
 	}
 	req.Header.Set("Accept", accept)
 	resp, err := httpClient(socket).Do(req)

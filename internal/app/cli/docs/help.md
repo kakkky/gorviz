@@ -11,6 +11,6 @@ A session goes like this:
 
 Every command except run talks to the gorviz server over a unix socket on this machine (a fixed path, or --socket).
 The GUI listens on http://127.0.0.1:24678 (GORVIZ_GUI_ADDR to change it).
-Output is TOON by default and JSON with --json.
+Output is TOON by default and JSON with --format json.
 
 Read the documents first: gorviz docs, then gorviz docs getting-started.

@@ -1,0 +1,29 @@
+package command
+
+import (
+	"bufio"
+	"context"
+	"io"
+	"net/http"
+	"os"
+
+	"github.com/urfave/cli/v3"
+
+	"github.com/kakkky/gorviz/internal/protocol/server"
+)
+
+func (c *Command) diagnose(_ context.Context, cmd *cli.Command) error {
+	var scenario []byte
+	if name := cmd.Args().First(); name != "" {
+		var err error
+		if name == "-" {
+			scenario, err = io.ReadAll(bufio.NewReader(os.Stdin))
+		} else {
+			scenario, err = os.ReadFile(name)
+		}
+		if err != nil {
+			return cli.Exit("read the scenario: "+err.Error()+"\nsee `gorviz docs scenario`", 2)
+		}
+	}
+	return c.print(cmd, http.MethodPost, server.DiagnoseEndpoint, nil, scenario)
+}
