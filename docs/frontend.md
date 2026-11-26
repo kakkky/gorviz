@@ -24,14 +24,16 @@ gorviz-server の GUI を、templ・hotwire-go・Stimulus・Preact (turbo-mount)
    - 目安は「server に聞かずに描き直す回数が多い」か「JS で DOM を組み立て始めた」か
    - [turbo-mount](https://github.com/skryukov/turbo-mount) で載せる
 
-## View (`presentation/view/`)
+## View (`presentation/web/view/`)
+
+画面を返す web だけが使うので、web の下に置く。
 
 - `layout/`
   - 全画面を包む外枠
 - `pages/`
   - 画面 1 つに 1 つ
 - `components/`
-  - 画面をまたいで使う部品
+  - 画面をまたいで使う部品。1 部品 1 ファイルで、ファイル名は部品の名前 (`certainty_badge.templ`)
 - `partials/`
   - Turbo Frame・Turbo Stream で一部だけを返す断片
 
