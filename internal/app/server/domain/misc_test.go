@@ -61,11 +61,11 @@ func TestAgentOverlay(t *testing.T) {
 		{Path: filepath.Join(dir, "main.go"), Data: []byte("package main // the entry\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(port)\n}\n")},
 	}}
 	agent := []domain.SourceFile{
-		{Path: "agent.go", Data: []byte("package agent\n\nimport \"github.com/kakkky/gorviz/internal/app/agent/usecase\"\nimport \"github.com/kakkky/gorviz/internal/protocol/agentsocket\"\n")},
+		{Path: "agent.go", Data: []byte("package agent\n\nimport \"github.com/kakkky/gorviz/internal/app/agent/usecase\"\nimport \"github.com/kakkky/gorviz/internal/protocol/agent\"\n")},
 		{Path: "usecase/usecase_test.go", Data: []byte("package usecase_test\n")},
 		{Path: "testhelper/mock/mock.go", Data: []byte("package mock\n")},
 	}
-	socket := []domain.SourceFile{{Path: "agentsocket.go", Data: []byte("package agentsocket\n")}}
+	protocol := []domain.SourceFile{{Path: "agent.go", Data: []byte("package agent\n")}, {Path: "agent_test.go", Data: []byte("package agent_test\n")}}
 	tests := []struct {
 		name  string
 		main  domain.MainPackage
@@ -78,10 +78,11 @@ func TestAgentOverlay(t *testing.T) {
 				require.NoError(t, err)
 				src := string(ov[filepath.Join(dir, "gorvizagent", "agent.go")])
 				assert.Contains(t, src, `"example.com/app/cmd/api/gorvizagent/usecase"`)
-				assert.Contains(t, src, `"example.com/app/cmd/api/gorvizagent/agentsocket"`)
-				assert.Contains(t, ov, filepath.Join(dir, "gorvizagent", "agentsocket", "agentsocket.go"))
+				assert.Contains(t, src, `"example.com/app/cmd/api/gorvizagent/protocol/agent"`)
+				assert.Contains(t, ov, filepath.Join(dir, "gorvizagent", "protocol", "agent", "agent.go"))
 				assert.NotContains(t, ov, filepath.Join(dir, "gorvizagent", "usecase", "usecase_test.go"))
 				assert.NotContains(t, ov, filepath.Join(dir, "gorvizagent", "testhelper", "mock", "mock.go"))
+				assert.NotContains(t, ov, filepath.Join(dir, "gorvizagent", "protocol", "agent", "agent_test.go"))
 			},
 		},
 		{
@@ -107,7 +108,7 @@ func TestAgentOverlay(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ov, err := domain.AgentOverlay(tt.main, agent, socket)
+			ov, err := domain.AgentOverlay(tt.main, agent, protocol)
 			tt.check(t, ov, err)
 		})
 	}

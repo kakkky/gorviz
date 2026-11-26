@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // MessageHandler は server から届いたメッセージと、接続が切れたことを受ける
 type MessageHandler interface {
-	HandleMessage(m agentsocket.Message)
+	HandleMessage(m agent.Message)
 	HandleDisconnect()
 }
 
@@ -38,7 +38,7 @@ func NewSocketConn(addr string) (*SocketConn, func(), error) {
 func (c *SocketConn) Run(_ context.Context, h MessageHandler) error {
 	r := bufio.NewReaderSize(c.conn, 64<<10)
 	for {
-		m, err := agentsocket.Read(r)
+		m, err := agent.Read(r)
 		if err != nil {
 			select {
 			case <-c.closed:
@@ -52,10 +52,10 @@ func (c *SocketConn) Run(_ context.Context, h MessageHandler) error {
 	}
 }
 
-func (c *SocketConn) Write(m agentsocket.Message) error {
+func (c *SocketConn) Write(m agent.Message) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
-	return agentsocket.Write(c.conn, m)
+	return agent.Write(c.conn, m)
 }
 
 // BeginFinish は、終える手順をまだ誰も始めておらず、接続も切れていなければ true を返す

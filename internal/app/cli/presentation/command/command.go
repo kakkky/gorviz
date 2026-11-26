@@ -15,32 +15,34 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/kakkky/gorviz/internal/app/cli/adapter/client"
 	"github.com/kakkky/gorviz/internal/app/cli/config"
-	"github.com/kakkky/gorviz/internal/protocol/serverapi"
+	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 const docsHint = "run `gorviz docs` for how to use gorviz"
 
 // Command は gorviz のサブコマンドの定義と、各サブコマンドの Action。server の応答は解釈せず、そのまま出す
 type Command struct {
-	cfg  *config.Config
-	docs fs.FS
-	out  io.Writer
+	cfg    *config.Config
+	docs   fs.FS
+	server *client.ServerClient
+	out    io.Writer
 }
 
-func NewCommand(cfg *config.Config, docs fs.FS) (*cli.Command, error) {
-	c := &Command{cfg: cfg, docs: docs, out: os.Stdout}
+func NewCommand(cfg *config.Config, docs fs.FS, server *client.ServerClient) (*cli.Command, error) {
+	c := &Command{cfg: cfg, docs: docs, server: server, out: os.Stdout}
 	help, err := c.doc("help")
 	if err != nil {
 		return nil, err
 	}
-	addr := &cli.StringFlag{Name: "addr", Usage: "the address of the gorviz server", Value: cfg.Addr}
+	socket := &cli.StringFlag{Name: "socket", Usage: "the unix socket of the gorviz server", Value: cfg.Socket}
 	jsonFlag := &cli.BoolFlag{Name: "json", Usage: "print JSON instead of TOON"}
 	return &cli.Command{
 		Name:                  "gorviz",
 		Usage:                 "diagnose the health of the Go runtime of an app while it runs on your machine",
 		Description:           help,
-		Flags:                 []cli.Flag{addr, jsonFlag},
+		Flags:                 []cli.Flag{socket, jsonFlag},
 		EnableShellCompletion: false,
 		OnUsageError: func(_ context.Context, _ *cli.Command, err error, _ bool) error {
 			return cli.Exit(err.Error()+"\n"+docsHint, 2)
@@ -79,17 +81,22 @@ func (c *Command) doc(name string) (string, error) {
 	return string(b), nil
 }
 
-func (c *Command) client(cmd *cli.Command) *serverapi.Client {
-	return serverapi.NewClient(cmd.String("addr"))
+func (c *Command) do(ctx context.Context, cmd *cli.Command, method, path string, query url.Values, body []byte, json bool) (*client.Response, error) {
+	return c.server.Do(ctx, cmd.String("socket"), method, path, query, body, json)
+}
+
+// pathOf はルートの {id} を埋める
+func pathOf(route, id string) string {
+	return strings.Replace(route, "{id}", url.PathEscape(id), 1)
 }
 
 func notRunning(cmd *cli.Command, err error) error {
-	return cli.Exit(fmt.Sprintf("no gorviz session runs at %s (%v); start one with gorviz run <package>\n%s", cmd.String("addr"), err, docsHint), 2)
+	return cli.Exit(fmt.Sprintf("no gorviz session runs on %s (%v); start one with gorviz run <package>\n%s", cmd.String("socket"), err, docsHint), 2)
 }
 
 // print は server の応答をそのまま出し、server が載せた終了コードで終わる
 func (c *Command) print(cmd *cli.Command, method, path string, query url.Values, body []byte) error {
-	resp, err := c.client(cmd).Do(context.Background(), method, path, query, body, cmd.Bool("json"))
+	resp, err := c.do(context.Background(), cmd, method, path, query, body, cmd.Bool("json"))
 	if err != nil {
 		return notRunning(cmd, err)
 	}
@@ -112,21 +119,21 @@ func (c *Command) run(ctx context.Context, cmd *cli.Command) error {
 	if len(appArgs) > 0 && appArgs[0] == "--" {
 		appArgs = appArgs[1:]
 	}
-	addr := cmd.String("addr")
-	if resp, err := c.client(cmd).Do(ctx, http.MethodGet, serverapi.PathStatus, nil, nil, true); err == nil {
+	socket := cmd.String("socket")
+	if resp, err := c.do(ctx, cmd, http.MethodGet, server.StatusEndpoint, nil, nil, true); err == nil {
 		resp.Body.Close()
-		return cli.Exit(fmt.Sprintf("a gorviz session already runs at %s; stop it with gorviz stop first", addr), 2)
+		return cli.Exit(fmt.Sprintf("a gorviz session already runs on %s; stop it with gorviz stop first", socket), 2)
 	}
 	dir, err := os.Getwd()
 	if err != nil {
 		return cli.Exit(err.Error(), 2)
 	}
-	if err := serverapi.StartDaemon(addr, dir, pkg, appArgs); err != nil {
+	if err := c.server.StartServer(socket, dir, pkg, appArgs); err != nil {
 		return cli.Exit("start the gorviz server: "+err.Error(), 2)
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		resp, err := c.client(cmd).Do(ctx, http.MethodGet, serverapi.PathStartResult, nil, nil, cmd.Bool("json"))
+		resp, err := c.do(ctx, cmd, http.MethodGet, server.StartResultEndpoint, nil, nil, cmd.Bool("json"))
 		if err == nil {
 			defer resp.Body.Close()
 			if _, err := io.Copy(c.out, resp.Body); err != nil {
@@ -138,30 +145,30 @@ func (c *Command) run(ctx context.Context, cmd *cli.Command) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return cli.Exit(fmt.Sprintf("the gorviz server did not start (%v); see %s", err, serverapi.LogPath()), 2)
+			return cli.Exit(fmt.Sprintf("the gorviz server did not start (%v); see %s", err, server.LogPath()), 2)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 }
 
 func (c *Command) stop(_ context.Context, cmd *cli.Command) error {
-	if err := c.print(cmd, http.MethodPost, serverapi.PathStop, nil, nil); err != nil {
+	if err := c.print(cmd, http.MethodPost, server.StopEndpoint, nil, nil); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := c.client(cmd).Do(context.Background(), http.MethodGet, serverapi.PathStatus, nil, nil, true)
+		resp, err := c.do(context.Background(), cmd, http.MethodGet, server.StatusEndpoint, nil, nil, true)
 		if err != nil {
 			return nil
 		}
 		resp.Body.Close()
 		time.Sleep(100 * time.Millisecond)
 	}
-	return cli.Exit("the gorviz server did not stop; see "+serverapi.LogPath(), 2)
+	return cli.Exit("the gorviz server did not stop; see "+server.LogPath(), 2)
 }
 
 func (c *Command) status(_ context.Context, cmd *cli.Command) error {
-	return c.print(cmd, http.MethodGet, serverapi.PathStatus, nil, nil)
+	return c.print(cmd, http.MethodGet, server.StatusEndpoint, nil, nil)
 }
 
 func (c *Command) diagnose(_ context.Context, cmd *cli.Command) error {
@@ -177,7 +184,7 @@ func (c *Command) diagnose(_ context.Context, cmd *cli.Command) error {
 			return cli.Exit("read the scenario: "+err.Error()+"\nsee `gorviz docs scenario`", 2)
 		}
 	}
-	return c.print(cmd, http.MethodPost, serverapi.PathDiagnose, nil, scenario)
+	return c.print(cmd, http.MethodPost, server.DiagnoseEndpoint, nil, scenario)
 }
 
 func (c *Command) issues(_ context.Context, cmd *cli.Command) error {
@@ -187,7 +194,7 @@ func (c *Command) issues(_ context.Context, cmd *cli.Command) error {
 			q.Set(f, v)
 		}
 	}
-	return c.print(cmd, http.MethodGet, serverapi.PathIssues, q, nil)
+	return c.print(cmd, http.MethodGet, server.IssuesEndpoint, q, nil)
 }
 
 func (c *Command) issue(_ context.Context, cmd *cli.Command) error {
@@ -199,7 +206,7 @@ func (c *Command) issue(_ context.Context, cmd *cli.Command) error {
 	if n := cmd.Int("occurrence"); n > 0 {
 		q.Set("occurrence", fmt.Sprint(n))
 	}
-	return c.print(cmd, http.MethodGet, serverapi.PathOf(serverapi.PathIssue, id), q, nil)
+	return c.print(cmd, http.MethodGet, pathOf(server.IssueEndpoint, id), q, nil)
 }
 
 func (c *Command) goroutine(_ context.Context, cmd *cli.Command) error {
@@ -215,7 +222,7 @@ func (c *Command) goroutine(_ context.Context, cmd *cli.Command) error {
 		q.Set("from", f)
 		q.Set("to", t)
 	}
-	return c.print(cmd, http.MethodGet, serverapi.PathOf(serverapi.PathGoroutine, id), q, nil)
+	return c.print(cmd, http.MethodGet, pathOf(server.GoroutineEndpoint, id), q, nil)
 }
 
 func (c *Command) showDocs(_ context.Context, cmd *cli.Command) error {

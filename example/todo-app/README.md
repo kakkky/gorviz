@@ -16,7 +16,7 @@ make build
 ./bin/gorviz diagnose example/todo-app/scenario.yaml
 ```
 
-- `gorviz run` builds the app with the agent and returns once it runs. Open the GUI at http://127.0.0.1:7070.
+- `gorviz run` builds the app with the agent and returns once it runs. Open the GUI at http://127.0.0.1:24678.
 - [scenario.yaml](scenario.yaml) seeds 1,000 todos, then sends five flows: add a todo with a reminder and complete it,
   list, show the statistics, export CSV and back up.
 - The diagnosis takes about a minute here, because some of the requests are very slow (that is the point).

@@ -28,6 +28,7 @@ type BuildAppInput struct {
 
 // AppBuilder は agent を差し込んで、coverage を取れるようにアプリをビルドする
 type AppBuilder interface {
+	AgentFiles() (agent []SourceFile, protocol []SourceFile)
 	LoadMainPackage(ctx context.Context, in BuildAppInput) (MainPackage, AppBuild, error)
 	BuildApp(ctx context.Context, in BuildAppInput, build AppBuild, overlay Overlay) error
 }
@@ -58,11 +59,6 @@ type AppRequester interface {
 type Toolchain interface {
 	CoverageProfile(ctx context.Context, files []CoverageFile) ([]byte, error)
 	ReadAppSources(build AppBuild, files []string) map[string][]byte
-}
-
-// AgentSources は差し込む agent のソース
-type AgentSources interface {
-	AgentFiles() ([]SourceFile, []SourceFile, error)
 }
 
 // Clock は今の時刻を返す。待つ時間の判断に使う

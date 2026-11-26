@@ -1,6 +1,6 @@
-// Package agentsocket は agent と server の間の 1 本の接続に流すメッセージの形と区切り。
+// Package agent は agent との決まり。agent と server の間の 1 本の接続に流すメッセージの形と区切り。
 // agent と一緒にアプリのビルドに持ち込まれるので、標準ライブラリだけで書く
-package agentsocket
+package agent
 
 import (
 	"bufio"
@@ -105,7 +105,7 @@ func ThreadCountEvent(n int) string {
 // Write は 1 バイトの種類・4 バイトの長さ・中身の順で書く
 func Write(w io.Writer, m Message) error {
 	if len(m.Payload) > maxPayload {
-		return fmt.Errorf("agentsocket: payload of %d bytes is too large", len(m.Payload))
+		return fmt.Errorf("agent protocol: payload of %d bytes is too large", len(m.Payload))
 	}
 	var head [5]byte
 	head[0] = byte(m.Kind)
@@ -124,7 +124,7 @@ func Read(r *bufio.Reader) (Message, error) {
 	}
 	n := binary.BigEndian.Uint32(head[1:])
 	if n > maxPayload {
-		return Message{}, fmt.Errorf("agentsocket: payload of %d bytes is too large", n)
+		return Message{}, fmt.Errorf("agent protocol: payload of %d bytes is too large", n)
 	}
 	m := Message{Kind: Kind(head[0]), Payload: make([]byte, n)}
 	if _, err := io.ReadFull(r, m.Payload); err != nil {

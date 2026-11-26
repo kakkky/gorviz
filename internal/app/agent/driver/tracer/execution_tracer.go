@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // ExecutionTracer は execution trace を io.Pipe に書かせ、読む側に流す。trace.Stop は書き出しが読み切られるまで戻らないので、止める間も読み続ける
@@ -52,7 +52,7 @@ func (t *ExecutionTracer) Drained() <-chan struct{} {
 }
 
 func (t *ExecutionTracer) Log(event string) {
-	trace.Log(context.Background(), agentsocket.TraceCategory, event)
+	trace.Log(context.Background(), agent.TraceCategory, event)
 }
 
 func (t *ExecutionTracer) NextLeakCheckSeq() uint64 {

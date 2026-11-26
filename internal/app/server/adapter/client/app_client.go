@@ -5,32 +5,49 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // AppClient はアプリとのやり取り (ビルド・子プロセスとしての起動・合図・負荷のリクエスト) を持つ
 type AppClient struct {
-	socketPath string
-	buildDir   string
-	transport  *http.Transport
+	socketPath    string
+	buildDir      string
+	transport     *http.Transport
+	agentFiles    map[string][]byte
+	protocolFiles map[string][]byte
 }
 
-func NewAppClient(socketPath, buildDir string) (*AppClient, error) {
+// NewAppClient の agent・protocol は、ビルドに差し込む agent と agent との決まりのファイル (根からのパスと中身)
+func NewAppClient(socketPath, buildDir string, agent, protocol map[string][]byte) (*AppClient, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.MaxIdleConns = 0
 	tr.MaxIdleConnsPerHost = 1024
 	tr.MaxConnsPerHost = 0
-	return &AppClient{socketPath: socketPath, buildDir: buildDir, transport: tr}, nil
+	return &AppClient{socketPath: socketPath, buildDir: buildDir, transport: tr, agentFiles: agent, protocolFiles: protocol}, nil
+}
+
+func (c *AppClient) AgentFiles() ([]domain.SourceFile, []domain.SourceFile) {
+	return sourceFiles(c.agentFiles), sourceFiles(c.protocolFiles)
+}
+
+func sourceFiles(files map[string][]byte) []domain.SourceFile {
+	out := make([]domain.SourceFile, 0, len(files))
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		out = append(out, domain.SourceFile{Path: p, Data: files[p]})
+	}
+	return out
 }
 
 type goListPackage struct {
@@ -159,7 +176,7 @@ type appProcess struct {
 func (c *AppClient) StartApp(_ context.Context, build domain.AppBuild, args []string, env []string) (domain.AppProcess, error) {
 	cmd := exec.Command(build.Binary, args...)
 	cmd.Dir = build.WorkDir
-	cmd.Env = append(append([]string{}, env...), agentsocket.EnvSocket+"="+c.socketPath)
+	cmd.Env = append(append([]string{}, env...), agent.EnvSocket+"="+c.socketPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, domain.ErrInvalidArgument.Wrap(err, "start the app")

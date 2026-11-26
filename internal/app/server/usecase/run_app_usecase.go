@@ -23,7 +23,6 @@ type RunAppUsecase struct {
 	agent    domain.AgentInstructor
 	builder  domain.AppBuilder
 	starter  domain.AppStarter
-	sources  domain.AgentSources
 	clock    domain.Clock
 }
 
@@ -38,7 +37,7 @@ type RunAppUsecaseInput struct {
 type RunAppUsecaseOutput struct{}
 
 func (us *UseCase) NewRunAppUsecase() *RunAppUsecase {
-	return &RunAppUsecase{sessions: us.sessions, index: us.index, stream: us.stream, agent: us.agent, builder: us.builder, starter: us.starter, sources: us.sources, clock: us.clock}
+	return &RunAppUsecase{sessions: us.sessions, index: us.index, stream: us.stream, agent: us.agent, builder: us.builder, starter: us.starter, clock: us.clock}
 }
 
 func (u *RunAppUsecase) Exec(ctx context.Context, in RunAppUsecaseInput) (RunAppUsecaseOutput, error) {
@@ -103,11 +102,8 @@ func (u *RunAppUsecase) build(ctx context.Context, in RunAppUsecaseInput) (domai
 	if err != nil {
 		return domain.AppBuild{}, err
 	}
-	agent, socket, err := u.sources.AgentFiles()
-	if err != nil {
-		return domain.AppBuild{}, err
-	}
-	overlay, err := domain.AgentOverlay(main, agent, socket)
+	agent, protocol := u.builder.AgentFiles()
+	overlay, err := domain.AgentOverlay(main, agent, protocol)
 	if err != nil {
 		return domain.AppBuild{}, err
 	}

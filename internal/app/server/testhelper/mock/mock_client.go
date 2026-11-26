@@ -193,6 +193,21 @@ func (m *MockAppBuilder) EXPECT() *MockAppBuilderMockRecorder {
 	return m.recorder
 }
 
+// AgentFiles mocks base method.
+func (m *MockAppBuilder) AgentFiles() ([]domain.SourceFile, []domain.SourceFile) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AgentFiles")
+	ret0, _ := ret[0].([]domain.SourceFile)
+	ret1, _ := ret[1].([]domain.SourceFile)
+	return ret0, ret1
+}
+
+// AgentFiles indicates an expected call of AgentFiles.
+func (mr *MockAppBuilderMockRecorder) AgentFiles() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AgentFiles", reflect.TypeOf((*MockAppBuilder)(nil).AgentFiles))
+}
+
 // BuildApp mocks base method.
 func (m *MockAppBuilder) BuildApp(ctx context.Context, in domain.BuildAppInput, build domain.AppBuild, overlay domain.Overlay) error {
 	m.ctrl.T.Helper()
@@ -455,46 +470,6 @@ func (m *MockToolchain) ReadAppSources(build domain.AppBuild, files []string) ma
 func (mr *MockToolchainMockRecorder) ReadAppSources(build, files any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAppSources", reflect.TypeOf((*MockToolchain)(nil).ReadAppSources), build, files)
-}
-
-// MockAgentSources is a mock of AgentSources interface.
-type MockAgentSources struct {
-	ctrl     *gomock.Controller
-	recorder *MockAgentSourcesMockRecorder
-	isgomock struct{}
-}
-
-// MockAgentSourcesMockRecorder is the mock recorder for MockAgentSources.
-type MockAgentSourcesMockRecorder struct {
-	mock *MockAgentSources
-}
-
-// NewMockAgentSources creates a new mock instance.
-func NewMockAgentSources(ctrl *gomock.Controller) *MockAgentSources {
-	mock := &MockAgentSources{ctrl: ctrl}
-	mock.recorder = &MockAgentSourcesMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockAgentSources) EXPECT() *MockAgentSourcesMockRecorder {
-	return m.recorder
-}
-
-// AgentFiles mocks base method.
-func (m *MockAgentSources) AgentFiles() ([]domain.SourceFile, []domain.SourceFile, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AgentFiles")
-	ret0, _ := ret[0].([]domain.SourceFile)
-	ret1, _ := ret[1].([]domain.SourceFile)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// AgentFiles indicates an expected call of AgentFiles.
-func (mr *MockAgentSourcesMockRecorder) AgentFiles() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AgentFiles", reflect.TypeOf((*MockAgentSources)(nil).AgentFiles))
 }
 
 // MockClock is a mock of Clock interface.

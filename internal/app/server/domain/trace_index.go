@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/exp/trace"
 
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 type GoroutineID int64
@@ -353,17 +353,17 @@ func (ix *TraceIndex) Stack(id StackID) []Frame { return ix.stacks[id] }
 
 func (ix *TraceIndex) log(ev trace.Event, at time.Duration) {
 	l := ev.Log()
-	if l.Category != agentsocket.TraceCategory {
+	if l.Category != agent.TraceCategory {
 		return
 	}
 	switch {
-	case strings.HasPrefix(l.Message, agentsocket.EventThreadCountPrefix):
-		if n, err := strconv.Atoi(strings.TrimPrefix(l.Message, agentsocket.EventThreadCountPrefix)); err == nil {
+	case strings.HasPrefix(l.Message, agent.EventThreadCountPrefix):
+		if n, err := strconv.Atoi(strings.TrimPrefix(l.Message, agent.EventThreadCountPrefix)); err == nil {
 			ix.threadNow = n
 			ix.bucket(at).Threads = n
 		}
-	case strings.HasPrefix(l.Message, agentsocket.EventLeakCheckPrefix):
-		if n, err := strconv.ParseUint(strings.TrimPrefix(l.Message, agentsocket.EventLeakCheckPrefix), 10, 64); err == nil {
+	case strings.HasPrefix(l.Message, agent.EventLeakCheckPrefix):
+		if n, err := strconv.ParseUint(strings.TrimPrefix(l.Message, agent.EventLeakCheckPrefix), 10, 64); err == nil {
 			ix.leakChecks[n] = at
 		}
 	default:

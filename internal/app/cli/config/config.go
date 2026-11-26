@@ -1,16 +1,24 @@
 package config
 
-import "github.com/kelseyhightower/envconfig"
+import (
+	"github.com/kelseyhightower/envconfig"
 
-// Config の Addr は、--addr を渡さないときにつなぐ server のアドレス
+	"github.com/kakkky/gorviz/internal/protocol/server"
+)
+
+// Config の Socket は、--socket を渡さないときにつなぐ server の unix socket
 type Config struct {
-	Addr string `envconfig:"GORVIZ_ADDR" default:"127.0.0.1:7070"`
+	Socket string `envconfig:"GORVIZ_SOCKET"`
 }
 
+// NewConfig は、Socket がなければ cli と server が揃える決まったパスにする
 func NewConfig() (*Config, error) {
 	var cfg Config
 	if err := envconfig.Process("", &cfg); err != nil {
 		return nil, err
+	}
+	if cfg.Socket == "" {
+		cfg.Socket = server.SocketPath()
 	}
 	return &cfg, nil
 }

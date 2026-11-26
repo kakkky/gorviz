@@ -69,7 +69,7 @@ flowchart LR
     browser["browser (GUI)"]
 
     you --> cli
-    cli -->|"HTTP API"| server
+    cli -->|"HTTP API over a unix socket"| server
     server -->|"go build -overlay, start, SIGTERM"| app
     server -->|"load (HTTP)"| code
     agent -->|"execution trace over a unix socket"| server
@@ -105,7 +105,7 @@ make build
 ./bin/gorviz diagnose example/todo-app/scenario.yaml
 ./bin/gorviz issues
 ./bin/gorviz issue I1
-open http://127.0.0.1:7070
+open http://127.0.0.1:24678
 ./bin/gorviz stop
 ```
 
@@ -187,8 +187,8 @@ Times are seconds since the session started. Every answer has the GUI URL of the
 | `gorviz goroutine <id>` | What one goroutine was blocked on (`--from`, `--to`) |
 | `gorviz docs [name]` | The built-in documents: `getting-started`, `scenario`, `issues`, `goroutines` |
 
-Global flags are `--addr` (the server address, `127.0.0.1:7070` by default, also `GORVIZ_ADDR`) and `--json`.
-Only one session runs per address.
+Global flags are `--socket` (the unix socket of the server, a fixed path in the temp directory by default, also `GORVIZ_SOCKET`) and `--json`.
+Only one session runs per socket. The GUI listens on `127.0.0.1:24678` (`GORVIZ_GUI_ADDR` to change it).
 
 ## Issues
 

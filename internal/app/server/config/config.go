@@ -9,7 +9,7 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 
-	"github.com/kakkky/gorviz/internal/protocol/serverapi"
+	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 // Args はアプリの引数。空白を含められるよう、JSON の配列で受け取る
@@ -20,7 +20,8 @@ func (a *Args) Decode(v string) error {
 }
 
 type Config struct {
-	Addr            string        `envconfig:"GORVIZ_ADDR" default:"127.0.0.1:7070"`
+	Socket          string        `envconfig:"GORVIZ_SOCKET" required:"true"`
+	GUIAddr         string        `envconfig:"GORVIZ_GUI_ADDR" default:"127.0.0.1:24678"`
 	AppDir          string        `envconfig:"GORVIZ_APP_DIR" required:"true"`
 	AppPackage      string        `envconfig:"GORVIZ_APP_PACKAGE" required:"true"`
 	AppArgs         Args          `envconfig:"GORVIZ_APP_ARGS" default:"[]"`
@@ -40,7 +41,7 @@ func (c *Config) AppEnv() []string {
 	var out []string
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
-		if !slices.Contains(serverapi.DaemonEnvs, k) {
+		if !slices.Contains(server.ServerEnvs, k) {
 			out = append(out, kv)
 		}
 	}

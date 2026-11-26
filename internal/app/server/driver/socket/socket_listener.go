@@ -9,12 +9,12 @@ import (
 
 	"github.com/kakkky/scope"
 
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // MessageHandler は agent から届いた観測データと、接続の終わりを受ける。clean は終わりの合図を受けてから切れたこと
 type MessageHandler interface {
-	HandleMessage(ctx context.Context, m agentsocket.Message)
+	HandleMessage(ctx context.Context, m agent.Message)
 	HandleDisconnect(ctx context.Context, clean bool)
 }
 
@@ -81,17 +81,17 @@ func (s *SocketListener) serve(ctx context.Context, c net.Conn) {
 	r := bufio.NewReaderSize(c, 256<<10)
 	clean := false
 	for {
-		m, err := agentsocket.Read(r)
+		m, err := agent.Read(r)
 		if err != nil {
 			break
 		}
 		switch m.Kind {
-		case agentsocket.KindReply:
-			if reply, err := agentsocket.Decode[agentsocket.Reply](m); err == nil {
+		case agent.KindReply:
+			if reply, err := agent.Decode[agent.Reply](m); err == nil {
 				s.conn.deliver(reply)
 			}
 			continue
-		case agentsocket.KindBye:
+		case agent.KindBye:
 			clean = true
 		}
 		s.handler.HandleMessage(ctx, m)

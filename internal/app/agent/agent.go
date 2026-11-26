@@ -1,5 +1,5 @@
 // Package agent はアプリのビルドに差し込まれ、アプリのプロセスの中で execution trace を server へ流す。
-// 標準ライブラリと protocol/agentsocket だけを import する
+// 標準ライブラリと protocol/agent だけを import する
 package agent
 
 import (
@@ -14,7 +14,7 @@ import (
 	socketpresentation "github.com/kakkky/gorviz/internal/app/agent/presentation/socket"
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
 	"github.com/kakkky/gorviz/internal/app/agent/worker"
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 var functionCallHandler *function.FunctionCallHandler
@@ -23,7 +23,7 @@ func init() { Start() }
 
 // Start は server につながり、execution trace を取り始めてから戻る。server につながらなければ何もしない
 func Start() {
-	addr := os.Getenv(agentsocket.EnvSocket)
+	addr := os.Getenv(agent.EnvSocket)
 	if addr == "" || functionCallHandler != nil {
 		return
 	}

@@ -18,18 +18,20 @@ internal/
     server/
     cli/
   protocol/                コンポーネント同士の契約
-    agentsocket/           agent と server
-    serverapi/             server と cli
+    agent/                 agent との決まり
+    server/                server との決まり
+  embed_agent.go           アプリに差し込む agent のソース (app/agent と protocol/agent) を埋め込む
 example/                   観測されるアプリの例
 ```
 
-- `cmd/gorviz` は、デーモンとして起動されたときは server を、それ以外は cli を呼ぶ
+- `cmd/gorviz` は、cli に server として起動されたときは server を、それ以外は cli を呼ぶ
 - server と cli は同じ実行ファイルに入る。agent は実行ファイルには入らず、server がソースとして持ち、アプリのビルドに overlay する
 
 ## コンポーネントの境界
 
 - コンポーネント同士は import しない。またぐものは `internal/` 直下に置く
-  - 例外は、server が agent のソースを埋め込むこと (コードとして呼ぶのではなく、ファイルとして持つ) と、agent と server の通信のテスト
+  - 例外は、agent と server の通信のテスト
+  - server は agent を import せず、`internal/embed_agent.go` が埋め込んだ agent のソースを、ファイルとして読む。go:embed は親のディレクトリを指せず、agent のソースは `app/agent` と `protocol/agent` の 2 か所にあるので、両方を下に持つ `internal/` 直下に置く
 - 1 つのコンポーネントしか使わないものは、そのコンポーネントの層に置く
 - 依存の向きは次の図のとおり。逆向きには使わない
 
@@ -44,24 +46,24 @@ flowchart TD
 
     cmd --> app
     app --> protocol
-    agent -->|"protocol/agentsocket だけ"| protocol
-    app -. "ソースを埋め込む" .-> agent
+    agent -->|"protocol/agent だけ"| protocol
+    app -. "埋め込んだソースを読む" .-> agent
 ```
 
-- agent が import してよいのは、標準ライブラリと `protocol/agentsocket` だけ。agent はアプリのモジュールの中でコンパイルされ、アプリの依存を増やせないため
-  - server は差し込むとき、agent と agentsocket のソースを、アプリのモジュールの中のパッケージ (アプリの main パッケージの下の `gorvizagent/`) として見せ、import パスをそこへ書き換える
+- agent が import してよいのは、標準ライブラリと `protocol/agent` だけ。agent はアプリのモジュールの中でコンパイルされ、アプリの依存を増やせないため
+  - server は差し込むとき、agent と `protocol/agent` のソースを、アプリのモジュールの中のパッケージ (アプリの main パッケージの下の `gorvizagent/`) として見せ、import パスをそこへ書き換える
   - アプリの main には、agent を import して、main が戻るときに agent を止める 1 行を overlay する。これが agent の cmd に当たる。overlay なので、アプリのファイルは変えない
 - 中身を表さない名前 (`shared`・`common`・`util`・`types` など) の箱は作らない
 
 ### protocol/
 
-- 契約を相手ごとに 1 パッケージで持つ
-- `agentsocket` は、agent と server の間の 1 本の接続に流すメッセージの形と区切り。標準ライブラリだけで書く
-- `serverapi` は、server をデーモンとして起動する決まりと、HTTP API のルートとクライアント。クライアントは応答を解釈せず、そのまま返す
+- 契約を相手ごとに 1 パッケージで持つ。両側が揃えるもの (型・定数・線の上の読み書き) だけを置き、片側しか使わない振る舞いは使う側に置く
+- `agent` は、agent と server の間の 1 本の接続に流すメッセージの形と区切り。標準ライブラリだけで書く
+- `server` は、server を起動するときの環境変数と、HTTP API のルート
 
 ## コンポーネントの中の層
 
-どのコンポーネントも、`internal/app/<コンポーネント>/` の中を同じ層に分ける。ただし、手順も判断も持たない cli は presentation だけを持つ。層は外側から内側へ以下。
+どのコンポーネントも、`internal/app/<コンポーネント>/` の中を同じ層に分ける。ただし、手順も判断も持たない cli は presentation と adapter だけを持つ。層は外側から内側へ以下。
 
 ```mermaid
 flowchart TD
@@ -238,11 +240,11 @@ flowchart TD
 - `socket.SocketListener` は agent の接続を受け入れて `socket.SocketConn` にする。接続から読んだもののうち、観測データは `socket.SocketHandler` に、指示への返事は `client.AgentClient` に渡る
 - `RunAppWorker` は server が起動したときに `RunAppUsecase` を 1 回だけ呼ぶ。`RunAppUsecase` は、アプリのビルドと起動から、アプリが終わるか server が止まるまでを 1 回の Exec の中で見届ける。アプリのプロセスは、`client.AppClient` が返した値を Exec の中で持つ
 - `client.AppClient` は、アプリとのやり取り (ビルド・子プロセスとしての起動・合図・負荷のリクエスト) をすべて持つ
-- 層の外に `assets/` (CSS・JS・Stimulus controllers) を持つ。agent のソースを埋め込むのも層の外
+- 層の外に `assets/` (CSS・JS・Stimulus controllers) を持つ
 
 ### cli
 
-手順も判断も持たないので、層に分けず presentation だけを持つ。
+手順も判断も持たないので、presentation と adapter だけを持つ。
 
 ```
 internal/app/cli/
@@ -250,12 +252,14 @@ internal/app/cli/
   config/
   presentation/
     command/      サブコマンドごとの入口。server の HTTP API を呼び、応答をそのまま出す
+  adapter/
+    client/       server を起動し、その HTTP API を呼ぶ
   docs/           埋め込むドキュメント (`gorviz docs` で引く・ヘルプとエラーに示す)
 ```
 
-- `gorviz run` はデーモンを起動して起動の結果を待ち、`gorviz stop` は止めるよう頼んで止まるのを待つ
+- `gorviz run` は server を起動して起動の結果を待ち、`gorviz stop` は止めるよう頼んで止まるのを待つ
 - 終了コードは、server が応答に載せた値をそのまま使う
-- どのサブコマンドも、決まったアドレス (引数で渡せば、そのアドレス) の server につなぐ
+- どのサブコマンドも、決まった unix socket (引数で渡せば、その socket) で server につなぐ
 
 ## セッション
 

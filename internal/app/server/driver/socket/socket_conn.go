@@ -6,7 +6,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 var ErrNotConnected = errors.New("the agent is not connected")
@@ -19,11 +19,11 @@ type SocketConn struct {
 	connected    chan struct{}
 	disconnected chan struct{}
 	nextID       uint64
-	waiting      map[uint64]chan agentsocket.Reply
+	waiting      map[uint64]chan agent.Reply
 }
 
 func NewSocketConn() *SocketConn {
-	return &SocketConn{connected: make(chan struct{}), disconnected: make(chan struct{}), waiting: map[uint64]chan agentsocket.Reply{}}
+	return &SocketConn{connected: make(chan struct{}), disconnected: make(chan struct{}), waiting: map[uint64]chan agent.Reply{}}
 }
 
 func (c *SocketConn) attach(conn net.Conn) bool {
@@ -51,7 +51,7 @@ func (c *SocketConn) detach() {
 	}
 }
 
-func (c *SocketConn) deliver(r agentsocket.Reply) {
+func (c *SocketConn) deliver(r agent.Reply) {
 	c.mu.Lock()
 	ch, ok := c.waiting[r.ID]
 	delete(c.waiting, r.ID)
@@ -80,12 +80,12 @@ func (c *SocketConn) IsConnected() bool {
 }
 
 // Send は指示を書く。返事を待たない指示 (finish) に使う
-func (c *SocketConn) Send(in agentsocket.Instruction) error {
+func (c *SocketConn) Send(in agent.Instruction) error {
 	_, err := c.send(in, false)
 	return err
 }
 
-func (c *SocketConn) send(in agentsocket.Instruction, wait bool) (chan agentsocket.Reply, error) {
+func (c *SocketConn) send(in agent.Instruction, wait bool) (chan agent.Reply, error) {
 	if !c.IsConnected() {
 		return nil, ErrNotConnected
 	}
@@ -93,16 +93,16 @@ func (c *SocketConn) send(in agentsocket.Instruction, wait bool) (chan agentsock
 	defer c.mu.Unlock()
 	c.nextID++
 	in.ID = c.nextID
-	var ch chan agentsocket.Reply
+	var ch chan agent.Reply
 	if wait {
-		ch = make(chan agentsocket.Reply, 1)
+		ch = make(chan agent.Reply, 1)
 		c.waiting[in.ID] = ch
 	}
-	m, err := agentsocket.Encode(agentsocket.KindInstruction, in)
+	m, err := agent.Encode(agent.KindInstruction, in)
 	if err != nil {
 		return nil, err
 	}
-	if err := agentsocket.Write(c.conn, m); err != nil {
+	if err := agent.Write(c.conn, m); err != nil {
 		delete(c.waiting, in.ID)
 		return nil, err
 	}
@@ -110,18 +110,18 @@ func (c *SocketConn) send(in agentsocket.Instruction, wait bool) (chan agentsock
 }
 
 // Request は指示を書いて返事を待つ
-func (c *SocketConn) Request(ctx context.Context, in agentsocket.Instruction) (agentsocket.Reply, error) {
+func (c *SocketConn) Request(ctx context.Context, in agent.Instruction) (agent.Reply, error) {
 	ch, err := c.send(in, true)
 	if err != nil {
-		return agentsocket.Reply{}, err
+		return agent.Reply{}, err
 	}
 	select {
 	case r, ok := <-ch:
 		if !ok {
-			return agentsocket.Reply{}, ErrNotConnected
+			return agent.Reply{}, ErrNotConnected
 		}
 		return r, nil
 	case <-ctx.Done():
-		return agentsocket.Reply{}, ctx.Err()
+		return agent.Reply{}, ctx.Err()
 	}
 }

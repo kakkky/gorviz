@@ -6,7 +6,7 @@
 
 ### cmd (`cmd/gorviz/`)
 
-- `main` は、シグナルで終わる ctx を作り、`config.NewConfig()` で読んだ config を渡して `server.Run` か `cli.Run` を 1 回呼ぶだけ。デーモンとして起動されたときが server、それ以外が cli
+- `main` は、シグナルで終わる ctx を作り、`config.NewConfig()` で読んだ config を渡して `server.Run` か `cli.Run` を 1 回呼ぶだけ。cli に server として起動されたときが server、それ以外が cli
 - `NewConfig`・`Run` がエラーを返したら、ログに出して `os.Exit(1)` する。起動・停止のエラーをログに出すのはここだけ
 
 ### エントリ (`internal/app/<コンポーネント>/<コンポーネント>.go`)
@@ -142,13 +142,13 @@ func Run(ctx context.Context, cfg *config.Config) error {
 ### socket
 
 - `socket.SocketHandler` は、メッセージの種類ごとに 1 つの usecase を呼ぶ
-- メッセージの読み書きと区切りは `protocol/agentsocket` の関数を呼ぶ。presentation の中で形式を書かない
+- メッセージの読み書きと区切りは `protocol/agent` の関数を呼ぶ。presentation の中で形式を書かない
 - エラーと panic は Handler の入口で拾い、接続を止めない。1 つのメッセージの失敗で、ほかのメッセージを読めなくしないため
 
 ### cli
 
 - サブコマンド・引数・フラグは [urfave/cli](https://github.com/urfave/cli) (v3) で組む。`command.Command` はその定義と、各サブコマンドの Action を持つ
-- 手順も判断も持たないので、presentation から protocol のクライアントを直接呼ぶ。usecase を挟まない
+- 手順も判断も持たないので、presentation から adapter の `client.ServerClient` を直接呼ぶ。usecase を挟まない
 - server の応答の中身は解釈・整形しない。そのまま出し、終了コードも server が載せた値を使う
 - シナリオのファイルは、サブコマンドの入力として presentation で読む
 - 利用者に見せる長い文言 (使い方・説明) はコードに直書きせず、埋め込んだドキュメントから引く
@@ -208,7 +208,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 - domain の interface を実装する。取る・送る・書く・読むまでで、判断はしない
   - 取ってきたものを読み解く (形式の解釈・値を決める) のは domain
-- 外の型 (ライブラリの型・`protocol/agentsocket` のメッセージの型) を domain に漏らさない。adapter の中で domain の型に詰め替える
+- 外の型 (ライブラリの型・`protocol/agent` のメッセージの型) を domain に漏らさない。adapter の中で domain の型に詰め替える
 - 外から返ってきたエラーは `ErrInternal.Wrap(err, "...")` で包む。見つからないことが外の応答でわかるときは `ErrNotFound` にする
 
 ### accessor
@@ -225,8 +225,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 ## protocol (`internal/protocol/`)
 
 - 契約を相手ごとに 1 パッケージで持つ。両側のコンポーネントが同じパッケージを使う
-- `serverapi` は、server をデーモンとして起動する決まり (引数・環境変数) も持つ。起動する cli と起動される server が、同じ決まりを使うため
-- `agentsocket` は、標準ライブラリだけで書く。agent と一緒にアプリのビルドに持ち込まれるため
+- 両側が揃えるもの (型・定数・線の上の読み書き) だけを置く。片側しか使わない振る舞い (server の起動・HTTP のクライアントなど) は、使う側の adapter に置く
+- `server` は、server を起動するときの環境変数も持つ。起動する cli と起動される server が、同じ名前を使うため
+- `agent` は、標準ライブラリだけで書く。agent と一緒にアプリのビルドに持ち込まれるため
 - メッセージの種類を消すときは、その種類の番号を使い回さない。agent と server の版がずれても読み違えないようにするため
 
 ## agent
@@ -235,7 +236,7 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
 
 ### 使えるもの
 
-- 標準ライブラリと `protocol/agentsocket` だけを import する。`kakkky/scope`・envconfig も使わない
+- 標準ライブラリと `protocol/agent` だけを import する。`kakkky/scope`・envconfig も使わない
   - テストのファイルはアプリに overlay しないので、テストでは testify・gomock を使ってよい
 - 設定は `os.Getenv` で読む
 
@@ -302,7 +303,7 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
   - accessor は、driver の実物のメモリの置き場を作って確かめる
   - client は相手に合わせて、`httptest`・`net.Pipe` を使う
 - protocol
-  - `agentsocket` は、書いたメッセージが同じ値で読めることを確かめる
+  - `agent` は、書いたメッセージが同じ値で読めることを確かめる
   - コンポーネント同士の通信は、両方を組み立てて確かめる (コンポーネントをまたぐ import の例外)
 - driver・presentation
   - 書かない。組み立てて動かす確認で足りる。テストのために本体を歪めない

@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	agentImportPath       = "github.com/kakkky/gorviz/internal/app/agent"
-	agentsocketImportPath = "github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	agentImportPath         = "github.com/kakkky/gorviz/internal/app/agent"
+	agentProtocolImportPath = "github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // SourceFile は Go のソースのファイル 1 つ。Path は、agent のソースなら agent の根からの相対パス、アプリのソースなら絶対パス
@@ -30,12 +30,12 @@ type MainPackage struct {
 // Overlay は go build -overlay に渡す、置き換える (足す) ファイルの絶対パスと中身
 type Overlay map[string][]byte
 
-// AgentOverlay は agent と agentsocket のソースを、アプリの main パッケージの下の gorvizagent/ として見せ、import パスをそこへ書き換える。
+// AgentOverlay は agent と、agent との決まり (protocol/agent) のソースを、アプリの main パッケージの下の gorvizagent/ として見せ、import パスをそこへ書き換える。
 // main には agent を import して、main が戻るときに agent を止める defer を足す。どちらも元の行に書き足し、行番号をずらさない
-func AgentOverlay(main MainPackage, agent, socket []SourceFile) (Overlay, error) {
+func AgentOverlay(main MainPackage, agent, protocol []SourceFile) (Overlay, error) {
 	base := main.ImportPath + "/" + AgentPackage
 	rewrite := func(b []byte) []byte {
-		b = bytes.ReplaceAll(b, []byte(`"`+agentsocketImportPath+`"`), []byte(`"`+base+`/agentsocket"`))
+		b = bytes.ReplaceAll(b, []byte(`"`+agentProtocolImportPath+`"`), []byte(`"`+base+`/protocol/agent"`))
 		return bytes.ReplaceAll(b, []byte(`"`+agentImportPath), []byte(`"`+base))
 	}
 	ov := Overlay{}
@@ -46,11 +46,11 @@ func AgentOverlay(main MainPackage, agent, socket []SourceFile) (Overlay, error)
 		}
 		ov[filepath.Join(dir, filepath.FromSlash(f.Path))] = rewrite(f.Data)
 	}
-	for _, f := range socket {
+	for _, f := range protocol {
 		if skipAgentSource(f.Path) {
 			continue
 		}
-		ov[filepath.Join(dir, "agentsocket", filepath.FromSlash(f.Path))] = rewrite(f.Data)
+		ov[filepath.Join(dir, "protocol", "agent", filepath.FromSlash(f.Path))] = rewrite(f.Data)
 	}
 	for _, f := range main.Files {
 		patched, ok, err := patchMain(f.Data, base)
@@ -65,6 +65,7 @@ func AgentOverlay(main MainPackage, agent, socket []SourceFile) (Overlay, error)
 	return nil, ErrInvalidArgument.With("no func main in package " + main.ImportPath + "; pass a main package, like gorviz run ./cmd/api")
 }
 
+// skipAgentSource は差し込まないファイル。テストと mock
 func skipAgentSource(p string) bool {
 	return !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") || strings.HasPrefix(p, "testhelper/")
 }

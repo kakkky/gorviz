@@ -23,7 +23,7 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/presentation/web"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 	"github.com/kakkky/gorviz/internal/app/server/worker"
-	"github.com/kakkky/gorviz/internal/protocol/serverapi"
+	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func Run(ctx context.Context, cfg *config.Config) error {
@@ -39,7 +39,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	store := kvs.NewInMemoryKVS()
 	stream := tracestream.NewTraceStream()
 	conn := socketdriver.NewSocketConn()
-	agentSource, socketSource, err := internal.AgentSource()
+	agentFiles, protocolFiles, err := internal.EmbeddedAgent()
 	if err != nil {
 		return err
 	}
@@ -49,12 +49,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	index := accessor.NewTraceIndexAccessor(store)
 	issues := accessor.NewIssueBookAccessor(store)
 	traceStream := accessor.NewTraceStreamAccessor(stream)
-	sources := accessor.NewAgentSourceAccessor(agentSource, socketSource)
-	agent, err := client.NewAgentClient(conn)
+	agentClient, err := client.NewAgentClient(conn)
 	if err != nil {
 		return err
 	}
-	app, err := client.NewAppClient(work.SocketPath(), work.Path())
+	app, err := client.NewAppClient(work.SocketPath(), work.Path(), agentFiles, protocolFiles)
 	if err != nil {
 		return err
 	}
@@ -68,28 +67,29 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// usecase
-	uc := usecase.NewUseCase(sessions, index, issues, traceStream, agent, app, app, app, toolchain, sources, clock)
+	uc := usecase.NewUseCase(sessions, index, issues, traceStream, agentClient, app, app, app, toolchain, clock)
 
 	// presentation
-	gui := "http://" + cfg.Addr
+	gui := "http://" + cfg.GUIAddr
 	socketHandler := socketpresentation.NewSocketHandler(uc.NewIngestAppObservationsUsecase())
-	mux := http.NewServeMux()
-	mux.Handle("GET "+serverapi.PathStatus, api.NewGetStatusHandler(uc.NewGetSessionStatusUsecase(), gui))
-	mux.Handle("GET "+serverapi.PathStartResult, api.NewGetStartResultHandler(uc.NewWaitAppStartUsecase(), stop, gui))
-	mux.Handle("POST "+serverapi.PathDiagnose, api.NewPostDiagnoseHandler(uc.NewDiagnoseAppUsecase(), gui))
-	mux.Handle("GET "+serverapi.PathIssues, api.NewGetIssuesHandler(uc.NewListIssuesUsecase(), gui))
-	mux.Handle("GET "+serverapi.PathIssue, api.NewGetIssueHandler(uc.NewGetIssueUsecase(), gui))
-	mux.Handle("GET "+serverapi.PathGoroutine, api.NewGetGoroutineHandler(uc.NewGetGoroutineDetailUsecase(), gui))
-	mux.Handle("POST "+serverapi.PathStop, api.NewPostStopHandler(uc.NewWaitAppShutdownUsecase(), stop))
-	mux.Handle("GET /{$}", web.NewGetRootHandler())
-	mux.Handle("GET /overview", web.NewGetOverviewHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
-	mux.Handle("GET /overview/stream", web.NewGetOverviewStreamHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
-	mux.Handle("GET /issues", web.NewGetIssuesHandler(uc.NewGetSessionStatusUsecase(), uc.NewListIssuesUsecase()))
-	mux.Handle("GET /issues/{id}", web.NewGetIssueHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetIssueUsecase()))
-	mux.Handle("GET /scheduler", web.NewGetSchedulerHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetSchedulerWindowUsecase()))
-	mux.Handle("GET /scheduler/stream", web.NewGetSchedulerStreamHandler(uc.NewGetSchedulerWindowUsecase()))
-	mux.Handle("GET /goroutines/{id}", web.NewGetGoroutineHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetGoroutineDetailUsecase(), uc.NewGetSchedulerWindowUsecase()))
-	mux.Handle("GET "+assets.URLPrefix, web.NewAssetsHandler())
+	apiMux := http.NewServeMux()
+	apiMux.Handle("GET "+server.StatusEndpoint, api.NewGetStatusHandler(uc.NewGetSessionStatusUsecase(), gui))
+	apiMux.Handle("GET "+server.StartResultEndpoint, api.NewGetStartResultHandler(uc.NewWaitAppStartUsecase(), stop, gui))
+	apiMux.Handle("POST "+server.DiagnoseEndpoint, api.NewPostDiagnoseHandler(uc.NewDiagnoseAppUsecase(), gui))
+	apiMux.Handle("GET "+server.IssuesEndpoint, api.NewGetIssuesHandler(uc.NewListIssuesUsecase(), gui))
+	apiMux.Handle("GET "+server.IssueEndpoint, api.NewGetIssueHandler(uc.NewGetIssueUsecase(), gui))
+	apiMux.Handle("GET "+server.GoroutineEndpoint, api.NewGetGoroutineHandler(uc.NewGetGoroutineDetailUsecase(), gui))
+	apiMux.Handle("POST "+server.StopEndpoint, api.NewPostStopHandler(uc.NewWaitAppShutdownUsecase(), stop))
+	webMux := http.NewServeMux()
+	webMux.Handle("GET /{$}", web.NewGetRootHandler())
+	webMux.Handle("GET /overview", web.NewGetOverviewHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
+	webMux.Handle("GET /overview/stream", web.NewGetOverviewStreamHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
+	webMux.Handle("GET /issues", web.NewGetIssuesHandler(uc.NewGetSessionStatusUsecase(), uc.NewListIssuesUsecase()))
+	webMux.Handle("GET /issues/{id}", web.NewGetIssueHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetIssueUsecase()))
+	webMux.Handle("GET /scheduler", web.NewGetSchedulerHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetSchedulerWindowUsecase()))
+	webMux.Handle("GET /scheduler/stream", web.NewGetSchedulerStreamHandler(uc.NewGetSchedulerWindowUsecase()))
+	webMux.Handle("GET /goroutines/{id}", web.NewGetGoroutineHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetGoroutineDetailUsecase(), uc.NewGetSchedulerWindowUsecase()))
+	webMux.Handle("GET "+assets.URLPrefix, web.NewAssetsHandler())
 	mw := middleware.NewMiddleware(api.NewErrorWriter(), web.NewErrorWriter())
 
 	// worker
@@ -99,11 +99,16 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	detectWorker := worker.NewDetectAppIssuesWorker(uc.NewDetectAppIssuesUsecase())
 
 	// driver (presentation を受けて待ち受ける)
-	httpServer, closeHTTP, err := httpserver.NewHTTPServer(cfg.Addr, mw.Wrap(mux))
+	apiServer, closeAPI, err := httpserver.NewUnixHTTPServer(cfg.Socket, mw.Wrap(apiMux))
 	if err != nil {
 		return err
 	}
-	defer closeHTTP()
+	defer closeAPI()
+	guiServer, closeGUI, err := httpserver.NewTCPHTTPServer(cfg.GUIAddr, mw.Wrap(webMux))
+	if err != nil {
+		return err
+	}
+	defer closeGUI()
 	listener, closeListener, err := socketdriver.NewSocketListener(work.SocketPath(), conn, socketHandler)
 	if err != nil {
 		return err
@@ -112,7 +117,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	return scope.Run(ctx, func(sc *scope.Scope) error {
 		sc.Go(listener.Run)
-		sc.Go(httpServer.Run)
+		sc.Go(apiServer.Run)
+		sc.Go(guiServer.Run)
 		sc.Go(runAppWorker.Run)
 		sc.Go(indexWorker.Run)
 		sc.Go(collectWorker.Run)

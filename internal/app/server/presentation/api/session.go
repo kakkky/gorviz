@@ -12,7 +12,7 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
-	"github.com/kakkky/gorviz/internal/protocol/serverapi"
+	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 type appResponse struct {
@@ -124,7 +124,7 @@ func (h *GetStartResultHandler) ServeHTTP(rw http.ResponseWriter, r *http.Reques
 		middleware.Fail(r, err)
 		return
 	}
-	resp := startResponse{Started: out.Started, App: appOf(out.App), Log: serverapi.LogPath()}
+	resp := startResponse{Started: out.Started, App: appOf(out.App), Log: server.LogPath()}
 	code := 0
 	if out.Started {
 		resp.GUI = h.guiBase
@@ -370,7 +370,7 @@ func (h *PostDiagnoseHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		if !started {
 			_, media, _ := encode(r, struct{}{})
 			rw.Header().Set("Content-Type", media)
-			rw.Header().Set("Trailer", serverapi.HeaderExitCode)
+			rw.Header().Set("Trailer", server.HeaderExitCode)
 			started = true
 		}
 		b, _, err := encode(r, v)
@@ -394,11 +394,11 @@ func (h *PostDiagnoseHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 			return
 		}
 		emit(errorBody{Error: err.Error(), Docs: "gorviz docs"})
-		rw.Header().Set(serverapi.HeaderExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
+		rw.Header().Set(server.HeaderExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
 		return
 	}
 	emit(map[string]any{"summary": summaryOf(out.Summary, h.paths)})
-	rw.Header().Set(serverapi.HeaderExitCode, strconv.Itoa(out.Summary.ExitCode))
+	rw.Header().Set(server.HeaderExitCode, strconv.Itoa(out.Summary.ExitCode))
 }
 
 type progressResponse struct {

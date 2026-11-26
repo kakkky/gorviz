@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/kakkky/gorviz/internal/protocol/agentsocket"
+import "github.com/kakkky/gorviz/internal/protocol/agent"
 
 type Hello struct {
 	GoVersion string
@@ -19,12 +19,12 @@ type Reply struct {
 	Coverage []CoverageFile
 }
 
-const AppExitEvent = agentsocket.EventAppExit
+const AppExitEvent = agent.EventAppExit
 
 func LeakCheckEvent(seq uint64) string {
-	return agentsocket.LeakCheckEvent(seq)
+	return agent.LeakCheckEvent(seq)
 }
 
 func ThreadCountEvent(n int) string {
-	return agentsocket.ThreadCountEvent(n)
+	return agent.ThreadCountEvent(n)
 }

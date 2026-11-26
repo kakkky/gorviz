@@ -7,7 +7,7 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // SocketHandler は agent から届いた観測データを、種類ごとに取り込ませる。1 つのメッセージの失敗や panic で、ほかのメッセージを読めなくしない
@@ -19,7 +19,7 @@ func NewSocketHandler(ingest *usecase.IngestAppObservationsUsecase) *SocketHandl
 	return &SocketHandler{ingest: ingest}
 }
 
-func (h *SocketHandler) HandleMessage(ctx context.Context, m agentsocket.Message) {
+func (h *SocketHandler) HandleMessage(ctx context.Context, m agent.Message) {
 	h.run(ctx, m.Kind, func() error {
 		in, ok, err := inputOf(m)
 		if err != nil || !ok {
@@ -37,24 +37,24 @@ func (h *SocketHandler) HandleDisconnect(ctx context.Context, clean bool) {
 	})
 }
 
-func inputOf(m agentsocket.Message) (usecase.IngestAppObservationsUsecaseInput, bool, error) {
+func inputOf(m agent.Message) (usecase.IngestAppObservationsUsecaseInput, bool, error) {
 	switch m.Kind {
-	case agentsocket.KindHello:
-		h, err := agentsocket.Decode[agentsocket.Hello](m)
+	case agent.KindHello:
+		h, err := agent.Decode[agent.Hello](m)
 		if err != nil {
 			return usecase.IngestAppObservationsUsecaseInput{}, false, domain.ErrInvalidArgument.Wrap(err, "decode hello")
 		}
 		return usecase.IngestAppObservationsUsecaseInput{Kind: usecase.ObservationHello, Hello: domain.AppRun{GoVersion: h.GoVersion, Procs: h.Procs, PID: h.PID}}, true, nil
-	case agentsocket.KindTrace:
+	case agent.KindTrace:
 		return usecase.IngestAppObservationsUsecaseInput{Kind: usecase.ObservationTrace, Trace: m.Payload}, true, nil
-	case agentsocket.KindGoroutineLeakProfile:
-		p, err := agentsocket.Decode[agentsocket.GoroutineLeakProfile](m)
+	case agent.KindGoroutineLeakProfile:
+		p, err := agent.Decode[agent.GoroutineLeakProfile](m)
 		if err != nil {
 			return usecase.IngestAppObservationsUsecaseInput{}, false, domain.ErrInvalidArgument.Wrap(err, "decode goroutineleak profile")
 		}
 		return usecase.IngestAppObservationsUsecaseInput{Kind: usecase.ObservationGoroutineLeakProfile, LeakSeq: p.Seq, LeakText: p.Text}, true, nil
-	case agentsocket.KindCoverage:
-		c, err := agentsocket.Decode[agentsocket.Coverage](m)
+	case agent.KindCoverage:
+		c, err := agent.Decode[agent.Coverage](m)
 		if err != nil {
 			return usecase.IngestAppObservationsUsecaseInput{}, false, domain.ErrInvalidArgument.Wrap(err, "decode coverage")
 		}
@@ -67,7 +67,7 @@ func inputOf(m agentsocket.Message) (usecase.IngestAppObservationsUsecaseInput, 
 	return usecase.IngestAppObservationsUsecaseInput{}, false, nil
 }
 
-func (h *SocketHandler) run(ctx context.Context, kind agentsocket.Kind, f func() error) {
+func (h *SocketHandler) run(ctx context.Context, kind agent.Kind, f func() error) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.ErrorContext(ctx, "panic while handling an agent message", slog.Int("kind", int(kind)), slog.String("panic", fmt.Sprint(r)))

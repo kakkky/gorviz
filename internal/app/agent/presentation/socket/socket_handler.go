@@ -6,7 +6,7 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
 	"github.com/kakkky/gorviz/internal/app/agent/usecase"
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // SocketHandler は server からの指示を、種類ごとに 1 つの usecase に渡す
@@ -35,15 +35,15 @@ func NewSocketHandler(
 }
 
 // HandleMessage は 1 つの指示の失敗や panic で接続を止めない。返事にエラーを載せて返す
-func (h *SocketHandler) HandleMessage(m agentsocket.Message) {
-	if m.Kind != agentsocket.KindInstruction {
+func (h *SocketHandler) HandleMessage(m agent.Message) {
+	if m.Kind != agent.KindInstruction {
 		return
 	}
-	in, err := agentsocket.Decode[agentsocket.Instruction](m)
+	in, err := agent.Decode[agent.Instruction](m)
 	if err != nil {
 		return
 	}
-	if in.Op == agentsocket.OpFinish {
+	if in.Op == agent.OpFinish {
 		h.run(func() error {
 			_, err := h.finish.Exec(context.Background(), usecase.FinishAppObservationUsecaseInput{})
 			return err
@@ -58,23 +58,23 @@ func (h *SocketHandler) HandleMessage(m agentsocket.Message) {
 	_ = h.replySender.SendReply(reply)
 }
 
-func (h *SocketHandler) instruct(in agentsocket.Instruction, reply *domain.Reply) error {
+func (h *SocketHandler) instruct(in agent.Instruction, reply *domain.Reply) error {
 	ctx := context.Background()
 	switch in.Op {
-	case agentsocket.OpWriteTraceEvent:
+	case agent.OpWriteTraceEvent:
 		_, err := h.writeEvent.Exec(ctx, usecase.WriteAppRuntimeTraceEventUsecaseInput{Event: in.Event})
 		return err
-	case agentsocket.OpResetCoverage:
+	case agent.OpResetCoverage:
 		_, err := h.reset.Exec(ctx, usecase.ResetAppCoverageUsecaseInput{})
 		return err
-	case agentsocket.OpWriteCoverage:
+	case agent.OpWriteCoverage:
 		out, err := h.coverage.Exec(ctx, usecase.ReadAppCoverageUsecaseInput{})
 		reply.Coverage = out.Files
 		return err
-	case agentsocket.OpWriteGoroutineLeak:
+	case agent.OpWriteGoroutineLeak:
 		_, err := h.leaks.Exec(ctx, usecase.SendAppGoroutineLeaksUsecaseInput{})
 		return err
-	case agentsocket.OpWriteThreadCount:
+	case agent.OpWriteThreadCount:
 		_, err := h.threads.Exec(ctx, usecase.WriteAppThreadCountUsecaseInput{})
 		return err
 	}

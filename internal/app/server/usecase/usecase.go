@@ -12,7 +12,6 @@ type UseCase struct {
 	starter   domain.AppStarter
 	requester domain.AppRequester
 	toolchain domain.Toolchain
-	sources   domain.AgentSources
 	clock     domain.Clock
 }
 
@@ -26,8 +25,7 @@ func NewUseCase(
 	starter domain.AppStarter,
 	requester domain.AppRequester,
 	toolchain domain.Toolchain,
-	sources domain.AgentSources,
 	clock domain.Clock,
 ) *UseCase {
-	return &UseCase{sessions: sessions, index: index, issues: issues, stream: stream, agent: agent, builder: builder, starter: starter, requester: requester, toolchain: toolchain, sources: sources, clock: clock}
+	return &UseCase{sessions: sessions, index: index, issues: issues, stream: stream, agent: agent, builder: builder, starter: starter, requester: requester, toolchain: toolchain, clock: clock}
 }

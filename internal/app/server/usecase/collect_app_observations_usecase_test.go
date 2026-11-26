@@ -80,7 +80,7 @@ func TestCollectAppObservationsUsecase_Exec(t *testing.T) {
 			sessions := accessor.NewSessionAccessor(store)
 			sessions.UpdateSession(func(s *domain.Session) { s.App.State, s.Collected = tt.state, tt.collected })
 
-			uc := usecase.NewUseCase(sessions, nil, nil, nil, agent, nil, nil, nil, nil, nil, clock).NewCollectAppObservationsUsecase()
+			uc := usecase.NewUseCase(sessions, nil, nil, nil, agent, nil, nil, nil, nil, clock).NewCollectAppObservationsUsecase()
 			out, err := uc.Exec(ctx, usecase.CollectAppObservationsUsecaseInput{})
 
 			if tt.wantErr != nil {

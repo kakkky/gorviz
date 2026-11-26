@@ -9,7 +9,8 @@ A session goes like this:
   gorviz goroutine 42                   follow the goroutine that made another one wait
   gorviz stop                           watch the shutdown and end the session
 
-Every command except run talks to the gorviz server at a fixed address (127.0.0.1:7070, or --addr).
+Every command except run talks to the gorviz server over a unix socket on this machine (a fixed path, or --socket).
+The GUI listens on http://127.0.0.1:24678 (GORVIZ_GUI_ADDR to change it).
 Output is TOON by default and JSON with --json.
 
 Read the documents first: gorviz docs, then gorviz docs getting-started.

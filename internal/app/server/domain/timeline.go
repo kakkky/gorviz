@@ -3,7 +3,7 @@ package domain
 import (
 	"strconv"
 
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 	"strings"
 	"time"
 )
@@ -14,7 +14,7 @@ const (
 	MarkDiagnoseEnd   = "diagnose end"
 	MarkShutdown      = "shutdown"
 	markPhasePrefix   = "phase "
-	markAppExit       = agentsocket.EventAppExit
+	markAppExit       = agent.EventAppExit
 )
 
 const (

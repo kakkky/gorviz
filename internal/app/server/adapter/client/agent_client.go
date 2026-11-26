@@ -6,7 +6,7 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/driver/socket"
-	"github.com/kakkky/gorviz/internal/protocol/agentsocket"
+	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
 // AgentClient は agent に指示を送り、返事を受け取る
@@ -38,32 +38,32 @@ func (c *AgentClient) WaitDisconnected(ctx context.Context) error {
 	}
 }
 
-func (c *AgentClient) request(ctx context.Context, in agentsocket.Instruction) (agentsocket.Reply, error) {
+func (c *AgentClient) request(ctx context.Context, in agent.Instruction) (agent.Reply, error) {
 	r, err := c.conn.Request(ctx, in)
 	if errors.Is(err, socket.ErrNotConnected) {
-		return agentsocket.Reply{}, domain.ErrInvalidArgument.Wrap(err, "the app is not running with the agent")
+		return agent.Reply{}, domain.ErrInvalidArgument.Wrap(err, "the app is not running with the agent")
 	}
 	if err != nil {
-		return agentsocket.Reply{}, domain.ErrInternal.Wrap(err, "instruct the agent "+string(in.Op))
+		return agent.Reply{}, domain.ErrInternal.Wrap(err, "instruct the agent "+string(in.Op))
 	}
 	if r.Error != "" {
-		return agentsocket.Reply{}, domain.ErrInternal.With("the agent failed to " + string(in.Op) + ": " + r.Error)
+		return agent.Reply{}, domain.ErrInternal.With("the agent failed to " + string(in.Op) + ": " + r.Error)
 	}
 	return r, nil
 }
 
 func (c *AgentClient) WriteTraceEvent(ctx context.Context, event string) error {
-	_, err := c.request(ctx, agentsocket.Instruction{Op: agentsocket.OpWriteTraceEvent, Event: event})
+	_, err := c.request(ctx, agent.Instruction{Op: agent.OpWriteTraceEvent, Event: event})
 	return err
 }
 
 func (c *AgentClient) ResetCoverage(ctx context.Context) error {
-	_, err := c.request(ctx, agentsocket.Instruction{Op: agentsocket.OpResetCoverage})
+	_, err := c.request(ctx, agent.Instruction{Op: agent.OpResetCoverage})
 	return err
 }
 
 func (c *AgentClient) ReadCoverage(ctx context.Context) ([]domain.CoverageFile, error) {
-	r, err := c.request(ctx, agentsocket.Instruction{Op: agentsocket.OpWriteCoverage})
+	r, err := c.request(ctx, agent.Instruction{Op: agent.OpWriteCoverage})
 	if err != nil {
 		return nil, err
 	}
@@ -75,18 +75,18 @@ func (c *AgentClient) ReadCoverage(ctx context.Context) ([]domain.CoverageFile, 
 }
 
 func (c *AgentClient) RequestGoroutineLeaks(ctx context.Context) error {
-	_, err := c.request(ctx, agentsocket.Instruction{Op: agentsocket.OpWriteGoroutineLeak})
+	_, err := c.request(ctx, agent.Instruction{Op: agent.OpWriteGoroutineLeak})
 	return err
 }
 
 func (c *AgentClient) RequestThreadCount(ctx context.Context) error {
-	_, err := c.request(ctx, agentsocket.Instruction{Op: agentsocket.OpWriteThreadCount})
+	_, err := c.request(ctx, agent.Instruction{Op: agent.OpWriteThreadCount})
 	return err
 }
 
 // Finish は返事を待たない。agent は最後の観測データと終わりの合図を送ってから接続を閉じる
 func (c *AgentClient) Finish(_ context.Context) error {
-	if err := c.conn.Send(agentsocket.Instruction{Op: agentsocket.OpFinish}); err != nil && !errors.Is(err, socket.ErrNotConnected) {
+	if err := c.conn.Send(agent.Instruction{Op: agent.OpFinish}); err != nil && !errors.Is(err, socket.ErrNotConnected) {
 		return domain.ErrInternal.Wrap(err, "instruct the agent to finish")
 	}
 	return nil
