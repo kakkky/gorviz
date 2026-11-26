@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/components"
 )
 
 // series はグラフの系列 1 つ。値のない区切りは NaN

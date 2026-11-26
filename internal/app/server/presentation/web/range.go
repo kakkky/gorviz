@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/components"
 )
 
 // fromSession は、セッション全体を見る from の値

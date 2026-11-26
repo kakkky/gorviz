@@ -2,7 +2,8 @@ package kvs
 
 import "sync"
 
-// InMemoryKVS はセッションのデータをすべてメモリに持つ。server を止めると消える。排他はここで閉じ、f の中で読み書きさせる
+// InMemoryKVS はセッションのデータを、キーごとの値としてメモリに持つ。server を止めると消える。
+// 入れた値は書き換えない約束で、Get はその値を返す。排他はここで閉じる
 type InMemoryKVS struct {
 	mu     sync.RWMutex
 	values map[string]any
@@ -12,29 +13,22 @@ func NewInMemoryKVS() *InMemoryKVS {
 	return &InMemoryKVS{values: map[string]any{}}
 }
 
-// Update は key の値を f で書き換える。値がなければ init で作る
-func (k *InMemoryKVS) Update(key string, init func() any, f func(v any)) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	v, ok := k.values[key]
-	if !ok {
-		v = init()
-		k.values[key] = v
-	}
-	f(v)
-}
-
-func (k *InMemoryKVS) View(key string, init func() any, f func(v any)) {
-	k.mu.RLock()
-	v, ok := k.values[key]
-	k.mu.RUnlock()
-	if !ok {
-		k.Update(key, init, func(any) {})
-		k.mu.RLock()
-		v = k.values[key]
-		k.mu.RUnlock()
-	}
+func (k *InMemoryKVS) Get(key string) (any, bool) {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-	f(v)
+	v, ok := k.values[key]
+	return v, ok
+}
+
+func (k *InMemoryKVS) Set(key string, v any) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.values[key] = v
+}
+
+// Update は key の値を f で作り直して入れる。ほかの Update と重ならないので、読んでから書くまでのあいだに書き換えられない。値がなければ f に nil を渡す
+func (k *InMemoryKVS) Update(key string, f func(v any) any) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.values[key] = f(k.values[key])
 }

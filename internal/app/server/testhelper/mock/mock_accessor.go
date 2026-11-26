@@ -12,6 +12,7 @@ package mock
 import (
 	io "io"
 	reflect "reflect"
+	time "time"
 
 	domain "github.com/kakkky/gorviz/internal/app/server/domain"
 	gomock "go.uber.org/mock/gomock"
@@ -67,52 +68,72 @@ func (mr *MockSessionStoreMockRecorder) UpdateSession(f any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSession", reflect.TypeOf((*MockSessionStore)(nil).UpdateSession), f)
 }
 
-// MockTraceIndexStore is a mock of TraceIndexStore interface.
-type MockTraceIndexStore struct {
+// MockObservationAccessor is a mock of ObservationAccessor interface.
+type MockObservationAccessor struct {
 	ctrl     *gomock.Controller
-	recorder *MockTraceIndexStoreMockRecorder
+	recorder *MockObservationAccessorMockRecorder
 	isgomock struct{}
 }
 
-// MockTraceIndexStoreMockRecorder is the mock recorder for MockTraceIndexStore.
-type MockTraceIndexStoreMockRecorder struct {
-	mock *MockTraceIndexStore
+// MockObservationAccessorMockRecorder is the mock recorder for MockObservationAccessor.
+type MockObservationAccessorMockRecorder struct {
+	mock *MockObservationAccessor
 }
 
-// NewMockTraceIndexStore creates a new mock instance.
-func NewMockTraceIndexStore(ctrl *gomock.Controller) *MockTraceIndexStore {
-	mock := &MockTraceIndexStore{ctrl: ctrl}
-	mock.recorder = &MockTraceIndexStoreMockRecorder{mock}
+// NewMockObservationAccessor creates a new mock instance.
+func NewMockObservationAccessor(ctrl *gomock.Controller) *MockObservationAccessor {
+	mock := &MockObservationAccessor{ctrl: ctrl}
+	mock.recorder = &MockObservationAccessorMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockTraceIndexStore) EXPECT() *MockTraceIndexStoreMockRecorder {
+func (m *MockObservationAccessor) EXPECT() *MockObservationAccessorMockRecorder {
 	return m.recorder
 }
 
-// UpdateTraceIndex mocks base method.
-func (m *MockTraceIndexStore) UpdateTraceIndex(f func(*domain.TraceIndex)) {
+// Get mocks base method.
+func (m *MockObservationAccessor) Get(second int) (domain.Observation, bool) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "UpdateTraceIndex", f)
+	ret := m.ctrl.Call(m, "Get", second)
+	ret0, _ := ret[0].(domain.Observation)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
 }
 
-// UpdateTraceIndex indicates an expected call of UpdateTraceIndex.
-func (mr *MockTraceIndexStoreMockRecorder) UpdateTraceIndex(f any) *gomock.Call {
+// Get indicates an expected call of Get.
+func (mr *MockObservationAccessorMockRecorder) Get(second any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTraceIndex", reflect.TypeOf((*MockTraceIndexStore)(nil).UpdateTraceIndex), f)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockObservationAccessor)(nil).Get), second)
 }
 
-// ViewTraceIndex mocks base method.
-func (m *MockTraceIndexStore) ViewTraceIndex(f func(*domain.TraceIndex)) {
+// List mocks base method.
+func (m *MockObservationAccessor) List(from, to time.Duration) ([]domain.Observation, error) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ViewTraceIndex", f)
+	ret := m.ctrl.Call(m, "List", from, to)
+	ret0, _ := ret[0].([]domain.Observation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// ViewTraceIndex indicates an expected call of ViewTraceIndex.
-func (mr *MockTraceIndexStoreMockRecorder) ViewTraceIndex(f any) *gomock.Call {
+// List indicates an expected call of List.
+func (mr *MockObservationAccessorMockRecorder) List(from, to any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ViewTraceIndex", reflect.TypeOf((*MockTraceIndexStore)(nil).ViewTraceIndex), f)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockObservationAccessor)(nil).List), from, to)
+}
+
+// Put mocks base method.
+func (m *MockObservationAccessor) Put(o domain.Observation) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Put", o)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Put indicates an expected call of Put.
+func (mr *MockObservationAccessorMockRecorder) Put(o any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockObservationAccessor)(nil).Put), o)
 }
 
 // MockIssueBookStore is a mock of IssueBookStore interface.

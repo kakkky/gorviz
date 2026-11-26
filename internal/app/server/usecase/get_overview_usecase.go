@@ -9,9 +9,9 @@ import (
 
 // GetOverviewUsecase はセッション全体の様子 (phase ごとの Issue の数と、時間幅ごとの値の推移) を返す
 type GetOverviewUsecase struct {
-	sessions domain.SessionStore
-	index    domain.TraceIndexStore
-	issues   domain.IssueBookStore
+	sessions     domain.SessionStore
+	observations domain.ObservationAccessor
+	issues       domain.IssueBookStore
 }
 
 // GetOverviewUsecaseInput の期間がなければ、セッション全体
@@ -53,7 +53,7 @@ type GetOverviewUsecaseOutput struct {
 }
 
 func (us *UseCase) NewGetOverviewUsecase() *GetOverviewUsecase {
-	return &GetOverviewUsecase{sessions: us.sessions, index: us.index, issues: us.issues}
+	return &GetOverviewUsecase{sessions: us.sessions, observations: us.observations, issues: us.issues}
 }
 
 // ongoingWindow は Issue の発生が「今も続いている」とみなす、直近の長さ
@@ -64,17 +64,23 @@ func (u *GetOverviewUsecase) Exec(_ context.Context, in GetOverviewUsecaseInput)
 		return GetOverviewUsecaseOutput{}, domain.ErrInvalidArgument.With("the end of the range must be after its start")
 	}
 	out := GetOverviewUsecaseOutput{Session: u.sessions.Session(), Issues: map[domain.IssueKind]int{}}
-	var phases []domain.PhaseRange
-	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) {
-		out.Procs, out.Elapsed = ix.Procs(), ix.Last()
-		out.From, out.To = 0, ix.Last()
-		if in.HasRange {
-			out.From, out.To = in.From, min(in.To, ix.Last())
-		}
-		out.Buckets = append([]domain.Bucket(nil), ix.Buckets(out.From, out.To+1)...)
-		out.Timeline = domain.TimelineOf(ix.Marks(), out.Session)
-		phases = domain.PhasesOf(ix.Marks(), ix.Last())
-	})
+	observed := out.Session.Observed
+	out.Elapsed = observed.Until
+	out.From, out.To = 0, observed.Until
+	if in.HasRange {
+		out.From, out.To = in.From, min(in.To, observed.Until)
+	}
+	obs, err := u.observations.List(out.From, out.To)
+	if err != nil {
+		return GetOverviewUsecaseOutput{}, err
+	}
+	out.Procs = observed.Procs
+	for _, o := range obs {
+		out.Buckets = append(out.Buckets, o.Stats)
+		out.Procs = max(out.Procs, o.Procs)
+	}
+	out.Timeline = domain.TimelineOf(observed.Marks, out.Session)
+	phases := domain.PhasesOf(observed.Marks, observed.Until)
 	u.issues.ViewIssueBook(func(b *domain.IssueBook) {
 		for _, is := range b.Issues() {
 			out.Issues[is.Kind]++

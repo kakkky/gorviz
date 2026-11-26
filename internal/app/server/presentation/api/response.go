@@ -41,29 +41,6 @@ func write(rw http.ResponseWriter, r *http.Request, v any, exitCode int) error {
 	return nil
 }
 
-type errorBody struct {
-	Error string   `json:"error"`
-	Docs  string   `json:"docs"`
-	Next  []string `json:"next,omitempty"`
-}
-
-// ErrorWriter は API のエラーを、Accept に応じた形で書く。エラーにはドキュメントを引くサブコマンドを添える
-type ErrorWriter struct{}
-
-func NewErrorWriter() *ErrorWriter { return &ErrorWriter{} }
-
-func (ErrorWriter) WriteError(rw http.ResponseWriter, r *http.Request, status int, err error) {
-	b, media, encErr := encode(r, errorBody{Error: err.Error(), Docs: "gorviz docs"})
-	if encErr != nil {
-		http.Error(rw, err.Error(), status)
-		return
-	}
-	rw.Header().Set("Content-Type", media)
-	rw.Header().Set(server.HeaderExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
-	rw.WriteHeader(status)
-	_, _ = rw.Write(b)
-}
-
 // at はセッションの始まりからの経過時間。gorviz goroutine の --from・--to にそのまま渡せる形で書く
 func at(d time.Duration) string {
 	return strconv.FormatFloat(d.Seconds(), 'f', 3, 64) + "s"

@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/components"
 )
 
 type table struct {

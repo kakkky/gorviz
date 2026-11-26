@@ -127,6 +127,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 ### HTTP
 
 - 命名は `<HTTPMethod><Resource>Handler`。返す相手 (画面・API) ごとにパッケージを分け、同じ名前にしてよい
+- 1 ファイル 1 handler で、ファイル名は型の名前を snake_case にしたもの (`get_issue_handler.go`)。その handler だけが使う応答の型と ViewModel の組み立ても、同じファイルに置く
+  - 複数の handler が使うもの (応答の書き出し・時刻の書き方・グラフの組み立てなど) は、何をするかが分かる名前のファイルに置く (`response.go`・`chart.go`)
 - `ServeHTTP(rw http.ResponseWriter, r *http.Request)` を実装する
 - path param は `r.PathValue(...)`、query は `r.URL.Query()` で取り出す
 - エラーはリクエストのコンテキストに載せて即 return する。`http.Error` や status の書き込みを自分で書かない。middleware が defer で拾う
@@ -190,6 +192,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
   - 時刻は引数で受け取る。テストで時刻を固定するため
 - 型のコンストラクタでバリデーションする。不正な状態の値を作らせない
 - 値オブジェクトは `type X <primitive>` で表す。バリデーションが要るなら `NewX(...)` を用意する
+- ファイルはドメインオブジェクトごとに切る。`<オブジェクト>.go` にオブジェクトと、それに属する値オブジェクトを置く
+  - オブジェクトから導くもの・組み立てるものが大きくなったら、`<オブジェクト>_<関心>.go` に分ける (`observation_set.go`・`issue_detection.go`)
+  - どのオブジェクトにも属さない境界の interface とエラーは、`accessor.go`・`client.go`・`errors.go` に置く
 - 外部ライブラリは、形式を読むためのもの (`golang.org/x/exp/trace` など) だけを使う
 - usecase が使う interface は、使う側の domain に置く。実装は adapter
   - interface は役割ごとに分け、使う操作だけを持たせる。1 つの大きな interface にまとめない

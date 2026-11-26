@@ -12,7 +12,6 @@ const startWait = 10 * time.Minute
 // WaitAppStartUsecase はアプリがビルドされ、agent が trace を取り始めるまで待つ。ビルドや起動に失敗したら、そこで返す
 type WaitAppStartUsecase struct {
 	sessions domain.SessionStore
-	index    domain.TraceIndexStore
 	agent    domain.AgentInstructor
 	clock    domain.Clock
 }
@@ -25,7 +24,7 @@ type WaitAppStartUsecaseOutput struct {
 }
 
 func (us *UseCase) NewWaitAppStartUsecase() *WaitAppStartUsecase {
-	return &WaitAppStartUsecase{sessions: us.sessions, index: us.index, agent: us.agent, clock: us.clock}
+	return &WaitAppStartUsecase{sessions: us.sessions, agent: us.agent, clock: us.clock}
 }
 
 func (u *WaitAppStartUsecase) Exec(ctx context.Context, _ WaitAppStartUsecaseInput) (WaitAppStartUsecaseOutput, error) {
@@ -33,8 +32,7 @@ func (u *WaitAppStartUsecase) Exec(ctx context.Context, _ WaitAppStartUsecaseInp
 	defer cancel()
 	for {
 		s := u.sessions.Session()
-		started := false
-		u.index.ViewTraceIndex(func(ix *domain.TraceIndex) { started = ix.Started() })
+		started := s.Observed.Started
 		switch {
 		case s.App.State == domain.AppBuildFailed, s.App.State == domain.AppExited && !started:
 			return WaitAppStartUsecaseOutput{App: s.App}, nil

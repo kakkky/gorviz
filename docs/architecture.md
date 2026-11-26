@@ -264,7 +264,8 @@ internal/app/cli/
 ## セッション
 
 - server のプロセス 1 つが、セッション 1 つにあたる。usecase はセッションを入力で受けない
-- 観測データの index と Issue は、すべて `kvs.InMemoryKVS` に置く。server を止めると消える
+- 観測データの index (1 秒ごとの `domain.Observation`) とセッション・Issue は、すべて `kvs.InMemoryKVS` に値として置く。server を止めると消える
+- `kvs.InMemoryKVS` は値を出し入れするだけで、入れた値は書き換えない。セッションと Issue は、書き手が重ならないよう、写しを書き換えて入れ直す
 
 ## 横断関心事
 

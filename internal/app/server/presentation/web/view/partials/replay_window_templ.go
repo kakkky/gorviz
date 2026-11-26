@@ -11,7 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"github.com/kakkky/hotwire-go/turbo"
 
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/components"
 )
 
 // ReplayFeed は SSE で届いた新しい再生の窓を足す先の id

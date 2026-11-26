@@ -37,7 +37,7 @@ func TestIngestAppObservationsUsecase_Exec(t *testing.T) {
 				s := accessor.NewSessionAccessor(store).Session()
 				assert.Equal(t, 6, s.App.Procs)
 				assert.Equal(t, 42, s.App.PID)
-				accessor.NewTraceIndexAccessor(store).ViewTraceIndex(func(ix *domain.TraceIndex) { assert.Equal(t, 6, ix.Procs()) })
+				assert.Equal(t, 6, s.Observed.Procs)
 			},
 		},
 		{
@@ -83,7 +83,7 @@ func TestIngestAppObservationsUsecase_Exec(t *testing.T) {
 			tt.mock(stream)
 			store := kvs.NewInMemoryKVS()
 
-			uc := usecase.NewUseCase(accessor.NewSessionAccessor(store), accessor.NewTraceIndexAccessor(store), accessor.NewIssueBookAccessor(store), stream, nil, nil, nil, nil, nil, nil).NewIngestAppObservationsUsecase()
+			uc := usecase.NewUseCase(accessor.NewSessionAccessor(store), accessor.NewObservationAccessor(store), accessor.NewIssueBookAccessor(store), stream, nil, nil, nil, nil, nil, nil).NewIngestAppObservationsUsecase()
 			out, err := uc.Exec(ctx, tt.input)
 
 			if tt.wantErr != nil {

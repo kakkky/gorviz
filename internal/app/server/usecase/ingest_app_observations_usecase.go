@@ -20,7 +20,6 @@ const (
 // goroutineleak プロファイルは取った時刻の trace が index に届くまで預ける
 type IngestAppObservationsUsecase struct {
 	sessions domain.SessionStore
-	index    domain.TraceIndexStore
 	issues   domain.IssueBookStore
 	stream   domain.TraceStream
 }
@@ -39,7 +38,7 @@ type IngestAppObservationsUsecaseInput struct {
 type IngestAppObservationsUsecaseOutput struct{}
 
 func (us *UseCase) NewIngestAppObservationsUsecase() *IngestAppObservationsUsecase {
-	return &IngestAppObservationsUsecase{sessions: us.sessions, index: us.index, issues: us.issues, stream: us.stream}
+	return &IngestAppObservationsUsecase{sessions: us.sessions, issues: us.issues, stream: us.stream}
 }
 
 func (u *IngestAppObservationsUsecase) Exec(_ context.Context, in IngestAppObservationsUsecaseInput) (IngestAppObservationsUsecaseOutput, error) {
@@ -47,8 +46,8 @@ func (u *IngestAppObservationsUsecase) Exec(_ context.Context, in IngestAppObser
 	case ObservationHello:
 		u.sessions.UpdateSession(func(s *domain.Session) {
 			s.App.GoVersion, s.App.Procs, s.App.PID = in.Hello.GoVersion, in.Hello.Procs, in.Hello.PID
+			s.Observed.Procs = in.Hello.Procs
 		})
-		u.index.UpdateTraceIndex(func(ix *domain.TraceIndex) { ix.SetProcs(in.Hello.Procs) })
 	case ObservationTrace:
 		return IngestAppObservationsUsecaseOutput{}, u.stream.AppendTrace(in.Trace)
 	case ObservationGoroutineLeakProfile:

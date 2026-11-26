@@ -2,7 +2,6 @@ package components
 
 import (
 	"github.com/kakkky/hotwire-go/stimulus"
-
 	"github.com/kakkky/gorviz/internal/app/server/assets"
 )
 
@@ -28,9 +27,4 @@ templ GMPReplay(vm GMPReplayViewModel) {
 			}
 		</div>
 	</section>
-}
-
-// ReplayWindowScript は再生する窓 1 つ。アイランドの controller が target として受け取り、読んだら外す
-templ ReplayWindowScript(windowJSON string) {
-	@templ.Raw(`<script type="application/json" data-` + assets.GMPReplayIsland.Controller + `-target="window">` + windowJSON + `</script>`)
 }

@@ -19,14 +19,14 @@ const markWait = 30 * time.Second
 // DiagnoseAppUsecase はアプリを動かして Issue を出す。シナリオがあれば smoke・ramp-up・cancellation・cooldown の順に負荷をかけ、
 // phase ごとに Issue を判定する。なければ負荷をかけず、アプリが終わるまで (終わらないアプリは決めた時間だけ) 見る
 type DiagnoseAppUsecase struct {
-	sessions  domain.SessionStore
-	index     domain.TraceIndexStore
-	issues    domain.IssueBookStore
-	agent     domain.AgentInstructor
-	requester domain.AppRequester
-	toolchain domain.Toolchain
-	clock     domain.Clock
-	detect    *DetectAppIssuesUsecase
+	sessions     domain.SessionStore
+	observations domain.ObservationAccessor
+	issues       domain.IssueBookStore
+	agent        domain.AgentInstructor
+	requester    domain.AppRequester
+	toolchain    domain.Toolchain
+	clock        domain.Clock
+	detect       *DetectAppIssuesUsecase
 }
 
 // DiagnoseAppUsecaseInput の Progress は phase (ramp-up は level) が終わるたびに呼ぶ
@@ -40,7 +40,7 @@ type DiagnoseAppUsecaseOutput struct {
 }
 
 func (us *UseCase) NewDiagnoseAppUsecase() *DiagnoseAppUsecase {
-	return &DiagnoseAppUsecase{sessions: us.sessions, index: us.index, issues: us.issues, agent: us.agent, requester: us.requester, toolchain: us.toolchain, clock: us.clock, detect: us.NewDetectAppIssuesUsecase()}
+	return &DiagnoseAppUsecase{sessions: us.sessions, observations: us.observations, issues: us.issues, agent: us.agent, requester: us.requester, toolchain: us.toolchain, clock: us.clock, detect: us.NewDetectAppIssuesUsecase()}
 }
 
 func (u *DiagnoseAppUsecase) Exec(ctx context.Context, in DiagnoseAppUsecaseInput) (DiagnoseAppUsecaseOutput, error) {
@@ -85,7 +85,7 @@ func (u *DiagnoseAppUsecase) Exec(ctx context.Context, in DiagnoseAppUsecaseInpu
 func (u *DiagnoseAppUsecase) summarizeSession() domain.DiagnosisSummary {
 	u.waitDetected(context.Background(), -1)
 	sum := domain.DiagnosisSummary{}
-	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) { sum.To = ix.Last() })
+	sum.To = u.sessions.Session().Observed.Until
 	u.issues.ViewIssueBook(func(b *domain.IssueBook) { sum.Issues = domain.DiagnosedIssues(b, sum.From, sum.To) })
 	s := u.sessions.Session()
 	sum.AppExited, sum.AppExitCode = s.App.Exited, s.App.ExitCode
@@ -95,7 +95,7 @@ func (u *DiagnoseAppUsecase) summarizeSession() domain.DiagnosisSummary {
 
 func (u *DiagnoseAppUsecase) mark(ctx context.Context, message string) (time.Duration, error) {
 	n := 0
-	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) { _, n = domain.LastMarkAt(ix.Marks(), message) })
+	_, n = domain.LastMarkAt(u.sessions.Session().Observed.Marks, message)
 	if err := u.agent.WriteTraceEvent(ctx, message); err != nil {
 		return 0, err
 	}
@@ -104,7 +104,7 @@ func (u *DiagnoseAppUsecase) mark(ctx context.Context, message string) (time.Dur
 	for {
 		var at time.Duration
 		m := 0
-		u.index.ViewTraceIndex(func(ix *domain.TraceIndex) { at, m = domain.LastMarkAt(ix.Marks(), message) })
+		at, m = domain.LastMarkAt(u.sessions.Session().Observed.Marks, message)
 		if m > n {
 			return at, nil
 		}
@@ -148,7 +148,7 @@ func (u *DiagnoseAppUsecase) watch(ctx context.Context) (DiagnoseAppUsecaseOutpu
 	} else {
 		u.waitAppExited(ctx)
 		u.waitDetected(ctx, -1)
-		u.index.ViewTraceIndex(func(ix *domain.TraceIndex) { sum.To = ix.Last() })
+		sum.To = u.sessions.Session().Observed.Until
 	}
 	u.issues.ViewIssueBook(func(b *domain.IssueBook) { sum.Issues = domain.DiagnosedIssues(b, sum.From, sum.To) })
 	s := u.sessions.Session()
@@ -371,16 +371,19 @@ func (u *DiagnoseAppUsecase) judgePhases(from, to time.Duration) {
 		phase string
 	}
 	var found []phased
-	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) {
-		for _, p := range domain.PhasesOf(ix.Marks(), ix.Last()) {
-			if p.From < from || p.To > to || p.Name == domain.PhaseSmoke || p.Name == domain.PhaseCooldown {
-				continue
-			}
-			for _, d := range domain.DetectRuntimeIssues(domain.NewWindowStats(ix, p.From, p.To)) {
-				found = append(found, phased{d: d, phase: p.Name})
-			}
+	observed := u.sessions.Session().Observed
+	for _, p := range domain.PhasesOf(observed.Marks, observed.Until) {
+		if p.From < from || p.To > to || p.Name == domain.PhaseSmoke || p.Name == domain.PhaseCooldown {
+			continue
 		}
-	})
+		set, err := observationSet(u.observations, u.sessions, p.From, p.To)
+		if err != nil {
+			continue
+		}
+		for _, d := range domain.DetectRuntimeIssues(domain.NewWindowStats(set, p.From, p.To)) {
+			found = append(found, phased{d: d, phase: p.Name})
+		}
+	}
 	u.issues.UpdateIssueBook(func(b *domain.IssueBook) {
 		for _, f := range found {
 			b.RecordPhase(f.d, f.phase)

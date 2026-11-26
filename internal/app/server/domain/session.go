@@ -40,6 +40,7 @@ type Session struct {
 	Build        AppBuild
 	Diagnosing   bool
 	Diagnoses    []DiagnosisRange
+	Observed     Observed
 	LastCoverage []CoverageFile
 	Collected    Collected
 }

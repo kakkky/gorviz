@@ -1,7 +1,10 @@
 //go:generate mockgen -source=$GOFILE -destination=../testhelper/mock/mock_accessor.go -package=mock
 package domain
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 // SessionStore はセッションの状態を読み書きする
 type SessionStore interface {
@@ -9,13 +12,14 @@ type SessionStore interface {
 	UpdateSession(f func(s *Session))
 }
 
-// TraceIndexStore は観測データの index を読み書きする。f の中では index を持ち出さない
-type TraceIndexStore interface {
-	UpdateTraceIndex(f func(ix *TraceIndex))
-	ViewTraceIndex(f func(ix *TraceIndex))
+// ObservationAccessor は 1 秒ごとの Observation を出し入れする
+type ObservationAccessor interface {
+	Put(o Observation) error
+	Get(second int) (Observation, bool)
+	List(from, to time.Duration) ([]Observation, error)
 }
 
-// IssueBookStore は見つけた Issue を読み書きする。f の中では Issue を持ち出さない
+// IssueBookStore は見つけた Issue を読み書きする。UpdateIssueBook は、ほかの書き手と重ならないよう、f の中で書き換えたものをまとめて入れる。f の中では Issue を持ち出さない
 type IssueBookStore interface {
 	UpdateIssueBook(f func(b *IssueBook))
 	ViewIssueBook(f func(b *IssueBook))

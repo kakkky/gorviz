@@ -12,25 +12,40 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
-// indexOf は testdata の trace (4 つの goroutine が 1 つの Mutex を 20ms ずつ取り合い、そのあと 3 つの goroutine が channel の送信でリークする) を index にする
-func indexOf(t *testing.T) *domain.TraceIndex {
+// observationsOf は testdata の trace (4 つの goroutine が 1 つの Mutex を 20ms ずつ取り合い、そのあと 3 つの goroutine が channel の送信でリークする) を、
+// 1 秒ごとの Observation と、セッション全体の要約にする
+func observationsOf(t *testing.T) ([]domain.Observation, domain.Observed) {
 	t.Helper()
 	f, err := os.Open("testdata/lock_and_leak.trace")
 	require.NoError(t, err)
 	defer f.Close()
 	dec, err := domain.NewTraceDecoder(f)
 	require.NoError(t, err)
-	ix := domain.NewTraceIndex()
+	b := domain.NewObservationBuilder()
+	var obs []domain.Observation
 	for {
 		ev, err := dec.Next()
 		if err == io.EOF {
 			break
 		}
 		require.NoError(t, err)
-		ix.Apply(ev)
+		obs = append(obs, b.Apply(ev)...)
 	}
-	ix.End(false)
-	return ix
+	last, until := b.End()
+	obs = append(obs, last)
+	observed := domain.Observed{Started: true, Until: until, Ended: true, LeakChecks: map[uint64]time.Duration{}}
+	marks, checks := b.TakeNews()
+	observed.Marks = marks
+	for seq, at := range checks {
+		observed.LeakChecks[seq] = at
+	}
+	return obs, observed
+}
+
+func setOf(t *testing.T) (*domain.ObservationSet, domain.Observed) {
+	t.Helper()
+	obs, observed := observationsOf(t)
+	return domain.NewObservationSet(obs, observed), observed
 }
 
 func leakStacks(t *testing.T) []domain.LeakProfileStack {
@@ -42,9 +57,9 @@ func leakStacks(t *testing.T) []domain.LeakProfileStack {
 	return stacks
 }
 
-func TestTraceIndex(t *testing.T) {
+func TestObservationBuilder(t *testing.T) {
 	t.Parallel()
-	ix := indexOf(t)
+	ix, observed := setOf(t)
 	tests := []struct {
 		name  string
 		check func(t *testing.T)
@@ -59,14 +74,14 @@ func TestTraceIndex(t *testing.T) {
 		{
 			name: "finds the trace mark written for the leak check",
 			check: func(t *testing.T) {
-				_, ok := ix.LeakCheckAt(1)
+				_, ok := observed.LeakCheckAt(1)
 				assert.True(t, ok)
 			},
 		},
 		{
 			name: "matches every leaked goroutine of the profile as a fact and groups them by the go statement",
 			check: func(t *testing.T) {
-				at, _ := ix.LeakCheckAt(1)
+				at, _ := observed.LeakCheckAt(1)
 				ds := domain.MatchLeaks(ix, at, leakStacks(t))
 				require.Len(t, ds, 1)
 				assert.Equal(t, domain.IssueGoroutineLeak, ds[0].Kind)
@@ -83,7 +98,7 @@ func TestTraceIndex(t *testing.T) {
 		{
 			name: "says a leaked goroutine waited on a channel at the send",
 			check: func(t *testing.T) {
-				at, _ := ix.LeakCheckAt(1)
+				at, _ := observed.LeakCheckAt(1)
 				ds := domain.MatchLeaks(ix, at, leakStacks(t))
 				g := ds[0].Leaks[0].Goroutines[0]
 				d, err := domain.DetailOf(ix, g, 0, at, ds[0].Leaks)

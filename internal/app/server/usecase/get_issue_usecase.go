@@ -9,8 +9,9 @@ import (
 
 // GetIssueUsecase は Issue の発生の時間軸と、1 つの発生 (指定がなければ最新) で影響の大きかった goroutine の詳細を返す
 type GetIssueUsecase struct {
-	index  domain.TraceIndexStore
-	issues domain.IssueBookStore
+	sessions     domain.SessionStore
+	observations domain.ObservationAccessor
+	issues       domain.IssueBookStore
 }
 
 // GetIssueUsecaseInput の Occurrence は 1 から数える。0 なら最新。AllImpacts なら、新しいほうから maxImpacts 個の発生それぞれの Impact も返す
@@ -33,7 +34,7 @@ type GetIssueUsecaseOutput struct {
 }
 
 func (us *UseCase) NewGetIssueUsecase() *GetIssueUsecase {
-	return &GetIssueUsecase{index: us.index, issues: us.issues}
+	return &GetIssueUsecase{sessions: us.sessions, observations: us.observations, issues: us.issues}
 }
 
 func (u *GetIssueUsecase) Exec(_ context.Context, in GetIssueUsecaseInput) (GetIssueUsecaseOutput, error) {
@@ -60,15 +61,26 @@ func (u *GetIssueUsecase) Exec(_ context.Context, in GetIssueUsecaseInput) (GetI
 		return GetIssueUsecaseOutput{}, domain.ErrNotFound.With(fmt.Sprintf("issue %s has occurrences 1 to %d", is.ID, len(is.Occurrences)))
 	}
 	out := GetIssueUsecaseOutput{Issue: is, Certainty: is.Certainty(), Occurrence: n, NextAction: is.Kind.NextAction()}
-	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) {
-		out.Impact = domain.ImpactOf(ix, &is, o)
-		if in.AllImpacts {
-			out.Impacts = map[int]domain.Impact{}
-			for i := len(is.Occurrences); i >= 1 && i > len(is.Occurrences)-maxImpacts; i-- {
-				out.Impacts[i] = domain.ImpactOf(ix, &is, is.Occurrences[i-1])
+	impact := func(o domain.Occurrence) (domain.Impact, error) {
+		from, to := domain.ImpactRange(u.sessions.Session().Observed.Until, is.Kind, o)
+		set, err := observationSet(u.observations, u.sessions, from, to)
+		if err != nil {
+			return domain.Impact{}, err
+		}
+		return domain.ImpactOf(set, &is, o), nil
+	}
+	if out.Impact, err = impact(o); err != nil {
+		return GetIssueUsecaseOutput{}, err
+	}
+	if in.AllImpacts {
+		out.Impacts = map[int]domain.Impact{}
+		for i := len(is.Occurrences); i >= 1 && i > len(is.Occurrences)-maxImpacts; i-- {
+			if out.Impacts[i], err = impact(is.Occurrences[i-1]); err != nil {
+				return GetIssueUsecaseOutput{}, err
 			}
 		}
-		out.Phases = domain.PhasesOf(ix.Marks(), ix.Last())
-	})
+	}
+	observed := u.sessions.Session().Observed
+	out.Phases = domain.PhasesOf(observed.Marks, observed.Until)
 	return out, nil
 }

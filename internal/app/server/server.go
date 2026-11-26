@@ -46,7 +46,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	// adapter
 	sessions := accessor.NewSessionAccessor(store)
-	index := accessor.NewTraceIndexAccessor(store)
+	observations := accessor.NewObservationAccessor(store)
 	issues := accessor.NewIssueBookAccessor(store)
 	traceStream := accessor.NewTraceStreamAccessor(stream)
 	agentClient, err := client.NewAgentClient(conn)
@@ -67,7 +67,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// usecase
-	uc := usecase.NewUseCase(sessions, index, issues, traceStream, agentClient, app, app, app, toolchain, clock)
+	uc := usecase.NewUseCase(sessions, observations, issues, traceStream, agentClient, app, app, app, toolchain, clock)
 
 	// presentation
 	gui := "http://" + cfg.GUIAddr
@@ -89,7 +89,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	webMux.Handle("GET /scheduler", web.NewGetSchedulerHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetSchedulerWindowUsecase()))
 	webMux.Handle("GET /scheduler/stream", web.NewGetSchedulerStreamHandler(uc.NewGetSchedulerWindowUsecase()))
 	webMux.Handle("GET /goroutines/{id}", web.NewGetGoroutineHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetGoroutineDetailUsecase(), uc.NewGetSchedulerWindowUsecase()))
-	webMux.Handle("GET "+assets.URLPrefix, web.NewAssetsHandler())
+	webMux.Handle("GET "+assets.URLPrefix, web.NewGetAssetsHandler())
 	mw := middleware.NewMiddleware(api.NewErrorWriter(), web.NewErrorWriter())
 
 	// worker

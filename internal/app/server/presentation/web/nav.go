@@ -2,7 +2,7 @@ package web
 
 import (
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/layout"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
 

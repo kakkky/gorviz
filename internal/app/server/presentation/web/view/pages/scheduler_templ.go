@@ -11,8 +11,8 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"github.com/kakkky/hotwire-go/turbo"
 
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/layout"
 )
 
 // SchedulerViewModel の StreamURL は最新を追っているときの SSE (なければ空)。Truncated は窓の変化が多すぎて途中で切ったこと
@@ -71,7 +71,7 @@ func Scheduler(vm SchedulerViewModel) templ.Component {
 				var templ_7745c5c3_Var3 templ.SafeURL
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(vm.LatestURL))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/view/pages/scheduler.templ`, Line: 27, Col: 53}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/app/server/presentation/web/view/pages/scheduler.templ`, Line: 27, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {

@@ -1,0 +1,9 @@
+package components
+
+templ CertaintyBadge(certainty string, note string) {
+	if certainty == "FACT" {
+		<span class="badge fact" title={ note }>FACT</span>
+	} else if certainty != "" {
+		<span class="badge inference" title={ note }>INFERENCE</span>
+	}
+}

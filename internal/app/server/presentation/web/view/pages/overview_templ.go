@@ -11,9 +11,9 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"github.com/kakkky/hotwire-go/turbo"
 
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/components"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/layout"
-	"github.com/kakkky/gorviz/internal/app/server/presentation/view/partials"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/components"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/layout"
+	"github.com/kakkky/gorviz/internal/app/server/presentation/web/view/partials"
 )
 
 // OverviewViewModel の StreamURL は最新を見ているときの SSE (なければ空)

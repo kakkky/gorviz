@@ -1,0 +1,7 @@
+package components
+
+templ CauseBadge(cause string) {
+	if cause != "" {
+		<span class={ "badge", "cause", "cause-" + cause }>{ cause }</span>
+	}
+}

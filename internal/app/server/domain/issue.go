@@ -216,6 +216,18 @@ func sortOccurrences(is *Issue) {
 	})
 }
 
+// Clone は、書き換えても元に響かない写し
+func (b *IssueBook) Clone() *IssueBook {
+	out := &IssueBook{byKey: make(map[issueKey]*Issue, len(b.byKey)), DetectedUntil: b.DetectedUntil, Pending: slices.Clone(b.Pending)}
+	for _, is := range b.issues {
+		c := *is
+		c.Occurrences = slices.Clone(is.Occurrences)
+		out.issues = append(out.issues, &c)
+		out.byKey[issueKey{kind: c.Kind, target: c.Target}] = &c
+	}
+	return out
+}
+
 func (b *IssueBook) Issues() []*Issue { return b.issues }
 
 func (b *IssueBook) Issue(id IssueID) (*Issue, bool) {

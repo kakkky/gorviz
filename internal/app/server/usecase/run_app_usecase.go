@@ -18,7 +18,6 @@ const (
 // server が止まるときは、止める合図を送って graceful shutdown を見届けてから終わる
 type RunAppUsecase struct {
 	sessions domain.SessionStore
-	index    domain.TraceIndexStore
 	stream   domain.TraceStream
 	agent    domain.AgentInstructor
 	builder  domain.AppBuilder
@@ -37,7 +36,7 @@ type RunAppUsecaseInput struct {
 type RunAppUsecaseOutput struct{}
 
 func (us *UseCase) NewRunAppUsecase() *RunAppUsecase {
-	return &RunAppUsecase{sessions: us.sessions, index: us.index, stream: us.stream, agent: us.agent, builder: us.builder, starter: us.starter, clock: us.clock}
+	return &RunAppUsecase{sessions: us.sessions, stream: us.stream, agent: us.agent, builder: us.builder, starter: us.starter, clock: us.clock}
 }
 
 func (u *RunAppUsecase) Exec(ctx context.Context, in RunAppUsecaseInput) (RunAppUsecaseOutput, error) {
@@ -87,8 +86,7 @@ func (u *RunAppUsecase) Exec(ctx context.Context, in RunAppUsecaseInput) (RunApp
 	_ = u.agent.WaitDisconnected(wctx)
 	u.stream.CloseTrace(true)
 	u.waitIndexEnded(context.WithoutCancel(ctx))
-	var exitedAt time.Duration
-	u.index.ViewTraceIndex(func(ix *domain.TraceIndex) { exitedAt = ix.Last() })
+	exitedAt := u.sessions.Session().Observed.Until
 	u.sessions.UpdateSession(func(s *domain.Session) {
 		s.App.State, s.App.Exited, s.App.ExitCode, s.App.ExitedAt, s.App.ShutdownTimedOut = domain.AppExited, true, code, exitedAt, timedOut
 		s.App.TraceTruncated = u.stream.TraceBroken()
@@ -141,9 +139,7 @@ func (u *RunAppUsecase) waitIndexEnded(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, indexCatchUp)
 	defer cancel()
 	for {
-		ended := false
-		u.index.ViewTraceIndex(func(ix *domain.TraceIndex) { ended, _ = ix.Ended() })
-		if ended || u.clock.Sleep(ctx, 50*time.Millisecond) != nil {
+		if u.sessions.Session().Observed.Ended || u.clock.Sleep(ctx, 50*time.Millisecond) != nil {
 			return
 		}
 	}
