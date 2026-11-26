@@ -16,7 +16,7 @@ func NewWriteGoroutineLeakHandler(uc *usecase.SendAppGoroutineLeaksUsecase) *Wri
 	return &WriteGoroutineLeakHandler{usecase: uc}
 }
 
-func (h *WriteGoroutineLeakHandler) Handle(ctx context.Context, _ agent.Instruction, _ *domain.Reply) error {
+func (h *WriteGoroutineLeakHandler) HandleRequest(ctx context.Context, _ agent.Request, _ *domain.Response) error {
 	_, err := h.usecase.Exec(ctx, usecase.SendAppGoroutineLeaksUsecaseInput{})
 	return err
 }

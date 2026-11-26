@@ -16,7 +16,7 @@ func NewWriteTraceEventHandler(uc *usecase.WriteAppRuntimeTraceEventUsecase) *Wr
 	return &WriteTraceEventHandler{usecase: uc}
 }
 
-func (h *WriteTraceEventHandler) Handle(ctx context.Context, in agent.Instruction, _ *domain.Reply) error {
-	_, err := h.usecase.Exec(ctx, usecase.WriteAppRuntimeTraceEventUsecaseInput{Event: in.Event})
+func (h *WriteTraceEventHandler) HandleRequest(ctx context.Context, req agent.Request, _ *domain.Response) error {
+	_, err := h.usecase.Exec(ctx, usecase.WriteAppRuntimeTraceEventUsecaseInput{Event: req.Event})
 	return err
 }

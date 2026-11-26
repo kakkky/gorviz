@@ -12,6 +12,10 @@ import (
 	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
+func (c *Command) diagnoseCommand() *cli.Command {
+	return &cli.Command{Name: "diagnose", Usage: "run the app (under load when a scenario is given) and report issues", ArgsUsage: "[scenario.yaml | -]", Action: c.diagnose}
+}
+
 func (c *Command) diagnose(_ context.Context, cmd *cli.Command) error {
 	var scenario []byte
 	if name := cmd.Args().First(); name != "" {

@@ -1,11 +1,11 @@
 //go:generate mockgen -source=$GOFILE -destination=../testhelper/mock/mock_server.go -package=mock
 package domain
 
-// ServerSender は server へ観測データと返事を送る
+// ServerSender は server へ観測データと応答を送る
 type ServerSender interface {
 	SendHello(h Hello) error
 	SendTrace(p []byte) error
-	SendReply(r Reply) error
+	SendResponse(r Response) error
 	SendGoroutineLeakProfile(seq uint64, text []byte) error
 	SendCoverage(files []CoverageFile) error
 	SendBye() error

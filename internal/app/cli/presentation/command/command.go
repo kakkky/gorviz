@@ -26,7 +26,7 @@ func acceptOf(cmd *cli.Command) string {
 	return formats[cmd.String("format")]
 }
 
-// Command は gorviz のサブコマンドの定義と、各サブコマンドの Action。server の応答は解釈せず、そのまま出す
+// Command は各ファイルが定義したサブコマンドを、gorviz の下に並べる。server の応答は解釈せず、そのまま出す
 type Command struct {
 	cfg    *config.Config
 	docs   fs.FS
@@ -61,23 +61,14 @@ func NewCommand(cfg *config.Config, docs fs.FS, server *client.ServerClient) (*c
 			os.Exit(2)
 		},
 		Commands: []*cli.Command{
-			{Name: "run", Usage: "build the app with the agent, start it and return when it runs", ArgsUsage: "<package> [-- app arguments]", Action: c.run},
-			{Name: "stop", Usage: "watch the shutdown of the app, then stop the session", Action: c.stop},
-			{Name: "status", Usage: "show whether the app runs, the GUI URL and the diagnosed ranges", Action: c.status},
-			{Name: "diagnose", Usage: "run the app (under load when a scenario is given) and report issues", ArgsUsage: "[scenario.yaml | -]", Action: c.diagnose},
-			{Name: "issues", Usage: "list the issues of the session", Action: c.issues, Flags: []cli.Flag{
-				&cli.StringFlag{Name: "kind", Usage: "only issues of this kind"},
-				&cli.StringFlag{Name: "text", Usage: "only issues whose target contains this text"},
-				&cli.StringFlag{Name: "after", Usage: "continue the list after this issue ID"},
-			}},
-			{Name: "issue", Usage: "open an issue with the goroutines that were affected the most", ArgsUsage: "<id>", Action: c.issue, Flags: []cli.Flag{
-				&cli.IntFlag{Name: "occurrence", Usage: "the occurrence to open, from 1 (the latest by default)"},
-			}},
-			{Name: "goroutine", Usage: "show what one goroutine was blocked on", ArgsUsage: "<id>", Action: c.goroutine, Flags: []cli.Flag{
-				&cli.StringFlag{Name: "from", Usage: "the start of the range, as time since the session started (like 12.5s)"},
-				&cli.StringFlag{Name: "to", Usage: "the end of the range, as time since the session started"},
-			}},
-			{Name: "docs", Usage: "list the documents, or print one", ArgsUsage: "[name]", Action: c.showDocs},
+			c.runCommand(),
+			c.stopCommand(),
+			c.statusCommand(),
+			c.diagnoseCommand(),
+			c.issuesCommand(),
+			c.issueCommand(),
+			c.goroutineCommand(),
+			c.docsCommand(),
 		},
 	}, nil
 }

@@ -3,14 +3,12 @@ package server
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/kakkky/scope"
 
 	"github.com/kakkky/gorviz/internal"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/accessor"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/client"
-	"github.com/kakkky/gorviz/internal/app/server/assets"
 	"github.com/kakkky/gorviz/internal/app/server/config"
 	"github.com/kakkky/gorviz/internal/app/server/driver/httpserver"
 	"github.com/kakkky/gorviz/internal/app/server/driver/kvs"
@@ -23,7 +21,6 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/presentation/web"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 	"github.com/kakkky/gorviz/internal/app/server/worker"
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func Run(ctx context.Context, cfg *config.Config) error {
@@ -70,26 +67,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	uc := usecase.NewUseCase(sessions, observations, issues, traceStream, agentClient, app, app, app, toolchain, clock)
 
 	// presentation
-	gui := "http://" + cfg.GUIAddr
-	socketHandler := socketpresentation.NewSocketHandler(uc.NewIngestAppObservationsUsecase())
-	apiMux := http.NewServeMux()
-	apiMux.Handle("GET "+server.StatusEndpoint, api.NewGetStatusHandler(uc.NewGetSessionStatusUsecase(), gui))
-	apiMux.Handle("GET "+server.StartResultEndpoint, api.NewGetStartResultHandler(uc.NewWaitAppStartUsecase(), stop, gui))
-	apiMux.Handle("POST "+server.DiagnoseEndpoint, api.NewPostDiagnoseHandler(uc.NewDiagnoseAppUsecase(), gui))
-	apiMux.Handle("GET "+server.IssuesEndpoint, api.NewGetIssuesHandler(uc.NewListIssuesUsecase(), gui))
-	apiMux.Handle("GET "+server.IssueEndpoint, api.NewGetIssueHandler(uc.NewGetIssueUsecase(), gui))
-	apiMux.Handle("GET "+server.GoroutineEndpoint, api.NewGetGoroutineHandler(uc.NewGetGoroutineDetailUsecase(), gui))
-	apiMux.Handle("POST "+server.StopEndpoint, api.NewPostStopHandler(uc.NewWaitAppShutdownUsecase(), stop))
-	webMux := http.NewServeMux()
-	webMux.Handle("GET /{$}", web.NewGetRootHandler())
-	webMux.Handle("GET /overview", web.NewGetOverviewHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
-	webMux.Handle("GET /overview/stream", web.NewGetOverviewStreamHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetOverviewUsecase()))
-	webMux.Handle("GET /issues", web.NewGetIssuesHandler(uc.NewGetSessionStatusUsecase(), uc.NewListIssuesUsecase()))
-	webMux.Handle("GET /issues/{id}", web.NewGetIssueHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetIssueUsecase()))
-	webMux.Handle("GET /scheduler", web.NewGetSchedulerHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetSchedulerWindowUsecase()))
-	webMux.Handle("GET /scheduler/stream", web.NewGetSchedulerStreamHandler(uc.NewGetSchedulerWindowUsecase()))
-	webMux.Handle("GET /goroutines/{id}", web.NewGetGoroutineHandler(uc.NewGetSessionStatusUsecase(), uc.NewGetGoroutineDetailUsecase(), uc.NewGetSchedulerWindowUsecase()))
-	webMux.Handle("GET "+assets.URLPrefix, web.NewGetAssetsHandler())
+	socketHandler := socketpresentation.NewHandler(uc)
+	apiHandler := api.NewHandler(uc, "http://"+cfg.GUIAddr, stop)
+	webHandler := web.NewHandler(uc)
 	mw := middleware.NewMiddleware(api.NewErrorWriter(), web.NewErrorWriter())
 
 	// worker
@@ -99,17 +79,17 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	detectWorker := worker.NewDetectAppIssuesWorker(uc.NewDetectAppIssuesUsecase())
 
 	// driver (presentation を受けて待ち受ける)
-	apiServer, closeAPI, err := httpserver.NewUnixHTTPServer(cfg.Socket, mw.Wrap(apiMux))
+	apiServer, closeAPI, err := httpserver.NewUnixHTTPServer(cfg.Socket, httpserver.NewAPIMux(apiHandler, mw))
 	if err != nil {
 		return err
 	}
 	defer closeAPI()
-	guiServer, closeGUI, err := httpserver.NewTCPHTTPServer(cfg.GUIAddr, mw.Wrap(webMux))
+	guiServer, closeGUI, err := httpserver.NewTCPHTTPServer(cfg.GUIAddr, httpserver.NewGUIMux(webHandler, mw))
 	if err != nil {
 		return err
 	}
 	defer closeGUI()
-	listener, closeListener, err := socketdriver.NewSocketListener(work.SocketPath(), conn, socketHandler)
+	listener, closeListener, err := socketdriver.NewSocketListener(work.SocketPath(), conn, socketdriver.NewMessageMux(socketHandler, mw))
 	if err != nil {
 		return err
 	}

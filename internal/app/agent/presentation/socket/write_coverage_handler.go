@@ -16,8 +16,8 @@ func NewWriteCoverageHandler(uc *usecase.ReadAppCoverageUsecase) *WriteCoverageH
 	return &WriteCoverageHandler{usecase: uc}
 }
 
-func (h *WriteCoverageHandler) Handle(ctx context.Context, _ agent.Instruction, reply *domain.Reply) error {
+func (h *WriteCoverageHandler) HandleRequest(ctx context.Context, _ agent.Request, res *domain.Response) error {
 	out, err := h.usecase.Exec(ctx, usecase.ReadAppCoverageUsecaseInput{})
-	reply.Coverage = out.Files
+	res.Coverage = out.Files
 	return err
 }

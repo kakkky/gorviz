@@ -13,6 +13,10 @@ import (
 	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
+func (c *Command) runCommand() *cli.Command {
+	return &cli.Command{Name: "run", Usage: "build the app with the agent, start it and return when it runs", ArgsUsage: "<package> [-- app arguments]", Action: c.run}
+}
+
 func (c *Command) run(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args().Slice()
 	if len(args) == 0 {

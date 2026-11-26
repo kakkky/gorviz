@@ -11,6 +11,12 @@ import (
 	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
+func (c *Command) issueCommand() *cli.Command {
+	return &cli.Command{Name: "issue", Usage: "open an issue with the goroutines that were affected the most", ArgsUsage: "<id>", Action: c.issue, Flags: []cli.Flag{
+		&cli.IntFlag{Name: "occurrence", Usage: "the occurrence to open, from 1 (the latest by default)"},
+	}}
+}
+
 func (c *Command) issue(_ context.Context, cmd *cli.Command) error {
 	id := cmd.Args().First()
 	if id == "" {

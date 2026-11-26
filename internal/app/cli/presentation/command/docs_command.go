@@ -10,6 +10,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+func (c *Command) docsCommand() *cli.Command {
+	return &cli.Command{Name: "docs", Usage: "list the documents, or print one", ArgsUsage: "[name]", Action: c.showDocs}
+}
+
 func (c *Command) showDocs(_ context.Context, cmd *cli.Command) error {
 	entries, err := fs.ReadDir(c.docs, ".")
 	if err != nil {

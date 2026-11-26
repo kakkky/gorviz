@@ -13,7 +13,7 @@ type CoverageFile struct {
 	Data []byte
 }
 
-type Reply struct {
+type Response struct {
 	ID       uint64
 	Error    string
 	Coverage []CoverageFile

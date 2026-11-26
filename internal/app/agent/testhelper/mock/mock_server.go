@@ -96,18 +96,18 @@ func (mr *MockServerSenderMockRecorder) SendHello(h any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendHello", reflect.TypeOf((*MockServerSender)(nil).SendHello), h)
 }
 
-// SendReply mocks base method.
-func (m *MockServerSender) SendReply(r domain.Reply) error {
+// SendResponse mocks base method.
+func (m *MockServerSender) SendResponse(r domain.Response) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendReply", r)
+	ret := m.ctrl.Call(m, "SendResponse", r)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SendReply indicates an expected call of SendReply.
-func (mr *MockServerSenderMockRecorder) SendReply(r any) *gomock.Call {
+// SendResponse indicates an expected call of SendResponse.
+func (mr *MockServerSenderMockRecorder) SendResponse(r any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendReply", reflect.TypeOf((*MockServerSender)(nil).SendReply), r)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendResponse", reflect.TypeOf((*MockServerSender)(nil).SendResponse), r)
 }
 
 // SendTrace mocks base method.

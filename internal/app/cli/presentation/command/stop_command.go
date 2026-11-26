@@ -10,6 +10,10 @@ import (
 	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
+func (c *Command) stopCommand() *cli.Command {
+	return &cli.Command{Name: "stop", Usage: "watch the shutdown of the app, then stop the session", Action: c.stop}
+}
+
 func (c *Command) stop(_ context.Context, cmd *cli.Command) error {
 	if err := c.print(cmd, http.MethodPost, server.StopEndpoint, nil, nil); err != nil {
 		return err

@@ -12,8 +12,8 @@ type FunctionCallHandler struct {
 	finish *usecase.FinishAppObservationUsecase
 }
 
-func NewFunctionCallHandler(start *usecase.StartAppObservationUsecase, finish *usecase.FinishAppObservationUsecase) *FunctionCallHandler {
-	return &FunctionCallHandler{start: start, finish: finish}
+func NewFunctionCallHandler(uc *usecase.UseCase) *FunctionCallHandler {
+	return &FunctionCallHandler{start: uc.NewStartAppObservationUsecase(), finish: uc.NewFinishAppObservationUsecase()}
 }
 
 func (h *FunctionCallHandler) Start() error {

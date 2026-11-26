@@ -17,24 +17,24 @@ const EnvSocket = "GORVIZ_AGENT_SOCKET"
 // TraceCategory は、agent が execution trace に書く出来事のカテゴリ
 const TraceCategory = "gorviz"
 
-// Kind はメッセージの種類。消した種類の番号は使い回さない
-type Kind uint8
+// MessageType はメッセージの型。消した型の番号は使い回さない
+type MessageType uint8
 
 const (
-	KindHello                Kind = 1
-	KindTrace                Kind = 2
-	KindReply                Kind = 3
-	KindGoroutineLeakProfile Kind = 4
-	KindCoverage             Kind = 5
-	KindBye                  Kind = 6
+	TypeHello                MessageType = 1
+	TypeTrace                MessageType = 2
+	TypeResponse                MessageType = 3
+	TypeGoroutineLeakProfile MessageType = 4
+	TypeCoverage             MessageType = 5
+	TypeBye                  MessageType = 6
 
-	KindInstruction Kind = 16
+	TypeRequest MessageType = 16
 )
 
 const maxPayload = 1 << 30
 
 type Message struct {
-	Kind    Kind
+	Type    MessageType
 	Payload []byte
 }
 
@@ -45,27 +45,27 @@ type Hello struct {
 	PID       int    `json:"pid"`
 }
 
-// Op は server から agent への指示の種類
-type Op string
+// Method は server から agent への要求で呼ぶ操作
+type Method string
 
 const (
-	OpWriteTraceEvent    Op = "write-trace-event"
-	OpResetCoverage      Op = "reset-coverage"
-	OpWriteCoverage      Op = "write-coverage"
-	OpWriteGoroutineLeak Op = "write-goroutine-leak"
-	OpWriteThreadCount   Op = "write-thread-count"
-	OpFinish             Op = "finish"
+	MethodWriteTraceEvent    Method = "write-trace-event"
+	MethodResetCoverage      Method = "reset-coverage"
+	MethodWriteCoverage      Method = "write-coverage"
+	MethodWriteGoroutineLeak Method = "write-goroutine-leak"
+	MethodWriteThreadCount   Method = "write-thread-count"
+	MethodFinish             Method = "finish"
 )
 
-// Instruction の Event は OpWriteTraceEvent で trace に書く出来事
-type Instruction struct {
+// Request の Event は MethodWriteTraceEvent で trace に書く出来事
+type Request struct {
 	ID    uint64 `json:"id"`
-	Op    Op     `json:"op"`
+	Method Method `json:"method"`
 	Event string `json:"event,omitempty"`
 }
 
-// Reply は指示 1 つへの返事。Coverage は OpWriteCoverage のときだけ載る
-type Reply struct {
+// Response は要求 1 つへの応答。Coverage は MethodWriteCoverage のときだけ載る
+type Response struct {
 	ID       uint64         `json:"id"`
 	Error    string         `json:"error,omitempty"`
 	Coverage []CoverageFile `json:"coverage,omitempty"`
@@ -102,13 +102,13 @@ func ThreadCountEvent(n int) string {
 	return fmt.Sprintf("%s%d", EventThreadCountPrefix, n)
 }
 
-// Write は 1 バイトの種類・4 バイトの長さ・中身の順で書く
+// Write は 1 バイトの型・4 バイトの長さ・中身の順で書く
 func Write(w io.Writer, m Message) error {
 	if len(m.Payload) > maxPayload {
 		return fmt.Errorf("agent protocol: payload of %d bytes is too large", len(m.Payload))
 	}
 	var head [5]byte
-	head[0] = byte(m.Kind)
+	head[0] = byte(m.Type)
 	binary.BigEndian.PutUint32(head[1:], uint32(len(m.Payload)))
 	if _, err := w.Write(head[:]); err != nil {
 		return err
@@ -126,7 +126,7 @@ func Read(r *bufio.Reader) (Message, error) {
 	if n > maxPayload {
 		return Message{}, fmt.Errorf("agent protocol: payload of %d bytes is too large", n)
 	}
-	m := Message{Kind: Kind(head[0]), Payload: make([]byte, n)}
+	m := Message{Type: MessageType(head[0]), Payload: make([]byte, n)}
 	if _, err := io.ReadFull(r, m.Payload); err != nil {
 		if errors.Is(err, io.EOF) {
 			err = io.ErrUnexpectedEOF
@@ -136,13 +136,13 @@ func Read(r *bufio.Reader) (Message, error) {
 	return m, nil
 }
 
-// Encode は JSON の中身を持つ種類のメッセージを作る
-func Encode(kind Kind, v any) (Message, error) {
+// Encode は JSON の中身を持つ型のメッセージを作る
+func Encode(t MessageType, v any) (Message, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return Message{}, err
 	}
-	return Message{Kind: kind, Payload: b}, nil
+	return Message{Type: t, Payload: b}, nil
 }
 
 func Decode[T any](m Message) (T, error) {

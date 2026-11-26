@@ -12,18 +12,18 @@ import (
 var ErrNotConnected = errors.New("the agent is not connected")
 
 // SocketConn は agent との接続 1 本。セッションで観測するアプリは 1 つなので、つながる agent も 1 つ。
-// 指示への返事は、指示を待っている側へ ID で返す
+// 要求への応答は、要求を待っている側へ ID で返す
 type SocketConn struct {
 	mu           sync.Mutex
 	conn         net.Conn
 	connected    chan struct{}
 	disconnected chan struct{}
 	nextID       uint64
-	waiting      map[uint64]chan agent.Reply
+	waiting      map[uint64]chan agent.Response
 }
 
 func NewSocketConn() *SocketConn {
-	return &SocketConn{connected: make(chan struct{}), disconnected: make(chan struct{}), waiting: map[uint64]chan agent.Reply{}}
+	return &SocketConn{connected: make(chan struct{}), disconnected: make(chan struct{}), waiting: map[uint64]chan agent.Response{}}
 }
 
 func (c *SocketConn) attach(conn net.Conn) bool {
@@ -51,7 +51,7 @@ func (c *SocketConn) detach() {
 	}
 }
 
-func (c *SocketConn) deliver(r agent.Reply) {
+func (c *SocketConn) deliver(r agent.Response) {
 	c.mu.Lock()
 	ch, ok := c.waiting[r.ID]
 	delete(c.waiting, r.ID)
@@ -79,13 +79,13 @@ func (c *SocketConn) IsConnected() bool {
 	}
 }
 
-// Send は指示を書く。返事を待たない指示 (finish) に使う
-func (c *SocketConn) Send(in agent.Instruction) error {
+// Send は要求を書く。応答を待たない要求 (finish) に使う
+func (c *SocketConn) Send(in agent.Request) error {
 	_, err := c.send(in, false)
 	return err
 }
 
-func (c *SocketConn) send(in agent.Instruction, wait bool) (chan agent.Reply, error) {
+func (c *SocketConn) send(in agent.Request, wait bool) (chan agent.Response, error) {
 	if !c.IsConnected() {
 		return nil, ErrNotConnected
 	}
@@ -93,12 +93,12 @@ func (c *SocketConn) send(in agent.Instruction, wait bool) (chan agent.Reply, er
 	defer c.mu.Unlock()
 	c.nextID++
 	in.ID = c.nextID
-	var ch chan agent.Reply
+	var ch chan agent.Response
 	if wait {
-		ch = make(chan agent.Reply, 1)
+		ch = make(chan agent.Response, 1)
 		c.waiting[in.ID] = ch
 	}
-	m, err := agent.Encode(agent.KindInstruction, in)
+	m, err := agent.Encode(agent.TypeRequest, in)
 	if err != nil {
 		return nil, err
 	}
@@ -109,19 +109,19 @@ func (c *SocketConn) send(in agent.Instruction, wait bool) (chan agent.Reply, er
 	return ch, nil
 }
 
-// Request は指示を書いて返事を待つ
-func (c *SocketConn) Request(ctx context.Context, in agent.Instruction) (agent.Reply, error) {
+// Request は要求を書いて応答を待つ
+func (c *SocketConn) Request(ctx context.Context, in agent.Request) (agent.Response, error) {
 	ch, err := c.send(in, true)
 	if err != nil {
-		return agent.Reply{}, err
+		return agent.Response{}, err
 	}
 	select {
 	case r, ok := <-ch:
 		if !ok {
-			return agent.Reply{}, ErrNotConnected
+			return agent.Response{}, ErrNotConnected
 		}
 		return r, nil
 	case <-ctx.Done():
-		return agent.Reply{}, ctx.Err()
+		return agent.Response{}, ctx.Err()
 	}
 }

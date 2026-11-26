@@ -16,7 +16,7 @@ func NewResetCoverageHandler(uc *usecase.ResetAppCoverageUsecase) *ResetCoverage
 	return &ResetCoverageHandler{usecase: uc}
 }
 
-func (h *ResetCoverageHandler) Handle(ctx context.Context, _ agent.Instruction, _ *domain.Reply) error {
+func (h *ResetCoverageHandler) HandleRequest(ctx context.Context, _ agent.Request, _ *domain.Response) error {
 	_, err := h.usecase.Exec(ctx, usecase.ResetAppCoverageUsecaseInput{})
 	return err
 }

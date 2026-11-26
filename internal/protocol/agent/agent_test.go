@@ -13,15 +13,15 @@ import (
 
 func TestReadWrite(t *testing.T) {
 	t.Parallel()
-	reply, err := agent.Encode(agent.KindReply, agent.Reply{ID: 7, Coverage: []agent.CoverageFile{{Name: "covmeta.x", Data: []byte{1, 2}}}})
+	reply, err := agent.Encode(agent.TypeResponse, agent.Response{ID: 7, Coverage: []agent.CoverageFile{{Name: "covmeta.x", Data: []byte{1, 2}}}})
 	require.NoError(t, err)
 	tests := []struct {
 		name string
 		msgs []agent.Message
 	}{
-		{name: "reads a raw trace chunk as it was written", msgs: []agent.Message{{Kind: agent.KindTrace, Payload: []byte("go 1.27 trace")}}},
-		{name: "reads an empty message", msgs: []agent.Message{{Kind: agent.KindBye, Payload: []byte{}}}},
-		{name: "reads messages back to back in order", msgs: []agent.Message{reply, {Kind: agent.KindTrace, Payload: []byte("a")}}},
+		{name: "reads a raw trace chunk as it was written", msgs: []agent.Message{{Type: agent.TypeTrace, Payload: []byte("go 1.27 trace")}}},
+		{name: "reads an empty message", msgs: []agent.Message{{Type: agent.TypeBye, Payload: []byte{}}}},
+		{name: "reads messages back to back in order", msgs: []agent.Message{reply, {Type: agent.TypeTrace, Payload: []byte("a")}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -44,17 +44,17 @@ func TestDecode(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
-		in   agent.Instruction
+		in   agent.Request
 	}{
-		{name: "decodes an instruction with an event", in: agent.Instruction{ID: 3, Op: agent.OpWriteTraceEvent, Event: "phase smoke"}},
-		{name: "decodes an instruction without an event", in: agent.Instruction{ID: 4, Op: agent.OpFinish}},
+		{name: "decodes an instruction with an event", in: agent.Request{ID: 3, Method: agent.MethodWriteTraceEvent, Event: "phase smoke"}},
+		{name: "decodes an instruction without an event", in: agent.Request{ID: 4, Method: agent.MethodFinish}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			m, err := agent.Encode(agent.KindInstruction, tt.in)
+			m, err := agent.Encode(agent.TypeRequest, tt.in)
 			require.NoError(t, err)
-			got, err := agent.Decode[agent.Instruction](m)
+			got, err := agent.Decode[agent.Request](m)
 			require.NoError(t, err)
 			assert.Equal(t, tt.in, got)
 		})

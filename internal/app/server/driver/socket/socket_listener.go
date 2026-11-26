@@ -85,13 +85,13 @@ func (s *SocketListener) serve(ctx context.Context, c net.Conn) {
 		if err != nil {
 			break
 		}
-		switch m.Kind {
-		case agent.KindReply:
-			if reply, err := agent.Decode[agent.Reply](m); err == nil {
+		switch m.Type {
+		case agent.TypeResponse:
+			if reply, err := agent.Decode[agent.Response](m); err == nil {
 				s.conn.deliver(reply)
 			}
 			continue
-		case agent.KindBye:
+		case agent.TypeBye:
 			clean = true
 		}
 		s.handler.HandleMessage(ctx, m)

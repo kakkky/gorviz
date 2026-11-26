@@ -6,7 +6,7 @@ import (
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
 )
 
-// ReadAppCoverageUsecase はアプリの coverage を書き出して返す。返事に載せて送るのは presentation
+// ReadAppCoverageUsecase はアプリの coverage を書き出して返す。応答に載せて送るのは presentation
 type ReadAppCoverageUsecase struct {
 	coverage domain.AppRuntimeCoverage
 }
