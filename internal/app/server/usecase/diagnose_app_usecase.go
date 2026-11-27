@@ -94,22 +94,16 @@ func (u *DiagnoseAppUsecase) summarizeSession() domain.DiagnosisSummary {
 }
 
 func (u *DiagnoseAppUsecase) mark(ctx context.Context, message string) (time.Duration, error) {
-	n := 0
-	_, n = domain.LastMarkAt(u.sessions.Session().Observed.Marks, message)
-	if err := u.agent.WriteTraceEvent(ctx, message); err != nil {
-		return 0, err
-	}
+	now := u.clock.Now()
 	ctx, cancel := context.WithTimeout(ctx, markWait)
 	defer cancel()
 	for {
-		var at time.Duration
-		m := 0
-		at, m = domain.LastMarkAt(u.sessions.Session().Observed.Marks, message)
-		if m > n {
+		if at, ok := u.sessions.Session().Observed.TraceAt(now); ok {
+			u.sessions.UpdateSession(func(s *domain.Session) { s.Observed.AddMarks(domain.TraceMark{At: at, Message: message}) })
 			return at, nil
 		}
 		if err := u.clock.Sleep(ctx, 20*time.Millisecond); err != nil {
-			return 0, domain.ErrInternal.Wrap(err, "wait for the event "+message+" to reach the index")
+			return 0, domain.ErrInternal.Wrap(err, "wait for the clock of the trace to put the event "+message+" on it")
 		}
 	}
 }

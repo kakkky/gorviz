@@ -52,11 +52,6 @@ func (c *AgentClient) request(ctx context.Context, in agent.Request) (agent.Resp
 	return r, nil
 }
 
-func (c *AgentClient) WriteTraceEvent(ctx context.Context, event string) error {
-	_, err := c.request(ctx, agent.Request{Method: agent.MethodWriteTraceEvent, Event: event})
-	return err
-}
-
 func (c *AgentClient) ResetCoverage(ctx context.Context) error {
 	_, err := c.request(ctx, agent.Request{Method: agent.MethodResetCoverage})
 	return err

@@ -135,3 +135,36 @@ func TestObservationBuilder(t *testing.T) {
 		})
 	}
 }
+
+func TestObservedTraceAt(t *testing.T) {
+	t.Parallel()
+	wall := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		clock  domain.ClockSync
+		wall   time.Time
+		want   time.Duration
+		wantOK bool
+	}{
+		{name: "puts a wall time on the trace from the clock of the trace", clock: domain.ClockSync{At: 3 * time.Second, Wall: wall}, wall: wall.Add(1500 * time.Millisecond), want: 4500 * time.Millisecond, wantOK: true},
+		{name: "puts a time before the trace at its start", clock: domain.ClockSync{At: time.Second, Wall: wall}, wall: wall.Add(-2 * time.Second), want: 0, wantOK: true},
+		{name: "cannot put a time before the clock of the trace arrives", wall: wall},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := domain.Observed{Clock: tt.clock}.TraceAt(tt.wall)
+			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestObservedAddMarks(t *testing.T) {
+	t.Parallel()
+	before := []domain.TraceMark{{At: time.Second, Message: "a"}, {At: 3 * time.Second, Message: "c"}}
+	o := domain.Observed{Marks: before}
+	o.AddMarks(domain.TraceMark{At: 2 * time.Second, Message: "b"})
+	assert.Equal(t, []domain.TraceMark{{At: time.Second, Message: "a"}, {At: 2 * time.Second, Message: "b"}, {At: 3 * time.Second, Message: "c"}}, o.Marks)
+	assert.Len(t, before, 2)
+}

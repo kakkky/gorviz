@@ -53,11 +53,13 @@ type ObservationBuilder struct {
 	touched   map[GoroutineID]bool
 	appAlive  int
 	runnable  int
+	waiting   int
 	threadNow int
 	heapNow   HeapSample
 
 	newMarks      []TraceMark
 	newLeakChecks map[uint64]time.Duration
+	clock         ClockSync
 }
 
 func NewObservationBuilder() *ObservationBuilder {
@@ -82,6 +84,9 @@ func NewObservationBuilder() *ObservationBuilder {
 func (b *ObservationBuilder) Started() bool { return b.started }
 
 // TakeNews は、前に呼んでから trace に現れた出来事と、goroutineleak プロファイルを取った時刻を返す。秒が閉じるのを待たずに伝えるため
+// Clock は、最後に trace に載った trace の時計と壁時計の組
+func (b *ObservationBuilder) Clock() ClockSync { return b.clock }
+
 func (b *ObservationBuilder) TakeNews() ([]TraceMark, map[uint64]time.Duration) {
 	marks, checks := b.newMarks, b.newLeakChecks
 	if len(marks) == 0 && len(checks) == 0 {
@@ -94,7 +99,7 @@ func (b *ObservationBuilder) TakeNews() ([]TraceMark, map[uint64]time.Duration) 
 // open は second 秒目を始める。秒の頭に生きていた goroutine と P の状態を Start・ProcStart に写す
 func (b *ObservationBuilder) open(second int) {
 	b.cur = Observation{Second: second, LeakChecks: map[uint64]time.Duration{}, Stacks: map[StackID][]Frame{},
-		Stats: Bucket{Goroutines: b.appAlive, Runnable: b.runnable, Threads: b.threadNow, HeapObjects: b.heapNow.Objects, HeapGoal: b.heapNow.Goal}}
+		Stats: Bucket{Goroutines: b.appAlive, Runnable: b.runnable, Waiting: b.waiting, Threads: b.threadNow, HeapObjects: b.heapNow.Objects, HeapGoal: b.heapNow.Goal}}
 	b.touched = map[GoroutineID]bool{}
 	for id, g := range b.alive {
 		if g.placed {
@@ -120,7 +125,7 @@ func (b *ObservationBuilder) close(end time.Duration) Observation {
 	}
 	o := b.cur
 	o.Procs = int(b.maxProc) + 1
-	o.Stats.Goroutines, o.Stats.Runnable, o.Stats.Threads = b.appAlive, b.runnable, b.threadNow
+	o.Stats.Goroutines, o.Stats.Runnable, o.Stats.Waiting, o.Stats.Threads = b.appAlive, b.runnable, b.waiting, b.threadNow
 	o.Stats.HeapObjects, o.Stats.HeapGoal = b.heapNow.Objects, b.heapNow.Goal
 	for id := range b.touched {
 		g := b.goroutines[id]
@@ -169,6 +174,9 @@ func (b *ObservationBuilder) Apply(ev trace.Event) []Observation {
 	switch ev.Kind() {
 	case trace.EventSync:
 		clear(b.stackCache)
+		if c := ev.Sync().ClockSnapshot; c != nil {
+			b.clock = ClockSync{At: c.Trace.Sub(b.begin), Wall: c.Wall}
+		}
 	case trace.EventLog:
 		b.log(ev, at)
 	case trace.EventRangeBegin, trace.EventRangeActive, trace.EventRangeEnd:
@@ -454,6 +462,15 @@ func (b *ObservationBuilder) goroutineTransition(ev trace.Event, st trace.StateT
 				b.runnable++
 			} else {
 				b.runnable--
+			}
+		}
+		wasWaiting := g.placed && g.place == PlaceWaiting
+		nowWaiting := change.Place == PlaceWaiting
+		if wasWaiting != nowWaiting {
+			if nowWaiting {
+				b.waiting++
+			} else {
+				b.waiting--
 			}
 		}
 	}

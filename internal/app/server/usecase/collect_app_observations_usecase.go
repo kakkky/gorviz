@@ -8,11 +8,12 @@ import (
 )
 
 // CollectAppObservationsUsecase は agent に、OS のスレッドの数と goroutineleak プロファイルを書き出させる。
-// どちらを今回行うかは domain が決める。goroutineleak プロファイルは取るたびに GC が走るので、間隔を空ける
+// どちらを今回行うかは、待ちの goroutine の数から domain が決める
 type CollectAppObservationsUsecase struct {
-	sessions domain.SessionStore
-	agent    domain.AgentInstructor
-	clock    domain.Clock
+	sessions     domain.SessionStore
+	observations domain.ObservationAccessor
+	agent        domain.AgentInstructor
+	clock        domain.Clock
 }
 
 type CollectAppObservationsUsecaseInput struct{}
@@ -20,7 +21,7 @@ type CollectAppObservationsUsecaseInput struct{}
 type CollectAppObservationsUsecaseOutput struct{}
 
 func (us *UseCase) NewCollectAppObservationsUsecase() *CollectAppObservationsUsecase {
-	return &CollectAppObservationsUsecase{sessions: us.sessions, agent: us.agent, clock: us.clock}
+	return &CollectAppObservationsUsecase{sessions: us.sessions, observations: us.observations, agent: us.agent, clock: us.clock}
 }
 
 func (u *CollectAppObservationsUsecase) Exec(ctx context.Context, _ CollectAppObservationsUsecaseInput) (CollectAppObservationsUsecaseOutput, error) {
@@ -29,7 +30,11 @@ func (u *CollectAppObservationsUsecase) Exec(ctx context.Context, _ CollectAppOb
 		return CollectAppObservationsUsecaseOutput{}, nil
 	}
 	now := u.clock.Now()
-	due := domain.DueCollections(s.Collected, now)
+	waiting := 0
+	if o, ok := u.observations.Get(int(s.Observed.Until/domain.BucketSize) - 1); ok {
+		waiting = o.Stats.Waiting
+	}
+	due := domain.DueCollections(s.Collected, now, waiting)
 	ictx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if due.Threads {
@@ -42,6 +47,6 @@ func (u *CollectAppObservationsUsecase) Exec(ctx context.Context, _ CollectAppOb
 			return CollectAppObservationsUsecaseOutput{}, err
 		}
 	}
-	u.sessions.UpdateSession(func(s *domain.Session) { s.Collected = domain.MarkCollected(s.Collected, due, now) })
+	u.sessions.UpdateSession(func(s *domain.Session) { s.Collected = domain.MarkCollected(s.Collected, due, now, waiting) })
 	return CollectAppObservationsUsecaseOutput{}, nil
 }

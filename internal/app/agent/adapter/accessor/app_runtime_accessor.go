@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/coverage"
+	"runtime/metrics"
 	"runtime/pprof"
 
 	"github.com/kakkky/gorviz/internal/app/agent/domain"
@@ -93,7 +94,12 @@ func (a *AppRuntimeAccessor) ReadGoroutineLeakProfile() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// ThreadCount は作られた OS のスレッドの数。Go の runtime はスレッドをほとんど捨てないので、今の数として使う
+// ThreadCount は、runtime が持っている今の OS のスレッドの数
 func (a *AppRuntimeAccessor) ThreadCount() int {
-	return pprof.Lookup("threadcreate").Count()
+	s := []metrics.Sample{{Name: "/sched/threads/total:threads"}}
+	metrics.Read(s)
+	if s[0].Value.Kind() != metrics.KindUint64 {
+		return 0
+	}
+	return int(s[0].Value.Uint64())
 }

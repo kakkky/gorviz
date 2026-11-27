@@ -79,11 +79,13 @@ func (u *IndexAppRuntimeTraceUsecase) put(o domain.Observation) error {
 
 func (u *IndexAppRuntimeTraceUsecase) publish(b *domain.ObservationBuilder) {
 	marks, checks := b.TakeNews()
-	if marks == nil && checks == nil {
+	clock := b.Clock()
+	if marks == nil && checks == nil && clock == u.sessions.Session().Observed.Clock {
 		return
 	}
 	u.sessions.UpdateSession(func(s *domain.Session) {
-		s.Observed.Marks = append(s.Observed.Marks, marks...)
+		s.Observed.Clock = clock
+		s.Observed.AddMarks(marks...)
 		if s.Observed.LeakChecks == nil {
 			s.Observed.LeakChecks = map[uint64]time.Duration{}
 		} else {

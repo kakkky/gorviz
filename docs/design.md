@@ -64,7 +64,7 @@
 
 - agent
   - アプリをビルドするときに差し込まれ、アプリのプロセスの中で動く
-  - execution trace を server へ流し、server に言われたものを書き出す。判断も、データを溜めることもしない
+  - execution trace を server へ流し、server に頼まれたものを書き出す。判断も、データを溜めることもしない
 - server
   - アプリをビルドして子プロセスとして起動し、終わるまで見届ける
   - シナリオのとおりにアプリへ負荷をかける
@@ -182,7 +182,7 @@ sequenceDiagram
 
     rect rgba(128, 128, 128, 0.12)
         Note over C,App: smoke
-        S->>A: 「smoke 開始」を trace に書かせる
+        S->>S: 「smoke 開始」を時間軸に置く
         S->>App: 各 flow を 1 本ずつ送る
         S-->>C: smoke の結果
     end
@@ -194,7 +194,7 @@ sequenceDiagram
     rect rgba(128, 128, 128, 0.12)
         Note over C,App: ramp-up
         loop level ごと
-            S->>A: 「level 開始」を trace に書かせる
+            S->>S: 「level 開始」を時間軸に置く
             S->>App: 同時に flow を送る
             S-->>C: level の結果
         end
@@ -202,14 +202,14 @@ sequenceDiagram
 
     rect rgba(128, 128, 128, 0.12)
         Note over C,App: cancellation
-        S->>A: 「cancellation 開始」を trace に書かせる
+        S->>S: 「cancellation 開始」を時間軸に置く
         S->>App: 途中で切るリクエストを混ぜて送る
         S-->>C: cancellation の結果
     end
 
     rect rgba(128, 128, 128, 0.12)
         Note over C,App: cooldown
-        S->>A: 「cooldown 開始」を trace に書かせる
+        S->>S: 「cooldown 開始」を時間軸に置く
         S->>S: 負荷を止めて待つ
         S->>A: goroutineleak プロファイルと coverage を書き出させる
         A-->>S: goroutineleak プロファイル・coverage
@@ -289,7 +289,7 @@ sequenceDiagram
 
     L->>C: gorviz stop
     C->>S: セッションの停止を頼む
-    S->>A: 「shutdown 開始」を trace に書かせる
+    S->>S: 「shutdown 開始」を時間軸に置く
     S->>App: 止める合図 (SIGTERM) を送る
     alt 片付けて終わる
         App-->>A: アプリが終わる
@@ -334,7 +334,10 @@ sequenceDiagram
 
 ### 4.1 agent
 
-アプリのプロセスの中で動き、execution trace を server へ流し、server に言われたものを書き出す。
+アプリのプロセスの中で動き、execution trace を server へ流し、server に頼まれたものを書き出す。
+
+- agent から自分で送るのは、trace と、つないだとき・終わるときの合図だけ。ほかは server に頼まれたときだけ返す。重いもの (GC が走る goroutineleak プロファイルなど) でアプリに割り込むのを、server が要るときに絞るため
+- アプリから取るものは、すべて agent を通す。server はアプリのプロセスを直接のぞかない
 
 #### 4.1.1 差し込み方
 
@@ -346,15 +349,14 @@ sequenceDiagram
 
 - 起動したとき
   - アプリより先に動き出し、server に接続する
-  - Go のバージョンと P の数を server に伝える
+  - Go のバージョン・P の数・PID を server に伝える
   - trace を取り始め、接続へ流す
 - 動いている間
   - trace を server へ流し続ける
-  - server に言われたら、phase の始まりなどの出来事を trace に書く
-  - server に言われたら、coverage のカウンタを 0 にする
-  - server に言われたら、coverage を書き出して送る
-  - server に言われたら、goroutineleak プロファイル[^goroutineleak]を書き出して送る
-  - server に言われたら、OS のスレッドの数を送る
+  - server に頼まれたら、coverage のカウンタを 0 にする
+  - server に頼まれたら、coverage を書き出して送る
+  - server に頼まれたら、goroutineleak プロファイル[^goroutineleak]を書き出して送る
+  - server に頼まれたら、今ある OS のスレッドの数を送る
 - 終わるとき
   - アプリが終わったら、残っている goroutine を記録し、trace を止めて書き切る
   - 最後の goroutineleak プロファイルと coverage を送る
@@ -374,12 +376,12 @@ agent が取るのは、アプリのプロセスの中からしか取れない�
 | 取るもの | 取り方 | 使い道 |
 | --- | --- | --- |
 | execution trace | 起動から終わりまで、すべてを流し続ける。直近だけを持つ形にはしない | goroutine の状態・待ち・GC・STW・ヒープ・スケジューラの動き。判定のほとんどすべて |
-| goroutineleak プロファイル | server に言われたとき・終わるとき | `GOROUTINE_LEAK` を誤検知なしで判定する |
-| OS のスレッドの数 | server に言われたとき | `THREAD_EXPLOSION` を判定する |
-| coverage | server に言われたとき・終わるとき | 負荷のあいだに、アプリのどの行を通ったか |
+| goroutineleak プロファイル | server に頼まれたとき・終わるとき | `GOROUTINE_LEAK` を誤検知なしで判定する |
+| 今ある OS のスレッドの数 | server に頼まれたとき | `THREAD_EXPLOSION` を判定する |
+| coverage | server に頼まれたとき・終わるとき | 負荷のあいだに、アプリのどの行を通ったか |
 
-- goroutineleak プロファイルは、取るたびに GC が 1 回走るので、間隔を空けて取る。全 goroutine を書き出す形式は、書き出す間ずっと STW[^stw] になるので使わない
-- phase の始まりは trace の中に書くので、負荷と trace の時刻を突き合わせる処理は要らない
+- goroutineleak プロファイルは、取るたびに GC が 1 回走るので、server が要るときだけ頼む (「[判定する範囲](#4263-判定する範囲)」)。全 goroutine を書き出す形式は、書き出す間ずっと STW[^stw] になるので使わない
+- phase の始まりや shutdown などの出来事は、server が自分の時計で持ち、agent に書かせない。trace には trace の時計と壁時計の組が載るので、server の時刻を trace の上に置ける
 
 #### 4.1.5 制約
 
@@ -568,7 +570,7 @@ Issue は、Go ランタイムの問題を server が観測データの index �
 
 | 範囲 | 判定するもの |
 | --- | --- |
-| `gorviz diagnose` の外も含めた、アプリが動いている間ずっと | 定期的に、直近の時間について `GOROUTINE_LEAK` 以外のすべて。`GOROUTINE_LEAK` は、定期的に取る goroutineleak プロファイルで |
+| `gorviz diagnose` の外も含めた、アプリが動いている間ずっと | 定期的に、直近の時間について `GOROUTINE_LEAK` 以外のすべて。`GOROUTINE_LEAK` は、待ちの goroutine が前に取ったときより増えたときに取る goroutineleak プロファイルで。取るたびに GC が走るので間隔を空け、待ちのほかの goroutine が同じだけ減って数が増えないリークも逃さないよう、増えなくても間隔を空けて取る |
 | ramp-up の level ごと | `GOROUTINE_LEAK` 以外のすべて。どの同時実行数から出始めたかを出す |
 | cancellation | `GOROUTINE_LEAK` 以外のすべて |
 | smoke | phase としては判定しない。1 本ずつ順に流すので取り合いは起きない (定期の判定は動いている) |

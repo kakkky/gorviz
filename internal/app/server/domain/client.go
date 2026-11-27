@@ -6,11 +6,10 @@ import (
 	"time"
 )
 
-// AgentInstructor は agent に指示を送り、返事を待つ
+// AgentInstructor は agent に要求を送り、応答を待つ
 type AgentInstructor interface {
 	WaitConnected(ctx context.Context) error
 	Connected() bool
-	WriteTraceEvent(ctx context.Context, event string) error
 	ResetCoverage(ctx context.Context) error
 	ReadCoverage(ctx context.Context) ([]CoverageFile, error)
 	RequestGoroutineLeaks(ctx context.Context) error

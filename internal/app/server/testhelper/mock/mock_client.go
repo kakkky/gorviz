@@ -155,20 +155,6 @@ func (mr *MockAgentInstructorMockRecorder) WaitDisconnected(ctx any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitDisconnected", reflect.TypeOf((*MockAgentInstructor)(nil).WaitDisconnected), ctx)
 }
 
-// WriteTraceEvent mocks base method.
-func (m *MockAgentInstructor) WriteTraceEvent(ctx context.Context, event string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteTraceEvent", ctx, event)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// WriteTraceEvent indicates an expected call of WriteTraceEvent.
-func (mr *MockAgentInstructorMockRecorder) WriteTraceEvent(ctx, event any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteTraceEvent", reflect.TypeOf((*MockAgentInstructor)(nil).WriteTraceEvent), ctx, event)
-}
-
 // MockAppBuilder is a mock of AppBuilder interface.
 type MockAppBuilder struct {
 	ctrl     *gomock.Controller

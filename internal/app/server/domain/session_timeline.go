@@ -88,18 +88,6 @@ func markAt(marks []TraceMark, message string) (time.Duration, bool) {
 	return 0, false
 }
 
-// LastMarkAt は最後に書いた message の時刻と、それまでに書いた数
-func LastMarkAt(marks []TraceMark, message string) (time.Duration, int) {
-	var at time.Duration
-	n := 0
-	for _, m := range marks {
-		if m.Message == message {
-			at, n = m.At, n+1
-		}
-	}
-	return at, n
-}
-
 // PhaseAt は at を含む phase。phase の外なら空
 func PhaseAt(phases []PhaseRange, at time.Duration) string {
 	for _, p := range phases {

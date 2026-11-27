@@ -46,8 +46,7 @@ func TestDecode(t *testing.T) {
 		name string
 		in   agent.Request
 	}{
-		{name: "decodes an instruction with an event", in: agent.Request{ID: 3, Method: agent.MethodWriteTraceEvent, Event: "phase smoke"}},
-		{name: "decodes an instruction without an event", in: agent.Request{ID: 4, Method: agent.MethodFinish}},
+		{name: "decodes a request", in: agent.Request{ID: 4, Method: agent.MethodFinish}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

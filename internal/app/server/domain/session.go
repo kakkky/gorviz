@@ -61,16 +61,20 @@ type CoverageFile struct {
 	Data []byte
 }
 
-// 外から書き出させる観測データの間隔
+// agent に書き出させる観測データの間隔。goroutineleak プロファイルは取るたびに GC が走るので、
+// 待ちの goroutine が前に取ったときより増えたときだけ、GoroutineLeakMinGap を空けて取る。
+// ほかの待ちが同じだけ減って数が増えないリークを逃さないよう、GoroutineLeakMaxGap ごとには増えなくても取る
 const (
-	ThreadCountEvery   = 2 * time.Second
-	GoroutineLeakEvery = 15 * time.Second
+	ThreadCountEvery    = 2 * time.Second
+	GoroutineLeakMinGap = 15 * time.Second
+	GoroutineLeakMaxGap = 60 * time.Second
 )
 
-// Collected は agent に最後に書き出させた時刻
+// Collected は agent に最後に書き出させた時刻と、goroutineleak プロファイルを取ったときの待ちの goroutine の数
 type Collected struct {
-	Threads time.Time
-	Leaks   time.Time
+	Threads     time.Time
+	Leaks       time.Time
+	LeakWaiting int
 }
 
 type DueCollection struct {
@@ -78,16 +82,21 @@ type DueCollection struct {
 	Leaks   bool
 }
 
-func DueCollections(c Collected, now time.Time) DueCollection {
-	return DueCollection{Threads: now.Sub(c.Threads) >= ThreadCountEvery, Leaks: now.Sub(c.Leaks) >= GoroutineLeakEvery}
+// DueCollections の waiting は、いまの待ちの goroutine の数
+func DueCollections(c Collected, now time.Time, waiting int) DueCollection {
+	sinceLeaks := now.Sub(c.Leaks)
+	return DueCollection{
+		Threads: now.Sub(c.Threads) >= ThreadCountEvery,
+		Leaks:   sinceLeaks >= GoroutineLeakMaxGap || (waiting > c.LeakWaiting && sinceLeaks >= GoroutineLeakMinGap),
+	}
 }
 
-func MarkCollected(c Collected, due DueCollection, now time.Time) Collected {
+func MarkCollected(c Collected, due DueCollection, now time.Time, waiting int) Collected {
 	if due.Threads {
 		c.Threads = now
 	}
 	if due.Leaks {
-		c.Leaks = now
+		c.Leaks, c.LeakWaiting = now, waiting
 	}
 	return c
 }

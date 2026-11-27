@@ -23,7 +23,7 @@ type MessageType uint8
 const (
 	TypeHello                MessageType = 1
 	TypeTrace                MessageType = 2
-	TypeResponse                MessageType = 3
+	TypeResponse             MessageType = 3
 	TypeGoroutineLeakProfile MessageType = 4
 	TypeCoverage             MessageType = 5
 	TypeBye                  MessageType = 6
@@ -49,7 +49,6 @@ type Hello struct {
 type Method string
 
 const (
-	MethodWriteTraceEvent    Method = "write-trace-event"
 	MethodResetCoverage      Method = "reset-coverage"
 	MethodWriteCoverage      Method = "write-coverage"
 	MethodWriteGoroutineLeak Method = "write-goroutine-leak"
@@ -57,11 +56,9 @@ const (
 	MethodFinish             Method = "finish"
 )
 
-// Request の Event は MethodWriteTraceEvent で trace に書く出来事
 type Request struct {
-	ID    uint64 `json:"id"`
+	ID     uint64 `json:"id"`
 	Method Method `json:"method"`
-	Event string `json:"event,omitempty"`
 }
 
 // Response は要求 1 つへの応答。Coverage は MethodWriteCoverage のときだけ載る

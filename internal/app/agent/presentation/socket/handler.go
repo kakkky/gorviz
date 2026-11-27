@@ -34,10 +34,6 @@ type Route struct {
 func (h *Handler) Routes() []Route {
 	return []Route{
 		{
-			Method:  agent.MethodWriteTraceEvent,
-			Handler: NewWriteTraceEventHandler(h.usecase.NewWriteAppRuntimeTraceEventUsecase()),
-		},
-		{
 			Method:  agent.MethodResetCoverage,
 			Handler: NewResetCoverageHandler(h.usecase.NewResetAppCoverageUsecase()),
 		},

@@ -113,9 +113,9 @@ func (u *RunAppUsecase) build(ctx context.Context, in RunAppUsecaseInput) (domai
 
 // shutdown は止める合図を送ったあとも trace を流させ、時間内に終わらなければ最後の観測データを送らせてから強制終了する
 func (u *RunAppUsecase) shutdown(ctx context.Context, proc domain.AppProcess, exited <-chan int, timeout time.Duration) (int, bool) {
-	ictx, cancel := context.WithTimeout(ctx, time.Second)
-	_ = u.agent.WriteTraceEvent(ictx, domain.MarkShutdown)
-	cancel()
+	if at, ok := u.sessions.Session().Observed.TraceAt(u.clock.Now()); ok {
+		u.sessions.UpdateSession(func(s *domain.Session) { s.Observed.AddMarks(domain.TraceMark{At: at, Message: domain.MarkShutdown}) })
+	}
 	if err := proc.Terminate(); err != nil {
 		_ = proc.Kill()
 		return <-exited, false

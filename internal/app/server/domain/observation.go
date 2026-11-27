@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"slices"
 	"sort"
 	"time"
@@ -118,6 +119,7 @@ type Bucket struct {
 	STWMax       time.Duration
 	Goroutines   int
 	Runnable     int
+	Waiting      int
 	Threads      int
 	HeapObjects  uint64
 	HeapGoal     uint64
@@ -157,6 +159,27 @@ type Observed struct {
 	Procs      int
 	Marks      []TraceMark
 	LeakChecks map[uint64]time.Duration
+	Clock      ClockSync
+}
+
+// ClockSync は、trace の上の時刻と、そのときの壁時計の組。server が壁時計で持った出来事を、trace の上に置くため
+type ClockSync struct {
+	At   time.Duration
+	Wall time.Time
+}
+
+// TraceAt は壁時計の時刻を、trace の上の時刻に置き換える。trace の時計と壁時計の組がまだ届いていなければ false
+func (o Observed) TraceAt(wall time.Time) (time.Duration, bool) {
+	if o.Clock.Wall.IsZero() {
+		return 0, false
+	}
+	return max(0, o.Clock.At+wall.Sub(o.Clock.Wall)), true
+}
+
+// AddMarks は出来事を時刻の順に足す。trace に書かれた出来事と server が持った出来事が、届く順と時刻の順が違うため
+func (o *Observed) AddMarks(marks ...TraceMark) {
+	o.Marks = append(slices.Clone(o.Marks), marks...)
+	slices.SortStableFunc(o.Marks, func(a, b TraceMark) int { return cmp.Compare(a.At, b.At) })
 }
 
 func (o Observed) LeakCheckAt(seq uint64) (time.Duration, bool) {
