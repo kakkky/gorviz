@@ -137,7 +137,7 @@ flowchart TD
         direction LR
         StartAppObservationUsecase
         StreamAppRuntimeTraceUsecase
-        RequestUsecases["WriteAppRuntimeTraceEventUsecase など (method ごと)"]
+        RequestUsecases["SendAppGoroutineLeaksUsecase など (method ごと)"]
         FinishAppObservationUsecase
     end
     subgraph domain["domain"]
@@ -245,6 +245,7 @@ flowchart TD
 
 - `httpserver.HTTPServer` は、`api.Handler`・`web.Handler` が並べた handler を mux に登録し、middleware で包んで待ち受ける。各 handler の組み立ては Handler が `*usecase.UseCase` から行う
 - `socket.SocketListener` は agent の接続を受け入れて `socket.SocketConn` にする。接続から読んだもののうち、観測データは `socket.MessageMux` に、要求への応答は `client.AgentClient` に渡る。`socket.MessageMux` は、`socket.Handler` がメッセージの型ごとに並べた handler を、middleware で包んで登録する
+- `CollectAppObservationsWorker` は、`CollectAppObservationsUsecase` を回し、agent にスレッドの数と goroutineleak プロファイルを頼む。いつ頼むかは、観測データの index の待ちの goroutine の数から domain が決める
 - `RunAppWorker` は server が起動したときに `RunAppUsecase` を 1 回だけ呼ぶ。`RunAppUsecase` は、アプリのビルドと起動から、アプリが終わるか server が止まるまでを 1 回の Exec の中で見届ける。アプリのプロセスは、`client.AppClient` が返した値を Exec の中で持つ
 - `client.AppClient` は、アプリとのやり取り (ビルド・子プロセスとしての起動・合図・負荷のリクエスト) をすべて持つ
 - 層の外に `assets/` (CSS・JS・Stimulus controllers) を持つ
