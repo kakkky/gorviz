@@ -11,7 +11,7 @@
 
 ### エントリ (`internal/app/<コンポーネント>/<コンポーネント>.go`)
 
-- `Run(ctx context.Context, cfg *config.Config) error` を 1 つだけ公開する。agent は「[agent](#agent)」の決まりに従う
+- `Run(ctx context.Context, cfg *config.Config) error` を 1 つだけ公開する
 - 各層の `NewXxx` を内側から順に呼んで、依存を引数で渡す。DI のライブラリは使わない
   - adapter が使う接続の driver は adapter より先に、presentation を受けて待ち受ける driver は presentation の後に作る
 - コンストラクタ (`NewXxx`) の中で panic しない。失敗しうるなら error を返す
@@ -19,7 +19,7 @@
 - driver の後始末は、コンストラクタが返す cleanup を `defer` で呼ぶ
 - driver・worker の `Run` は、最後に `scope.Run` の下で起動する
 - 組み立て以外の処理 (値の変換・分岐) は書かない。必要ならその層に置く
-- 層をまたいでパッケージ名がぶつかるとき (driver の `socket` と presentation の `socket` など) は、`<層><パッケージ>` の別名を付ける (`socketpresentation`)。ぶつからないときは別名を使わない
+- 層をまたいでパッケージ名がぶつかるときは、`<層><パッケージ>` の別名を付ける (`socketpresentation`)。ぶつからないときは別名を使わない
 
 ```go
 // cmd/gorviz/main.go (server・cli のどちらか 1 つを呼ぶ)
@@ -72,7 +72,6 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 ## 並行処理
 
-- agent には「[agent](#agent)」の決まりを当てる
 - goroutine は [kakkky/scope](https://github.com/kakkky/scope) の下でだけ起動する。`go` 文を直接書かない
   - 親の ctx が終わったら子も終わり、子がすべて終わるまで親が戻らないようにするため。止まらない goroutine を残さない
 - `sc.Go` に渡す関数は `func(ctx context.Context) error`。エラーを返すと同じ scope の兄弟も止まるので、続けられるエラーは返さない
@@ -145,15 +144,6 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - エラーの取り出しと status への変換は defer で行う
 - 適用の順序は、handler ごとに書かず、待ち受けに渡す側でまとめて組む
 
-### socket
-
-- HTTP と同じ形にする。`handler.go` の `Handler` が `Routes() []Route` を返し、driver の mux が登録する
-  - route の鍵は、agent から server へはメッセージの型 (`agent.MessageType`)、server から agent へは要求の method (`agent.Method`)
-  - handler は 1 つ 1 ファイルで、名前は型か method から付ける (`hello_handler.go`・`write_coverage_handler.go`)
-  - 接続の終わりは route ではないので、`DisconnectHandler()` で別に返す
-- メッセージの読み書きと区切りは `protocol/agent` の関数を呼ぶ。presentation の中で形式を書かない
-- エラーと panic は middleware で拾い、接続を止めない。1 つのメッセージの失敗で、ほかのメッセージを読めなくしないため
-
 ### cli
 
 - サブコマンド・引数・フラグは [urfave/cli](https://github.com/urfave/cli) (v3) で組む
@@ -221,12 +211,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 - domain の interface を実装する。取る・送る・書く・読むまでで、判断はしない
   - 取ってきたものを読み解く (形式の解釈・値を決める) のは domain
-- 外の型 (ライブラリの型・`protocol/agent` のメッセージの型) を domain に漏らさない。adapter の中で domain の型に詰め替える
+- 外の型 (ライブラリの型・pprof の応答の形) を domain に漏らさない。adapter の中で domain の型に詰め替える
 - 外から返ってきたエラーは `ErrInternal.Wrap(err, "...")` で包む。見つからないことが外の応答でわかるときは `ErrNotFound` にする
 
 ### accessor
 
-- 状態 (driver が持つメモリの置き場や trace、runtime が持つ coverage のカウンタや goroutine) を、domain の interface の操作に対応づける
+- 状態 (driver が持つメモリの置き場や trace の区切り) を、domain の interface の操作に対応づける
 - キーの決め方は accessor が持つ。usecase に組ませない
 
 ### client
@@ -234,42 +224,6 @@ func Run(ctx context.Context, cfg *config.Config) error {
 - プロセスの外への送信と、外からの取得を持つ
 - `NewXxxClient(...)` は `(*XxxClient, error)` を返す。失敗しうるかに関わらず形を揃える
 - 接続先は、組み立てで config から渡す
-
-## protocol (`internal/protocol/`)
-
-- 契約を相手ごとに 1 パッケージで持つ。両側のコンポーネントが同じパッケージを使う
-- 両側が揃えるもの (型・定数・線の上の読み書き) だけを置く。片側しか使わない振る舞い (server の起動・HTTP のクライアントなど) は、使う側の adapter に置く
-- `server` は、server を起動するときの環境変数も持つ。起動する cli と起動される server が、同じ名前を使うため
-- `agent` は、標準ライブラリだけで書く。agent と一緒にアプリのビルドに持ち込まれるため
-- メッセージの種類を消すときは、その種類の番号を使い回さない。agent と server の版がずれても読み違えないようにするため
-
-## agent
-
-agent はアプリのモジュールの中でコンパイルされ、アプリと同じプロセスで動く。ほかのコンポーネントと同じ層に分けるが、次の決まりを足す。
-
-### 使えるもの
-
-- 標準ライブラリと `protocol/agent` だけを import する。`kakkky/scope`・envconfig も使わない
-  - テストのファイルはアプリに overlay しないので、テストでは testify・gomock を使ってよい
-- 設定は `os.Getenv` で読む
-
-### 組み立てと並行処理
-
-- アプリの main に overlay する import と defer が、agent の cmd に当たる。cmd は main の defer で `Stop()` を呼ぶだけ
-- `Start()` はエントリの `init` から呼ぶ。main が agent を import するので、main パッケージの初期化より前に観測が始まる
-- エントリは `Start()` と `Stop()` の 2 つだけを公開する。組み立てと driver・worker の起動を持ち、観測を始める・終えるのは `function.FunctionCallHandler` に渡す。エントリから usecase を直接呼ばない
-  - `Start()` は観測が始まってから戻る。観測の始まりより後に、アプリの main を動かすため
-  - `Stop()` は最後の観測データを送り終え、driver の後始末を済ませてから戻る
-- goroutine は `go` 文で起動する。接続が閉じたら、すべての goroutine が終わるようにする
-- server につながらなければ、何も起動せずに戻る
-
-### アプリを止めない
-
-- アプリの処理を止めない
-  - アプリの呼び出しの中でブロックしない。渡し先が詰まっていたら待たない
-  - 呼び出しごとの割り当てを増やさない
-  - panic をアプリに伝えない。agent の中で復旧して、agent だけを止める
-- アプリの終わり方を変えない。シグナルを横取りせず、`Stop()` の中で panic を握りつぶさない (main の panic はそのまま続ける)
 
 ## ログ
 
@@ -281,7 +235,7 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
   ```
 
 - 返すエラーは、その場でログに出さない。最後に受け取った側が 1 回だけ出す
-  - HTTP のリクエストと socket のメッセージのエラーと panic は、middleware が出す
+  - HTTP のリクエストのエラーと panic は、middleware が出す
   - worker の周期のエラーは worker が出す
   - 起動・停止のエラーは `main` が出す
   - その場で出すのは、エラーを処理して先に進むときだけ
@@ -291,10 +245,10 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
 
 - 中身を表さない名前 (`shared`・`common`・`util`・`types`・`helper`) のパッケージ・ファイルを作らない
 - gorviz 自身は「コンポーネント」、観測される利用者のプログラムは「アプリ」と呼ぶ。名前でもこの区別を守る
-- usecase は、何の何をどうするかが分かる名前にする。`<動詞><何の><何>Usecase` (`CollectAppObservationsUsecase`・`StreamAppRuntimeTraceUsecase`)
+- usecase は、何の何をどうするかが分かる名前にする。`<動詞><何の><何>Usecase` (`CollectAppObservationsUsecase`・`FetchAppRuntimeTraceUsecase`)
 - usecase の Input / Output は usecase 名 + `Input` / `Output`
 - 値オブジェクトの型名は単数形で、型 + 意味 (`IssueID`・`GoroutineID` など)
-- パッケージ名は短い一語にし、何のものかは型名に含める (`kvs.InMemoryKVS`・`socket.SocketConn`・`accessor.IssueAccessor`)。対象の名前でパッケージを切らない (`issue.IssueAccessor` にしない)
+- パッケージ名は短い一語にし、何のものかは型名に含める (`kvs.InMemoryKVS`・`tracestream.TraceStream`・`accessor.IssueAccessor`)。対象の名前でパッケージを切らない (`issue.IssueAccessor` にしない)
 
 ## コメント
 
@@ -315,9 +269,6 @@ agent はアプリのモジュールの中でコンパイルされ、アプリ�
 - adapter
   - accessor は、driver の実物のメモリの置き場を作って確かめる
   - client は相手に合わせて、`httptest`・`net.Pipe` を使う
-- protocol
-  - `agent` は、書いたメッセージが同じ値で読めることを確かめる
-  - コンポーネント同士の通信は、両方を組み立てて確かめる (コンポーネントをまたぐ import の例外)
 - driver・presentation
   - 書かない。組み立てて動かす確認で足りる。テストのために本体を歪めない
 
