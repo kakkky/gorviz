@@ -67,17 +67,17 @@ func replayWindow(w domain.SchedulerWindow, leaks []domain.LeakStack) string {
 	for g, e := range w.Entries {
 		out.Entries[strconv.FormatInt(int64(g), 10)] = fns.of(e)
 	}
-	for g := range w.Agents {
-		out.Agents = append(out.Agents, int64(g))
+	for g := range w.Gorviz {
+		out.Gorviz = append(out.Gorviz, int64(g))
 	}
-	slices.Sort(out.Agents)
+	slices.Sort(out.Gorviz)
 	for _, l := range leaks {
 		for _, g := range l.Goroutines {
 			out.Leaks = append(out.Leaks, components.ReplayLeak{G: int64(g), Certainty: l.Certainty, Count: l.Count, Of: l.Of})
 		}
 	}
 	out.Functions, out.Reasons = orEmpty(fns.names), orEmpty(reasons.names)
-	out.Events, out.ProcEvents, out.STW, out.GCMark, out.Leaks, out.Agents, out.Lanes = orEmpty(out.Events), orEmpty(out.ProcEvents), orEmpty(out.STW), orEmpty(out.GCMark), orEmpty(out.Leaks), orEmpty(out.Agents), orEmpty(out.Lanes)
+	out.Events, out.ProcEvents, out.STW, out.GCMark, out.Leaks, out.Gorviz, out.Lanes = orEmpty(out.Events), orEmpty(out.ProcEvents), orEmpty(out.STW), orEmpty(out.GCMark), orEmpty(out.Leaks), orEmpty(out.Gorviz), orEmpty(out.Lanes)
 	b, err := json.Marshal(out)
 	if err != nil {
 		return "{}"

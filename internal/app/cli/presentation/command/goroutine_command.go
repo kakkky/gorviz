@@ -6,8 +6,6 @@ import (
 	"net/url"
 
 	"github.com/urfave/cli/v3"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func (c *Command) goroutineCommand() *cli.Command {
@@ -30,5 +28,5 @@ func (c *Command) goroutine(_ context.Context, cmd *cli.Command) error {
 		q.Set("from", f)
 		q.Set("to", t)
 	}
-	return c.print(cmd, http.MethodGet, pathOf(server.GoroutineEndpoint, id), q, nil)
+	return c.print(cmd, http.MethodGet, pathOf(goroutineEndpoint, id), q, nil)
 }

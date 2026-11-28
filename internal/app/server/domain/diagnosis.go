@@ -43,7 +43,7 @@ type DiagnosedIssue struct {
 	Occurrences int
 }
 
-// DiagnosisSummary は診断 1 回の要約。rps・レイテンシ・ステータスの内訳と coverage は、返したら持たない
+// DiagnosisSummary は診断 1 回の要約。rps・レイテンシ・ステータスの内訳は、返したら持たない
 type DiagnosisSummary struct {
 	From         time.Duration
 	To           time.Duration
@@ -51,7 +51,6 @@ type DiagnosisSummary struct {
 	Smoke        []SmokeResult
 	Levels       []LoadStats
 	Cancellation *LoadStats
-	Coverage     *CoverageReport
 	Issues       []DiagnosedIssue
 	Stopped      string
 	AppExited    bool

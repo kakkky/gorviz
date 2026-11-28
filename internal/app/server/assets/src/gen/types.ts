@@ -34,7 +34,7 @@ export interface ReplayWindow {
   stw: ReplayRange[]
   gcMark: ReplayRange[]
   leaks: ReplayLeak[]
-  agents: number[]
+  gorviz: number[]
   truncated: boolean
   ended: boolean
 }

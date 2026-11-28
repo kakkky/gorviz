@@ -14,7 +14,7 @@ Without --from/--to, the range is the life of the goroutine (up to the last minu
   over the range it made this one wait. For a lock this is the side that held the lock.
 - createdBy: the function with the go statement and its file:line.
 - leak: whether the runtime judged it leaked, with the certainty.
-- agent: true for the goroutines of the gorviz agent. They are shown but never counted in issues.
+- gorviz: true for the goroutines of gorviz (the pprof it opened in the app and the execution trace it runs). They are shown but never counted in issues.
 - traceTruncated: the app ended on the spot (os.Exit, log.Fatal, a panic outside main) and the end of the trace is missing.
 
 ## Main causes
@@ -32,7 +32,7 @@ Without --from/--to, the range is the life of the goroutine (up to the last minu
 ## Certainty
 
 - FACT: decided from the state changes in the execution trace.
-- INFERENCE: the goroutine was already waiting before the agent started, so the wait reason was guessed from its stack.
+- INFERENCE: the goroutine was already waiting before the trace started, so the wait reason was guessed from its stack.
   For leaks, more goroutines waited at the same place than leaked, so the ones waiting the longest were picked.
 
 ## Limits

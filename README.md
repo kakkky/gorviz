@@ -2,8 +2,8 @@
 
 **Diagnose the health of the Go runtime of your app, on your machine — built for LLM agents, readable by humans.**
 
-gorviz builds your Go app with a small agent in it, runs it, sends it load from a declarative scenario, and watches the
-execution trace from start to shutdown. It reports **issues of the Go runtime** — goroutine leaks, lock contention,
+gorviz builds your Go app with `net/http/pprof` opened on a private unix socket, runs it, sends it load from a
+declarative scenario, and keeps taking the execution trace from start to shutdown. It reports **issues of the Go runtime** — goroutine leaks, lock contention,
 waiting for the CPU, GC pressure, long stop-the-world pauses and too many OS threads — down to the goroutines behind
 them and what each one was blocked on. Then it lets you replay what the scheduler did, as an animation of G, P and M.
 
@@ -34,8 +34,9 @@ $ gorviz issue I3
 
 ## Features
 
-- **No changes to your code.** The agent is added at build time through `go build -overlay`. It only uses the standard
-  library, so it adds no dependency to your module.
+- **No changes to your code.** One file that opens `net/http/pprof` on a unix socket is added at build time through
+  `go build -overlay`. It only uses the standard library, so it adds no dependency to your module, and it uses none of
+  your ports.
 - **Fixed load phases.** `smoke` (each flow once), `ramp-up` (4 levels of concurrency based on GOMAXPROCS),
   `cancellation` (30% of requests cut by the client — where leaks usually hide) and `cooldown` (what is left after the load).
   A diagnosis takes about 35 seconds every time, plus the time smoke takes.
@@ -45,8 +46,6 @@ $ gorviz issue I3
 - **Honest about certainty.** Each finding is `FACT` (said by the runtime or recorded in the trace) or `INFERENCE`
   (inferred from a threshold, a trend or a stack). Goroutine leaks come from the runtime's own `goroutineleak` profile
   (Go 1.26+), so they have no false positives.
-- **Coverage of the load.** The summary lists the lines the app ran under load, so "no issue" can be told apart from
-  "the scenario never reached that code".
 - **Made for LLM agents.** Every command answers in [TOON](https://github.com/toon-format/toon) (or JSON), bounded in
   size, with the IDs and the next commands to follow, and the GUI URL of the same thing for a human to check.
   The documents are built into the CLI (`gorviz docs`).
@@ -64,7 +63,7 @@ flowchart LR
     end
     subgraph app["your app (child process)"]
         code["your code"]
-        agent["gorviz agent"]
+        pprof["net/http/pprof (added)"]
     end
     browser["browser (GUI)"]
 
@@ -72,14 +71,15 @@ flowchart LR
     cli -->|"HTTP API over a unix socket"| server
     server -->|"go build -overlay, start, SIGTERM"| app
     server -->|"load (HTTP)"| code
-    agent -->|"execution trace over a unix socket"| server
+    server -->|"execution trace and profiles over a unix socket"| pprof
     browser -->|"HTTP"| server
 ```
 
-- `gorviz run` starts the server as a daemon. The server builds the app with the agent and coverage, and starts it.
-- The agent starts tracing before your `main` runs, streams the execution trace to the server, and writes what the
-  server asks for (phase marks, the goroutineleak profile, coverage, the number of threads). It judges nothing and keeps nothing.
-- The server turns the trace into an index in memory, judges issues every second and per phase, and answers the CLI and the GUI.
+- `gorviz run` starts the server as a daemon. The server builds the app with pprof opened on a unix socket, and starts it.
+- The server takes the execution trace from that pprof in chunks of 250ms, one after another, with the number of OS
+  threads after each chunk, and the goroutineleak profile when it is due. The app only answers; it judges nothing and keeps nothing.
+- The server joins the chunks into one timeline, turns it into an index in memory, judges issues every second and per
+  phase, and answers the CLI and the GUI. Phase marks are kept on the server's clock and put on the trace.
 - `gorviz stop` sends SIGTERM and keeps tracing until the app exits, so a shutdown that never finishes and goroutines
   left behind show up. All data of the session lives in memory and is gone after `gorviz stop`.
 
@@ -160,7 +160,7 @@ gorviz diagnose                 # a daemon, a batch or a CLI: no load, watch unt
 ```
 
 A line is printed when each phase ends, then a summary with the issues and the phase each started in, statuses and
-latencies per ramp-up level, cancellation counts and coverage. The exit code is `0` (no issues), `1` (issues) or
+latencies per ramp-up level and cancellation counts. The exit code is `0` (no issues), `1` (issues) or
 `2` (could not diagnose).
 
 ### Read the issues
@@ -178,7 +178,7 @@ Times are seconds since the session started. Every answer has the GUI URL of the
 
 | Command | What it does |
 | --- | --- |
-| `gorviz run <package> [-- args]` | Start the server as a daemon, build the app with the agent and start it |
+| `gorviz run <package> [-- args]` | Start the server as a daemon, build the app with pprof opened and start it |
 | `gorviz stop` | Watch the shutdown of the app, report what was left, and end the session |
 | `gorviz status` | Whether the app runs (or its exit code), the GUI URL and the diagnosed ranges |
 | `gorviz diagnose [scenario.yaml \| -]` | Run the app, under load when a scenario is given, and report issues |
@@ -226,10 +226,13 @@ read the code at the reported file:line, and give me the cause and the GUI URL s
 ## Limitations
 
 - Load is HTTP only.
-- Goroutines created before the agent starts (by `init` of imported packages) have no record of their creation;
+- Goroutines created before the trace starts (by `init` of imported packages) have no record of their creation;
   their wait reason is inferred from the stack (`INFERENCE`).
-- When the app ends on the spot (`os.Exit`, `log.Fatal`, a panic outside `main`), the end of the trace is missing.
-  gorviz says so on the timeline and in the answers.
+- The trace is taken in chunks, so the events in the few milliseconds between two chunks are missing. The state of
+  each goroutine is taken again at the head of every chunk, so states do not break.
+- The chunk being taken when the app exits never arrives, so the last 250ms or less of the trace is always missing.
+  gorviz says so on the timeline and in the answers, and judges what was left at the shutdown from the last
+  goroutineleak profile it took (one right before SIGTERM, then one every second).
 - The run queue a runnable goroutine waited in is not in the execution trace, so the replay infers it.
 
 ## Development

@@ -10,7 +10,6 @@
 package mock
 
 import (
-	io "io"
 	reflect "reflect"
 	time "time"
 
@@ -209,55 +208,42 @@ func (m *MockTraceStream) EXPECT() *MockTraceStreamMockRecorder {
 }
 
 // AppendTrace mocks base method.
-func (m *MockTraceStream) AppendTrace(p []byte) error {
+func (m *MockTraceStream) AppendTrace(c domain.TraceChunk) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AppendTrace", p)
+	ret := m.ctrl.Call(m, "AppendTrace", c)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AppendTrace indicates an expected call of AppendTrace.
-func (mr *MockTraceStreamMockRecorder) AppendTrace(p any) *gomock.Call {
+func (mr *MockTraceStreamMockRecorder) AppendTrace(c any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendTrace", reflect.TypeOf((*MockTraceStream)(nil).AppendTrace), p)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendTrace", reflect.TypeOf((*MockTraceStream)(nil).AppendTrace), c)
 }
 
 // CloseTrace mocks base method.
-func (m *MockTraceStream) CloseTrace(broken bool) {
+func (m *MockTraceStream) CloseTrace() {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "CloseTrace", broken)
+	m.ctrl.Call(m, "CloseTrace")
 }
 
 // CloseTrace indicates an expected call of CloseTrace.
-func (mr *MockTraceStreamMockRecorder) CloseTrace(broken any) *gomock.Call {
+func (mr *MockTraceStreamMockRecorder) CloseTrace() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseTrace", reflect.TypeOf((*MockTraceStream)(nil).CloseTrace), broken)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseTrace", reflect.TypeOf((*MockTraceStream)(nil).CloseTrace))
 }
 
-// TraceBroken mocks base method.
-func (m *MockTraceStream) TraceBroken() bool {
+// NextTrace mocks base method.
+func (m *MockTraceStream) NextTrace() (domain.TraceChunk, bool) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TraceBroken")
-	ret0, _ := ret[0].(bool)
-	return ret0
+	ret := m.ctrl.Call(m, "NextTrace")
+	ret0, _ := ret[0].(domain.TraceChunk)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
 }
 
-// TraceBroken indicates an expected call of TraceBroken.
-func (mr *MockTraceStreamMockRecorder) TraceBroken() *gomock.Call {
+// NextTrace indicates an expected call of NextTrace.
+func (mr *MockTraceStreamMockRecorder) NextTrace() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceBroken", reflect.TypeOf((*MockTraceStream)(nil).TraceBroken))
-}
-
-// TraceReader mocks base method.
-func (m *MockTraceStream) TraceReader() io.Reader {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TraceReader")
-	ret0, _ := ret[0].(io.Reader)
-	return ret0
-}
-
-// TraceReader indicates an expected call of TraceReader.
-func (mr *MockTraceStreamMockRecorder) TraceReader() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TraceReader", reflect.TypeOf((*MockTraceStream)(nil).TraceReader))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NextTrace", reflect.TypeOf((*MockTraceStream)(nil).NextTrace))
 }

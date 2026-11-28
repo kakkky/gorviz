@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
@@ -39,7 +40,7 @@ func (u *DetectAppIssuesUsecase) Exec(_ context.Context, _ DetectAppIssuesUsecas
 		pending = append(pending, b.Pending...)
 	})
 	var found []phasedDetection
-	var done []uint64
+	var done []time.Duration
 	var next time.Duration
 	observed := u.sessions.Session().Observed
 	phases := domain.PhasesOf(observed.Marks, observed.Until)
@@ -56,23 +57,19 @@ func (u *DetectAppIssuesUsecase) Exec(_ context.Context, _ DetectAppIssuesUsecas
 		next = to
 	}
 	for _, p := range pending {
-		at, ok := observed.LeakCheckAt(p.Seq)
-		if !ok && !observed.Ended {
+		if p.At >= observed.Until && !observed.Ended {
 			continue
 		}
-		if ok && at >= observed.Until && !observed.Ended {
-			continue
-		}
-		done = append(done, p.Seq)
-		if !ok {
-			continue
-		}
+		done = append(done, p.At)
+		// trace の末尾は欠けるので、最後の区切りより後に取ったプロファイルは、最後の区切りの状態と突き合わせ、trace の最後の phase に入れる
+		at := min(p.At, max(0, observed.Until-1))
 		set, err := observationSet(u.observations, u.sessions, at, at)
 		if err != nil {
 			return DetectAppIssuesUsecaseOutput{}, err
 		}
+		phase := domain.PhaseAt(phases, min(p.At, observed.Until))
 		for _, d := range domain.MatchLeaks(set, at, p.Stacks) {
-			found = append(found, phasedDetection{d: d, phase: domain.PhaseAt(phases, at)})
+			found = append(found, phasedDetection{d: d, phase: phase})
 		}
 	}
 	left := 0
@@ -83,7 +80,7 @@ func (u *DetectAppIssuesUsecase) Exec(_ context.Context, _ DetectAppIssuesUsecas
 		b.DetectedUntil = max(b.DetectedUntil, next)
 		var rest []domain.PendingLeakCheck
 		for _, p := range b.Pending {
-			if !containsSeq(done, p.Seq) {
+			if !slices.Contains(done, p.At) {
 				rest = append(rest, p)
 			}
 		}
@@ -91,13 +88,4 @@ func (u *DetectAppIssuesUsecase) Exec(_ context.Context, _ DetectAppIssuesUsecas
 		left = len(rest)
 	})
 	return DetectAppIssuesUsecaseOutput{DetectedUntil: next, PendingLeaks: left}, nil
-}
-
-func containsSeq(seqs []uint64, s uint64) bool {
-	for _, v := range seqs {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

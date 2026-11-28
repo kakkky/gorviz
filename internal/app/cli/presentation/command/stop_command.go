@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v3"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func (c *Command) stopCommand() *cli.Command {
@@ -15,17 +13,17 @@ func (c *Command) stopCommand() *cli.Command {
 }
 
 func (c *Command) stop(_ context.Context, cmd *cli.Command) error {
-	if err := c.print(cmd, http.MethodPost, server.StopEndpoint, nil, nil); err != nil {
+	if err := c.print(cmd, http.MethodPost, stopEndpoint, nil, nil); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := c.do(context.Background(), cmd, http.MethodGet, server.StatusEndpoint, nil, nil, server.MediaJSON)
+		resp, err := c.do(context.Background(), cmd, http.MethodGet, statusEndpoint, nil, nil, mediaJSON)
 		if err != nil {
 			return nil
 		}
 		resp.Body.Close()
 		time.Sleep(100 * time.Millisecond)
 	}
-	return cli.Exit("the gorviz server did not stop; see "+server.LogPath(), 2)
+	return cli.Exit("the gorviz server did not stop; see "+c.cfg.ServerLog, 2)
 }

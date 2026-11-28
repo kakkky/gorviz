@@ -151,11 +151,11 @@ func Base(vm BaseViewModel) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<body><header class=\"app\"><h1><a href=\"/\">gorviz</a></h1><span class=\"agent-switch\" title=\"the app of this session\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<body><header class=\"app\"><h1><a href=\"/\">gorviz</a></h1><span class=\"app-switch\" title=\"the app of this session\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var6 = []any{"agent-dot", templ.KV("connected", vm.Running)}
+		var templ_7745c5c3_Var6 = []any{"app-dot", templ.KV("connected", vm.Running)}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var6...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

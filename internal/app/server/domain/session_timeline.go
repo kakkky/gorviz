@@ -4,17 +4,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
-// trace に書く出来事の名前
+// trace の上に置く出来事の名前
 const (
 	MarkDiagnoseBegin = "diagnose begin"
 	MarkDiagnoseEnd   = "diagnose end"
 	MarkShutdown      = "shutdown"
 	markPhasePrefix   = "phase "
-	markAppExit       = agent.EventAppExit
 )
 
 const (
@@ -22,7 +19,6 @@ const (
 	PhaseCancellation = "cancellation"
 	PhaseCooldown     = "cooldown"
 	PhaseShutdown     = "shutdown"
-	PhaseAppExit      = "app exit"
 )
 
 func RampUpPhase(level int) string {
@@ -71,10 +67,9 @@ func PhasesOf(marks []TraceMark, last time.Duration) []PhaseRange {
 		}
 		out = append(out, PhaseRange{Name: strings.TrimPrefix(m.Message, markPhasePrefix), From: m.At, To: to})
 	}
+	// trace の末尾は欠けるので、すぐ終わるアプリでは止める合図が trace の最後より後になる。それでも shutdown を空にしない
 	if at, ok := markAt(marks, MarkShutdown); ok {
-		out = append(out, PhaseRange{Name: PhaseShutdown, From: at, To: last + 1})
-	} else if at, ok := markAt(marks, markAppExit); ok {
-		out = append(out, PhaseRange{Name: PhaseAppExit, From: at, To: last + 1})
+		out = append(out, PhaseRange{Name: PhaseShutdown, From: min(at, last), To: last + 1})
 	}
 	return out
 }

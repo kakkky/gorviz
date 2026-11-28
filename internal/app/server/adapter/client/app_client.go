@@ -3,58 +3,48 @@ package client
 import (
 	"bytes"
 	"context"
+	"debug/buildinfo"
 	"encoding/json"
 	"io"
-	"maps"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/protocol/agent"
 )
 
-// AppClient はアプリとのやり取り (ビルド・子プロセスとしての起動・合図・負荷のリクエスト) を持つ
+// AppClient はアプリとのやり取り (ビルド・子プロセスとしての起動・合図・pprof からの取得・負荷のリクエスト) を持つ
 type AppClient struct {
-	socketPath    string
-	buildDir      string
-	transport     *http.Transport
-	agentFiles    map[string][]byte
-	protocolFiles map[string][]byte
+	pprofSocket string
+	buildDir    string
+	transport   *http.Transport
+	pprof       *http.Client
 }
 
-// NewAppClient の agent・protocol は、ビルドに差し込む agent と agent との決まりのファイル (根からのパスと中身)
-func NewAppClient(socketPath, buildDir string, agent, protocol map[string][]byte) (*AppClient, error) {
+// NewAppClient の pprofSocket は、アプリに pprof を開かせる unix socket
+func NewAppClient(pprofSocket, buildDir string) (*AppClient, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.MaxIdleConns = 0
 	tr.MaxIdleConnsPerHost = 1024
 	tr.MaxConnsPerHost = 0
-	return &AppClient{socketPath: socketPath, buildDir: buildDir, transport: tr, agentFiles: agent, protocolFiles: protocol}, nil
-}
-
-func (c *AppClient) AgentFiles() ([]domain.SourceFile, []domain.SourceFile) {
-	return sourceFiles(c.agentFiles), sourceFiles(c.protocolFiles)
-}
-
-func sourceFiles(files map[string][]byte) []domain.SourceFile {
-	out := make([]domain.SourceFile, 0, len(files))
-	for _, p := range slices.Sorted(maps.Keys(files)) {
-		out = append(out, domain.SourceFile{Path: p, Data: files[p]})
-	}
-	return out
+	pprof := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", pprofSocket)
+	}}}
+	return &AppClient{pprofSocket: pprofSocket, buildDir: buildDir, transport: tr, pprof: pprof}, nil
 }
 
 type goListPackage struct {
 	ImportPath string
 	Dir        string
 	Name       string
-	GoFiles    []string
 	Module     *struct {
 		Path string
 		Dir  string
@@ -70,7 +60,7 @@ func goCommand(ctx context.Context, in domain.BuildAppInput, args ...string) *ex
 
 func (c *AppClient) LoadMainPackage(ctx context.Context, in domain.BuildAppInput) (domain.MainPackage, domain.AppBuild, error) {
 	var stderr bytes.Buffer
-	cmd := goCommand(ctx, in, "list", "-json=ImportPath,Dir,Name,GoFiles,Module", in.Package)
+	cmd := goCommand(ctx, in, "list", "-json=ImportPath,Dir,Name,Module", in.Package)
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
@@ -87,32 +77,11 @@ func (c *AppClient) LoadMainPackage(ctx context.Context, in domain.BuildAppInput
 		return domain.MainPackage{}, domain.AppBuild{}, domain.ErrInvalidArgument.With(in.Package + " is not in a Go module")
 	}
 	main := domain.MainPackage{ImportPath: p.ImportPath, Dir: p.Dir}
-	for _, f := range p.GoFiles {
-		path := filepath.Join(p.Dir, f)
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return domain.MainPackage{}, domain.AppBuild{}, domain.ErrInternal.Wrap(err, "read main package")
-		}
-		main.Files = append(main.Files, domain.SourceFile{Path: path, Data: b})
-	}
-	stderr.Reset()
-	deps := goCommand(ctx, in, "list", "-deps", "-f", `{{if .Module}}{{if .Module.Main}}{{.ImportPath}}{{end}}{{end}}`, in.Package)
-	deps.Stderr = &stderr
-	out, err = deps.Output()
-	if err != nil {
-		return domain.MainPackage{}, domain.AppBuild{}, domain.ErrInvalidArgument.With("go list -deps " + in.Package + ": " + strings.TrimSpace(stderr.String()))
-	}
 	build := domain.AppBuild{WorkDir: in.Dir, Binary: filepath.Join(c.buildDir, "app"), ModulePath: p.Module.Path, ModuleDir: p.Module.Dir, MainPackage: p.ImportPath, MainDir: p.Dir}
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			build.CoverPackages = append(build.CoverPackages, l)
-		}
-	}
 	return main, build, nil
 }
 
-// BuildApp は overlay で agent を差し込み、coverage を取れるようにビルドする。
-// go build -cover は cover ツールに overlay する前のファイルを渡すので、-toolexec で cover ツールの入力だけを overlay したファイルに差し替える
+// BuildApp は overlay で pprof を開く処理を差し込んでビルドする
 func (c *AppClient) BuildApp(ctx context.Context, in domain.BuildAppInput, build domain.AppBuild, overlay domain.Overlay) error {
 	dir := filepath.Join(c.buildDir, "overlay")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -134,16 +103,7 @@ func (c *AppClient) BuildApp(ctx context.Context, in domain.BuildAppInput, build
 	if err := os.WriteFile(overlayFile, b, 0o644); err != nil {
 		return domain.ErrInternal.Wrap(err, "write overlay")
 	}
-	args := []string{"build", "-overlay", overlayFile, "-o", build.Binary}
-	if len(build.CoverPackages) > 0 {
-		toolexec, err := c.writeCoverToolexec(replace)
-		if err != nil {
-			return err
-		}
-		args = append(args, "-toolexec", toolexec, "-cover", "-covermode=atomic", "-coverpkg="+strings.Join(build.CoverPackages, ","))
-	}
-	args = append(args, in.Package)
-	cmd := goCommand(ctx, in, args...)
+	cmd := goCommand(ctx, in, "build", "-overlay", overlayFile, "-o", build.Binary, in.Package)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return domain.ErrInvalidArgument.With(strings.TrimSpace(string(out)))
@@ -151,22 +111,12 @@ func (c *AppClient) BuildApp(ctx context.Context, in domain.BuildAppInput, build
 	return nil
 }
 
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-// writeCoverToolexec は、cover ツールに渡るファイルのうち overlay したものを差し替えて、ツールをそのまま呼ぶスクリプトを書く
-func (c *AppClient) writeCoverToolexec(replace map[string]string) (string, error) {
-	var cases strings.Builder
-	for from, to := range replace {
-		cases.WriteString("    " + shellQuote(from) + ") a=" + shellQuote(to) + " ;;\n")
+func (c *AppClient) GoVersion(build domain.AppBuild) (string, error) {
+	info, err := buildinfo.ReadFile(build.Binary)
+	if err != nil {
+		return "", domain.ErrInternal.Wrap(err, "read the build info of the app")
 	}
-	script := "#!/bin/sh\ntool=\"$1\"; shift\ncase \"$(basename \"$tool\")\" in\ncover|cover.exe)\n  n=$#\n  while [ $n -gt 0 ]; do\n    a=\"$1\"; shift\n    case \"$a\" in\n" + cases.String() + "    esac\n    set -- \"$@\" \"$a\"\n    n=$((n-1))\n  done\n  ;;\nesac\nexec \"$tool\" \"$@\"\n"
-	path := filepath.Join(c.buildDir, "toolexec.sh")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		return "", domain.ErrInternal.Wrap(err, "write the toolexec script")
-	}
-	return path, nil
+	return info.GoVersion, nil
 }
 
 type appProcess struct {
@@ -176,13 +126,16 @@ type appProcess struct {
 func (c *AppClient) StartApp(_ context.Context, build domain.AppBuild, args []string, env []string) (domain.AppProcess, error) {
 	cmd := exec.Command(build.Binary, args...)
 	cmd.Dir = build.WorkDir
-	cmd.Env = append(append([]string{}, env...), agent.EnvSocket+"="+c.socketPath)
+	_ = os.Remove(c.pprofSocket)
+	cmd.Env = append(append([]string{}, env...), domain.PprofSocketEnv+"="+c.pprofSocket)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, domain.ErrInvalidArgument.Wrap(err, "start the app")
 	}
 	return &appProcess{cmd: cmd}, nil
 }
+
+func (p *appProcess) PID() int { return p.cmd.Process.Pid }
 
 func (p *appProcess) Terminate() error {
 	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
@@ -201,6 +154,53 @@ func (p *appProcess) Kill() error {
 func (p *appProcess) Wait() int {
 	_ = p.cmd.Wait()
 	return p.cmd.ProcessState.ExitCode()
+}
+
+// maxProfileBytes は trace 以外のプロファイルを読む上限。件数とスタックだけなので、これを超えるのは相手がおかしいとき
+const maxProfileBytes = 16 << 20
+
+// FetchTrace は length の間 trace を取る。pprof は取り終えてから本文を書き切るので、アプリが途中で終われば取れない
+func (c *AppClient) FetchTrace(ctx context.Context, length time.Duration) ([]byte, error) {
+	seconds := strconv.FormatFloat(length.Seconds(), 'f', -1, 64)
+	return c.fetchProfile(ctx, "/debug/pprof/trace?seconds="+seconds, length+5*time.Second, -1)
+}
+
+func (c *AppClient) FetchThreadCreateProfile(ctx context.Context) ([]byte, error) {
+	return c.fetchProfile(ctx, "/debug/pprof/threadcreate?debug=1", 5*time.Second, maxProfileBytes)
+}
+
+// FetchGoroutineLeakProfile はリークした goroutine だけを、スタックごとの件数 (debug=1) で取る
+func (c *AppClient) FetchGoroutineLeakProfile(ctx context.Context) ([]byte, error) {
+	return c.fetchProfile(ctx, "/debug/pprof/goroutineleak?debug=1", 10*time.Second, maxProfileBytes)
+}
+
+func (c *AppClient) fetchProfile(ctx context.Context, path string, timeout time.Duration, limit int64) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://app"+path, nil)
+	if err != nil {
+		return nil, domain.ErrInternal.Wrap(err, "build the pprof request")
+	}
+	resp, err := c.pprof.Do(req)
+	if err != nil {
+		return nil, domain.ErrInternal.Wrap(err, "request "+path)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, domain.ErrNotFound.With(path + " is not served by the app")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, domain.ErrInternal.With(path + " returned " + resp.Status)
+	}
+	var r io.Reader = resp.Body
+	if limit > 0 {
+		r = io.LimitReader(resp.Body, limit)
+	}
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return nil, domain.ErrInternal.Wrap(err, "read "+path)
+	}
+	return body, nil
 }
 
 type loadClient struct {

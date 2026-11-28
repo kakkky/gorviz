@@ -23,7 +23,7 @@ type ObservationSet struct {
 	buckets    []Bucket
 }
 
-// Procs は P の数。agent が伝えた数がなければ、trace で見た P の数
+// Procs は P の数。trace で見た P の数
 func (s *ObservationSet) Procs() int {
 	if s.observed.Procs > 0 {
 		return s.observed.Procs

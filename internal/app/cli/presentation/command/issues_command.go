@@ -6,8 +6,6 @@ import (
 	"net/url"
 
 	"github.com/urfave/cli/v3"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func (c *Command) issuesCommand() *cli.Command {
@@ -25,5 +23,5 @@ func (c *Command) issues(_ context.Context, cmd *cli.Command) error {
 			q.Set(f, v)
 		}
 	}
-	return c.print(cmd, http.MethodGet, server.IssuesEndpoint, q, nil)
+	return c.print(cmd, http.MethodGet, issuesEndpoint, q, nil)
 }

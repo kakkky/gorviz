@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 type errorBody struct {
@@ -26,7 +25,7 @@ func (ErrorWriter) WriteError(rw http.ResponseWriter, r *http.Request, status in
 		return
 	}
 	rw.Header().Set("Content-Type", media)
-	rw.Header().Set(server.HeaderExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
+	rw.Header().Set(headerExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
 	rw.WriteHeader(status)
 	_, _ = rw.Write(b)
 }

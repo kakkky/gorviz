@@ -8,8 +8,6 @@ import (
 	"os"
 
 	"github.com/urfave/cli/v3"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func (c *Command) diagnoseCommand() *cli.Command {
@@ -29,5 +27,5 @@ func (c *Command) diagnose(_ context.Context, cmd *cli.Command) error {
 			return cli.Exit("read the scenario: "+err.Error()+"\nsee `gorviz docs scenario`", 2)
 		}
 	}
-	return c.print(cmd, http.MethodPost, server.DiagnoseEndpoint, nil, scenario)
+	return c.print(cmd, http.MethodPost, diagnoseEndpoint, nil, scenario)
 }

@@ -22,9 +22,8 @@ type DiagnoseAppUsecase struct {
 	sessions     domain.SessionStore
 	observations domain.ObservationAccessor
 	issues       domain.IssueBookStore
-	agent        domain.AgentInstructor
+	profiler     domain.AppProfiler
 	requester    domain.AppRequester
-	toolchain    domain.Toolchain
 	clock        domain.Clock
 	detect       *DetectAppIssuesUsecase
 }
@@ -40,7 +39,7 @@ type DiagnoseAppUsecaseOutput struct {
 }
 
 func (us *UseCase) NewDiagnoseAppUsecase() *DiagnoseAppUsecase {
-	return &DiagnoseAppUsecase{sessions: us.sessions, observations: us.observations, issues: us.issues, agent: us.agent, requester: us.requester, toolchain: us.toolchain, clock: us.clock, detect: us.NewDetectAppIssuesUsecase()}
+	return &DiagnoseAppUsecase{sessions: us.sessions, observations: us.observations, issues: us.issues, profiler: us.profiler, requester: us.requester, clock: us.clock, detect: us.NewDetectAppIssuesUsecase()}
 }
 
 func (u *DiagnoseAppUsecase) Exec(ctx context.Context, in DiagnoseAppUsecaseInput) (DiagnoseAppUsecaseOutput, error) {
@@ -128,11 +127,9 @@ func (u *DiagnoseAppUsecase) watch(ctx context.Context) (DiagnoseAppUsecaseOutpu
 	if err != nil {
 		return DiagnoseAppUsecaseOutput{}, err
 	}
-	wctx, cancel := context.WithTimeout(ctx, domain.NoScenarioWatch)
-	_ = u.agent.WaitDisconnected(wctx)
-	cancel()
+	exited := u.waitProcessExited(ctx, domain.NoScenarioWatch)
 	sum := domain.DiagnosisSummary{From: from}
-	if u.agent.Connected() {
+	if !exited {
 		to, err := u.mark(ctx, domain.MarkDiagnoseEnd)
 		if err != nil {
 			return DiagnoseAppUsecaseOutput{}, err
@@ -152,6 +149,18 @@ func (u *DiagnoseAppUsecase) watch(ctx context.Context) (DiagnoseAppUsecaseOutpu
 		s.Diagnoses = append(s.Diagnoses, domain.DiagnosisRange{From: sum.From, To: sum.To})
 	})
 	return DiagnoseAppUsecaseOutput{Summary: sum}, nil
+}
+
+// waitProcessExited は、アプリのプロセスが終わるまで d だけ待つ
+func (u *DiagnoseAppUsecase) waitProcessExited(ctx context.Context, d time.Duration) bool {
+	ctx, cancel := context.WithTimeout(ctx, d)
+	defer cancel()
+	for !u.sessions.Session().App.ProcessExited {
+		if u.clock.Sleep(ctx, 50*time.Millisecond) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (u *DiagnoseAppUsecase) waitAppExited(ctx context.Context) {
@@ -188,9 +197,6 @@ func (u *DiagnoseAppUsecase) load(ctx context.Context, sc domain.Scenario, procs
 	if err := u.waitReady(ctx, run); err != nil {
 		return DiagnoseAppUsecaseOutput{}, err
 	}
-	if err := u.agent.ResetCoverage(ctx); err != nil {
-		return DiagnoseAppUsecaseOutput{}, err
-	}
 	from, err := u.mark(ctx, domain.MarkDiagnoseBegin)
 	if err != nil {
 		return DiagnoseAppUsecaseOutput{}, err
@@ -200,7 +206,6 @@ func (u *DiagnoseAppUsecase) load(ctx context.Context, sc domain.Scenario, procs
 	if sum.Stopped == "" {
 		sum.Stopped = u.phases(ctx, run, procs, &sum, progress)
 	}
-	files, covErr := u.agent.ReadCoverage(ctx)
 	to, err := u.mark(ctx, domain.MarkDiagnoseEnd)
 	if err != nil {
 		return DiagnoseAppUsecaseOutput{}, err
@@ -208,9 +213,6 @@ func (u *DiagnoseAppUsecase) load(ctx context.Context, sc domain.Scenario, procs
 	sum.To = to
 	u.waitDetected(ctx, to)
 	u.judgePhases(from, to)
-	if covErr == nil {
-		sum.Coverage = u.coverage(ctx, files)
-	}
 	u.issues.ViewIssueBook(func(b *domain.IssueBook) { sum.Issues = domain.DiagnosedIssues(b, from, to) })
 	sum.ExitCode = domain.DiagnosisExitCode(sum)
 	u.sessions.UpdateSession(func(s *domain.Session) { s.Diagnoses = append(s.Diagnoses, domain.DiagnosisRange{From: from, To: to}) })
@@ -273,7 +275,7 @@ func (u *DiagnoseAppUsecase) phases(ctx context.Context, run loadRun, procs int,
 	}
 	progress(domain.DiagnosisProgress{Phase: domain.PhaseSmoke, Smoke: sum.Smoke})
 	if passed, total := domain.SmokePassed(sum.Smoke); passed < total {
-		return fmt.Sprintf("%d of %d flows did not pass smoke; fix the scenario with the statuses and the coverage", total-passed, total)
+		return fmt.Sprintf("%d of %d flows did not pass smoke; fix the scenario with the statuses", total-passed, total)
 	}
 	var ramp domain.LoadStats
 	ramp.Statuses = map[string]int{}
@@ -302,10 +304,10 @@ func (u *DiagnoseAppUsecase) phases(ctx context.Context, run loadRun, procs int,
 	if err := u.clock.Sleep(ctx, domain.CooldownWait); err != nil {
 		return "the diagnosis was canceled"
 	}
-	if err := u.agent.RequestGoroutineLeaks(ctx); err != nil {
+	if err := takeGoroutineLeaks(ctx, u.profiler, u.sessions, u.issues, u.clock.Now()); err != nil {
 		return err.Error()
 	}
-	progress(domain.DiagnosisProgress{Phase: domain.PhaseCooldown, Note: "took the goroutineleak profile and the coverage after the load"})
+	progress(domain.DiagnosisProgress{Phase: domain.PhaseCooldown, Note: "took the goroutineleak profile after the load"})
 	return ""
 }
 
@@ -383,18 +385,4 @@ func (u *DiagnoseAppUsecase) judgePhases(from, to time.Duration) {
 			b.RecordPhase(f.d, f.phase)
 		}
 	})
-}
-
-func (u *DiagnoseAppUsecase) coverage(ctx context.Context, files []domain.CoverageFile) *domain.CoverageReport {
-	text, err := u.toolchain.CoverageProfile(ctx, files)
-	if err != nil {
-		return nil
-	}
-	build := u.sessions.Session().Build
-	blocks, err := domain.ParseCoverageProfile(text)
-	if err != nil {
-		return nil
-	}
-	r := domain.BuildCoverageReport(blocks, u.toolchain.ReadAppSources(build, domain.CoverageFilesOf(blocks)))
-	return &r
 }

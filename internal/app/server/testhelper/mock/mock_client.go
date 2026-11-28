@@ -18,143 +18,6 @@ import (
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockAgentInstructor is a mock of AgentInstructor interface.
-type MockAgentInstructor struct {
-	ctrl     *gomock.Controller
-	recorder *MockAgentInstructorMockRecorder
-	isgomock struct{}
-}
-
-// MockAgentInstructorMockRecorder is the mock recorder for MockAgentInstructor.
-type MockAgentInstructorMockRecorder struct {
-	mock *MockAgentInstructor
-}
-
-// NewMockAgentInstructor creates a new mock instance.
-func NewMockAgentInstructor(ctrl *gomock.Controller) *MockAgentInstructor {
-	mock := &MockAgentInstructor{ctrl: ctrl}
-	mock.recorder = &MockAgentInstructorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockAgentInstructor) EXPECT() *MockAgentInstructorMockRecorder {
-	return m.recorder
-}
-
-// Connected mocks base method.
-func (m *MockAgentInstructor) Connected() bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Connected")
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// Connected indicates an expected call of Connected.
-func (mr *MockAgentInstructorMockRecorder) Connected() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connected", reflect.TypeOf((*MockAgentInstructor)(nil).Connected))
-}
-
-// Finish mocks base method.
-func (m *MockAgentInstructor) Finish(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Finish", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Finish indicates an expected call of Finish.
-func (mr *MockAgentInstructorMockRecorder) Finish(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Finish", reflect.TypeOf((*MockAgentInstructor)(nil).Finish), ctx)
-}
-
-// ReadCoverage mocks base method.
-func (m *MockAgentInstructor) ReadCoverage(ctx context.Context) ([]domain.CoverageFile, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadCoverage", ctx)
-	ret0, _ := ret[0].([]domain.CoverageFile)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadCoverage indicates an expected call of ReadCoverage.
-func (mr *MockAgentInstructorMockRecorder) ReadCoverage(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadCoverage", reflect.TypeOf((*MockAgentInstructor)(nil).ReadCoverage), ctx)
-}
-
-// RequestGoroutineLeaks mocks base method.
-func (m *MockAgentInstructor) RequestGoroutineLeaks(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestGoroutineLeaks", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RequestGoroutineLeaks indicates an expected call of RequestGoroutineLeaks.
-func (mr *MockAgentInstructorMockRecorder) RequestGoroutineLeaks(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestGoroutineLeaks", reflect.TypeOf((*MockAgentInstructor)(nil).RequestGoroutineLeaks), ctx)
-}
-
-// RequestThreadCount mocks base method.
-func (m *MockAgentInstructor) RequestThreadCount(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestThreadCount", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RequestThreadCount indicates an expected call of RequestThreadCount.
-func (mr *MockAgentInstructorMockRecorder) RequestThreadCount(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestThreadCount", reflect.TypeOf((*MockAgentInstructor)(nil).RequestThreadCount), ctx)
-}
-
-// ResetCoverage mocks base method.
-func (m *MockAgentInstructor) ResetCoverage(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResetCoverage", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ResetCoverage indicates an expected call of ResetCoverage.
-func (mr *MockAgentInstructorMockRecorder) ResetCoverage(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetCoverage", reflect.TypeOf((*MockAgentInstructor)(nil).ResetCoverage), ctx)
-}
-
-// WaitConnected mocks base method.
-func (m *MockAgentInstructor) WaitConnected(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WaitConnected", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// WaitConnected indicates an expected call of WaitConnected.
-func (mr *MockAgentInstructorMockRecorder) WaitConnected(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitConnected", reflect.TypeOf((*MockAgentInstructor)(nil).WaitConnected), ctx)
-}
-
-// WaitDisconnected mocks base method.
-func (m *MockAgentInstructor) WaitDisconnected(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WaitDisconnected", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// WaitDisconnected indicates an expected call of WaitDisconnected.
-func (mr *MockAgentInstructorMockRecorder) WaitDisconnected(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitDisconnected", reflect.TypeOf((*MockAgentInstructor)(nil).WaitDisconnected), ctx)
-}
-
 // MockAppBuilder is a mock of AppBuilder interface.
 type MockAppBuilder struct {
 	ctrl     *gomock.Controller
@@ -179,21 +42,6 @@ func (m *MockAppBuilder) EXPECT() *MockAppBuilderMockRecorder {
 	return m.recorder
 }
 
-// AgentFiles mocks base method.
-func (m *MockAppBuilder) AgentFiles() ([]domain.SourceFile, []domain.SourceFile) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AgentFiles")
-	ret0, _ := ret[0].([]domain.SourceFile)
-	ret1, _ := ret[1].([]domain.SourceFile)
-	return ret0, ret1
-}
-
-// AgentFiles indicates an expected call of AgentFiles.
-func (mr *MockAppBuilderMockRecorder) AgentFiles() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AgentFiles", reflect.TypeOf((*MockAppBuilder)(nil).AgentFiles))
-}
-
 // BuildApp mocks base method.
 func (m *MockAppBuilder) BuildApp(ctx context.Context, in domain.BuildAppInput, build domain.AppBuild, overlay domain.Overlay) error {
 	m.ctrl.T.Helper()
@@ -206,6 +54,21 @@ func (m *MockAppBuilder) BuildApp(ctx context.Context, in domain.BuildAppInput, 
 func (mr *MockAppBuilderMockRecorder) BuildApp(ctx, in, build, overlay any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildApp", reflect.TypeOf((*MockAppBuilder)(nil).BuildApp), ctx, in, build, overlay)
+}
+
+// GoVersion mocks base method.
+func (m *MockAppBuilder) GoVersion(build domain.AppBuild) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GoVersion", build)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GoVersion indicates an expected call of GoVersion.
+func (mr *MockAppBuilderMockRecorder) GoVersion(build any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GoVersion", reflect.TypeOf((*MockAppBuilder)(nil).GoVersion), build)
 }
 
 // LoadMainPackage mocks base method.
@@ -260,6 +123,20 @@ func (m *MockAppProcess) Kill() error {
 func (mr *MockAppProcessMockRecorder) Kill() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Kill", reflect.TypeOf((*MockAppProcess)(nil).Kill))
+}
+
+// PID mocks base method.
+func (m *MockAppProcess) PID() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PID")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// PID indicates an expected call of PID.
+func (mr *MockAppProcessMockRecorder) PID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PID", reflect.TypeOf((*MockAppProcess)(nil).PID))
 }
 
 // Terminate mocks base method.
@@ -327,6 +204,75 @@ func (m *MockAppStarter) StartApp(ctx context.Context, build domain.AppBuild, ar
 func (mr *MockAppStarterMockRecorder) StartApp(ctx, build, args, env any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartApp", reflect.TypeOf((*MockAppStarter)(nil).StartApp), ctx, build, args, env)
+}
+
+// MockAppProfiler is a mock of AppProfiler interface.
+type MockAppProfiler struct {
+	ctrl     *gomock.Controller
+	recorder *MockAppProfilerMockRecorder
+	isgomock struct{}
+}
+
+// MockAppProfilerMockRecorder is the mock recorder for MockAppProfiler.
+type MockAppProfilerMockRecorder struct {
+	mock *MockAppProfiler
+}
+
+// NewMockAppProfiler creates a new mock instance.
+func NewMockAppProfiler(ctrl *gomock.Controller) *MockAppProfiler {
+	mock := &MockAppProfiler{ctrl: ctrl}
+	mock.recorder = &MockAppProfilerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockAppProfiler) EXPECT() *MockAppProfilerMockRecorder {
+	return m.recorder
+}
+
+// FetchGoroutineLeakProfile mocks base method.
+func (m *MockAppProfiler) FetchGoroutineLeakProfile(ctx context.Context) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchGoroutineLeakProfile", ctx)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchGoroutineLeakProfile indicates an expected call of FetchGoroutineLeakProfile.
+func (mr *MockAppProfilerMockRecorder) FetchGoroutineLeakProfile(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchGoroutineLeakProfile", reflect.TypeOf((*MockAppProfiler)(nil).FetchGoroutineLeakProfile), ctx)
+}
+
+// FetchThreadCreateProfile mocks base method.
+func (m *MockAppProfiler) FetchThreadCreateProfile(ctx context.Context) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchThreadCreateProfile", ctx)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchThreadCreateProfile indicates an expected call of FetchThreadCreateProfile.
+func (mr *MockAppProfilerMockRecorder) FetchThreadCreateProfile(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchThreadCreateProfile", reflect.TypeOf((*MockAppProfiler)(nil).FetchThreadCreateProfile), ctx)
+}
+
+// FetchTrace mocks base method.
+func (m *MockAppProfiler) FetchTrace(ctx context.Context, length time.Duration) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchTrace", ctx, length)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchTrace indicates an expected call of FetchTrace.
+func (mr *MockAppProfilerMockRecorder) FetchTrace(ctx, length any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchTrace", reflect.TypeOf((*MockAppProfiler)(nil).FetchTrace), ctx, length)
 }
 
 // MockLoadClient is a mock of LoadClient interface.
@@ -403,59 +349,6 @@ func (m *MockAppRequester) NewLoadClient() domain.LoadClient {
 func (mr *MockAppRequesterMockRecorder) NewLoadClient() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewLoadClient", reflect.TypeOf((*MockAppRequester)(nil).NewLoadClient))
-}
-
-// MockToolchain is a mock of Toolchain interface.
-type MockToolchain struct {
-	ctrl     *gomock.Controller
-	recorder *MockToolchainMockRecorder
-	isgomock struct{}
-}
-
-// MockToolchainMockRecorder is the mock recorder for MockToolchain.
-type MockToolchainMockRecorder struct {
-	mock *MockToolchain
-}
-
-// NewMockToolchain creates a new mock instance.
-func NewMockToolchain(ctrl *gomock.Controller) *MockToolchain {
-	mock := &MockToolchain{ctrl: ctrl}
-	mock.recorder = &MockToolchainMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockToolchain) EXPECT() *MockToolchainMockRecorder {
-	return m.recorder
-}
-
-// CoverageProfile mocks base method.
-func (m *MockToolchain) CoverageProfile(ctx context.Context, files []domain.CoverageFile) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CoverageProfile", ctx, files)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CoverageProfile indicates an expected call of CoverageProfile.
-func (mr *MockToolchainMockRecorder) CoverageProfile(ctx, files any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CoverageProfile", reflect.TypeOf((*MockToolchain)(nil).CoverageProfile), ctx, files)
-}
-
-// ReadAppSources mocks base method.
-func (m *MockToolchain) ReadAppSources(build domain.AppBuild, files []string) map[string][]byte {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadAppSources", build, files)
-	ret0, _ := ret[0].(map[string][]byte)
-	return ret0
-}
-
-// ReadAppSources indicates an expected call of ReadAppSources.
-func (mr *MockToolchainMockRecorder) ReadAppSources(build, files any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAppSources", reflect.TypeOf((*MockToolchain)(nil).ReadAppSources), build, files)
 }
 
 // MockClock is a mock of Clock interface.

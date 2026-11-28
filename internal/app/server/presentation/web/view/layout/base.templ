@@ -50,8 +50,8 @@ templ Base(vm BaseViewModel) {
 		<body>
 			<header class="app">
 				<h1><a href="/">gorviz</a></h1>
-				<span class="agent-switch" title="the app of this session">
-					<span class={ "agent-dot", templ.KV("connected", vm.Running) }></span>
+				<span class="app-switch" title="the app of this session">
+					<span class={ "app-dot", templ.KV("connected", vm.Running) }></span>
 					<strong class="mono">{ vm.App }</strong>
 					<span class="sep">·</span>
 					<span class="faint">{ vm.State }</span>

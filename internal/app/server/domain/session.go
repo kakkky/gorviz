@@ -12,7 +12,8 @@ const (
 	AppExited      AppState = "exited"
 )
 
-// AppRun はセッションで動かすアプリ。ExitedAt はセッションの時間軸の上の時刻
+// AppRun はセッションで動かすアプリ。ExitedAt はセッションの時間軸の上の時刻。
+// ProcessExited はアプリのプロセスが終わったこと。Exited は、そのあと trace を読み終えて終わりを記録したこと
 type AppRun struct {
 	Package          string
 	Args             []string
@@ -27,6 +28,7 @@ type AppRun struct {
 	ExitedAt         time.Duration
 	TraceTruncated   bool
 	ShutdownTimedOut bool
+	ProcessExited    bool
 }
 
 type DiagnosisRange struct {
@@ -36,67 +38,47 @@ type DiagnosisRange struct {
 
 // Session は gorviz run から gorviz stop までの 1 回。server のプロセス 1 つが、セッション 1 つにあたる
 type Session struct {
-	App          AppRun
-	Build        AppBuild
-	Diagnosing   bool
-	Diagnoses    []DiagnosisRange
-	Observed     Observed
-	LastCoverage []CoverageFile
-	Collected    Collected
+	App        AppRun
+	Build      AppBuild
+	Diagnosing bool
+	Diagnoses  []DiagnosisRange
+	Observed   Observed
+	Collected  Collected
 }
 
-// AppBuild は agent を差し込んでビルドしたアプリ
+// AppBuild は pprof を開く処理を差し込んでビルドしたアプリ
 type AppBuild struct {
-	WorkDir       string
-	Binary        string
-	CoverPackages []string
-	ModulePath    string
-	ModuleDir     string
-	MainPackage   string
-	MainDir       string
+	WorkDir     string
+	Binary      string
+	ModulePath  string
+	ModuleDir   string
+	MainPackage string
+	MainDir     string
 }
 
-type CoverageFile struct {
-	Name string
-	Data []byte
-}
+// TraceChunkLength は、アプリの pprof から 1 回で取る trace の長さ。アプリが終わるとき、取りかけの区切りは届かないので短くする
+const TraceChunkLength = 250 * time.Millisecond
 
-// agent に書き出させる観測データの間隔。goroutineleak プロファイルは取るたびに GC が走るので、
-// 待ちの goroutine が前に取ったときより増えたときだけ、GoroutineLeakMinGap を空けて取る。
-// ほかの待ちが同じだけ減って数が増えないリークを逃さないよう、GoroutineLeakMaxGap ごとには増えなくても取る
+// goroutineleak プロファイルを取る間隔。取るたびに GC が走るので、待ちの goroutine が前に取ったときより増えたときだけ、GoroutineLeakMinGap を空けて取る。
+// ほかの待ちが同じだけ減って数が増えないリークを逃さないよう、GoroutineLeakMaxGap ごとには増えなくても取る。
+// アプリが終わった時点のものは取れないので、shutdown の間は GoroutineLeakShutdownGap ごとに取り、最後に取れたものを終わった時点の代わりにする
 const (
-	ThreadCountEvery    = 2 * time.Second
-	GoroutineLeakMinGap = 15 * time.Second
-	GoroutineLeakMaxGap = 60 * time.Second
+	GoroutineLeakMinGap      = 15 * time.Second
+	GoroutineLeakMaxGap      = 60 * time.Second
+	GoroutineLeakShutdownGap = time.Second
 )
 
-// Collected は agent に最後に書き出させた時刻と、goroutineleak プロファイルを取ったときの待ちの goroutine の数
+// Collected は最後に goroutineleak プロファイルを取った時刻と、そのときの待ちの goroutine の数
 type Collected struct {
-	Threads     time.Time
 	Leaks       time.Time
 	LeakWaiting int
 }
 
-type DueCollection struct {
-	Threads bool
-	Leaks   bool
-}
-
-// DueCollections の waiting は、いまの待ちの goroutine の数
-func DueCollections(c Collected, now time.Time, waiting int) DueCollection {
-	sinceLeaks := now.Sub(c.Leaks)
-	return DueCollection{
-		Threads: now.Sub(c.Threads) >= ThreadCountEvery,
-		Leaks:   sinceLeaks >= GoroutineLeakMaxGap || (waiting > c.LeakWaiting && sinceLeaks >= GoroutineLeakMinGap),
+// LeaksDue は、いま goroutineleak プロファイルを取るか。waiting は、いまの待ちの goroutine の数
+func LeaksDue(c Collected, now time.Time, waiting int, shuttingDown bool) bool {
+	since := now.Sub(c.Leaks)
+	if shuttingDown {
+		return since >= GoroutineLeakShutdownGap
 	}
-}
-
-func MarkCollected(c Collected, due DueCollection, now time.Time, waiting int) Collected {
-	if due.Threads {
-		c.Threads = now
-	}
-	if due.Leaks {
-		c.Leaks, c.LeakWaiting = now, waiting
-	}
-	return c
+	return since >= GoroutineLeakMaxGap || (waiting > c.LeakWaiting && since >= GoroutineLeakMinGap)
 }

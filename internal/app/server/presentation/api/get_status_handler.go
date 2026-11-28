@@ -45,15 +45,14 @@ type rangeResponse struct {
 }
 
 type statusResponse struct {
-	App            appResponse     `json:"app"`
-	AgentConnected bool            `json:"agentConnected"`
-	Elapsed        string          `json:"elapsed"`
-	Diagnosing     bool            `json:"diagnosing,omitempty"`
-	Diagnosed      []rangeResponse `json:"diagnosed"`
-	Issues         int             `json:"issues"`
-	Timeline       []eventResponse `json:"timeline"`
-	GUI            string          `json:"gui"`
-	Next           []string        `json:"next"`
+	App        appResponse     `json:"app"`
+	Elapsed    string          `json:"elapsed"`
+	Diagnosing bool            `json:"diagnosing,omitempty"`
+	Diagnosed  []rangeResponse `json:"diagnosed"`
+	Issues     int             `json:"issues"`
+	Timeline   []eventResponse `json:"timeline"`
+	GUI        string          `json:"gui"`
+	Next       []string        `json:"next"`
 }
 
 // GetStatusHandler はアプリが動いているか (終わっていれば終了コード)・GUI の URL・これまでに診断した時間帯を返す
@@ -72,7 +71,7 @@ func (h *GetStatusHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		middleware.Fail(r, err)
 		return
 	}
-	resp := statusResponse{App: appOf(out.Session.App), AgentConnected: out.AgentConnected, Elapsed: at(out.Elapsed), Diagnosing: out.Session.Diagnosing,
+	resp := statusResponse{App: appOf(out.Session.App), Elapsed: at(out.Elapsed), Diagnosing: out.Session.Diagnosing,
 		Diagnosed: []rangeResponse{}, Issues: out.Issues, GUI: h.guiBase}
 	for _, d := range out.Session.Diagnoses {
 		resp.Diagnosed = append(resp.Diagnosed, rangeResponse{From: at(d.From), To: at(d.To)})

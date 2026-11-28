@@ -57,6 +57,17 @@ func TestIssueBook(t *testing.T) {
 			},
 		},
 		{
+			name: "starts a new occurrence for the shutdown even when it continues without a gap",
+			run: func(b *domain.IssueBook) {
+				b.Record(lock(0, time.Second), "cooldown")
+				b.Record(lock(time.Second, time.Second), domain.PhaseShutdown)
+			},
+			check: func(t *testing.T, b *domain.IssueBook) {
+				require.Len(t, b.Issues()[0].Occurrences, 2)
+				assert.Equal(t, domain.PhaseShutdown, b.Issues()[0].Occurrences[1].Phase)
+			},
+		},
+		{
 			name: "answers a missing issue with the issues that exist",
 			run: func(b *domain.IssueBook) {
 				b.Record(lock(0, time.Second), "")

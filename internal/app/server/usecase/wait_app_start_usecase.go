@@ -9,10 +9,9 @@ import (
 
 const startWait = 10 * time.Minute
 
-// WaitAppStartUsecase はアプリがビルドされ、agent が trace を取り始めるまで待つ。ビルドや起動に失敗したら、そこで返す
+// WaitAppStartUsecase はアプリがビルドされ、trace が取れ始めるまで待つ。ビルドや起動に失敗したら、そこで返す
 type WaitAppStartUsecase struct {
 	sessions domain.SessionStore
-	agent    domain.AgentInstructor
 	clock    domain.Clock
 }
 
@@ -24,7 +23,7 @@ type WaitAppStartUsecaseOutput struct {
 }
 
 func (us *UseCase) NewWaitAppStartUsecase() *WaitAppStartUsecase {
-	return &WaitAppStartUsecase{sessions: us.sessions, agent: us.agent, clock: us.clock}
+	return &WaitAppStartUsecase{sessions: us.sessions, clock: us.clock}
 }
 
 func (u *WaitAppStartUsecase) Exec(ctx context.Context, _ WaitAppStartUsecaseInput) (WaitAppStartUsecaseOutput, error) {

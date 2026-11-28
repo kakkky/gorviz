@@ -1,8 +1,6 @@
 package accessor
 
 import (
-	"io"
-
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/driver/tracestream"
 )
@@ -15,15 +13,19 @@ func NewTraceStreamAccessor(s *tracestream.TraceStream) *TraceStreamAccessor {
 	return &TraceStreamAccessor{stream: s}
 }
 
-func (a *TraceStreamAccessor) AppendTrace(p []byte) error {
-	if _, err := a.stream.Write(p); err != nil {
-		return domain.ErrInternal.Wrap(err, "append execution trace")
+func (a *TraceStreamAccessor) AppendTrace(c domain.TraceChunk) error {
+	if !a.stream.Append(c) {
+		return domain.ErrInternal.With("append execution trace to a closed stream")
 	}
 	return nil
 }
 
-func (a *TraceStreamAccessor) CloseTrace(broken bool) { a.stream.Close(broken) }
+func (a *TraceStreamAccessor) CloseTrace() { a.stream.Close() }
 
-func (a *TraceStreamAccessor) TraceReader() io.Reader { return a.stream }
-
-func (a *TraceStreamAccessor) TraceBroken() bool { return a.stream.Broken() }
+func (a *TraceStreamAccessor) NextTrace() (domain.TraceChunk, bool) {
+	v, ok := a.stream.Next()
+	if !ok {
+		return domain.TraceChunk{}, false
+	}
+	return v.(domain.TraceChunk), true
+}

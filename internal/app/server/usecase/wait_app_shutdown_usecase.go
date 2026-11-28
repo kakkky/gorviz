@@ -46,7 +46,7 @@ func (u *WaitAppShutdownUsecase) Exec(ctx context.Context, _ WaitAppShutdownUsec
 	u.issues.ViewIssueBook(func(b *domain.IssueBook) {
 		for _, is := range b.Issues() {
 			for _, o := range is.Occurrences {
-				if o.Phase != domain.PhaseShutdown && o.Phase != domain.PhaseAppExit {
+				if o.Phase != domain.PhaseShutdown {
 					continue
 				}
 				out.Issues = append(out.Issues, domain.DiagnosedIssue{ID: is.ID, Kind: is.Kind, Target: is.TargetLabel(), Certainty: is.Certainty(), FirstPhase: o.Phase, Occurrences: 1})

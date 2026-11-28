@@ -9,19 +9,16 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
-const (
-	agentFinishWait = 5 * time.Second
-	indexCatchUp    = 10 * time.Second
-)
+const indexCatchUp = 10 * time.Second
 
-// RunAppUsecase はアプリに agent を差し込んでビルドし、子プロセスとして起動して、終わるまで見届ける。
+// RunAppUsecase はアプリに pprof を開く処理を差し込んでビルドし、子プロセスとして起動して、終わるまで見届ける。
 // server が止まるときは、止める合図を送って graceful shutdown を見届けてから終わる
 type RunAppUsecase struct {
 	sessions domain.SessionStore
-	stream   domain.TraceStream
-	agent    domain.AgentInstructor
+	issues   domain.IssueBookStore
 	builder  domain.AppBuilder
 	starter  domain.AppStarter
+	profiler domain.AppProfiler
 	clock    domain.Clock
 }
 
@@ -36,7 +33,7 @@ type RunAppUsecaseInput struct {
 type RunAppUsecaseOutput struct{}
 
 func (us *UseCase) NewRunAppUsecase() *RunAppUsecase {
-	return &RunAppUsecase{sessions: us.sessions, stream: us.stream, agent: us.agent, builder: us.builder, starter: us.starter, clock: us.clock}
+	return &RunAppUsecase{sessions: us.sessions, issues: us.issues, builder: us.builder, starter: us.starter, profiler: us.profiler, clock: us.clock}
 }
 
 func (u *RunAppUsecase) Exec(ctx context.Context, in RunAppUsecaseInput) (RunAppUsecaseOutput, error) {
@@ -45,22 +42,21 @@ func (u *RunAppUsecase) Exec(ctx context.Context, in RunAppUsecaseInput) (RunApp
 	})
 	build, err := u.build(ctx, in)
 	if err != nil {
-		u.stream.CloseTrace(false)
 		u.sessions.UpdateSession(func(s *domain.Session) {
 			s.App.State, s.App.BuildError = domain.AppBuildFailed, err.Error()
 		})
 		return RunAppUsecaseOutput{}, nil
 	}
-	u.sessions.UpdateSession(func(s *domain.Session) { s.Build, s.App.State = build, domain.AppStarting })
+	version, _ := u.builder.GoVersion(build)
+	u.sessions.UpdateSession(func(s *domain.Session) { s.Build, s.App.State, s.App.GoVersion = build, domain.AppStarting, version })
 	proc, err := u.starter.StartApp(ctx, build, in.Args, in.Env)
 	if err != nil {
-		u.stream.CloseTrace(false)
 		u.sessions.UpdateSession(func(s *domain.Session) {
-			s.App.State, s.App.StartError = domain.AppExited, err.Error()
+			s.App.State, s.App.StartError, s.App.ProcessExited = domain.AppExited, err.Error(), true
 		})
 		return RunAppUsecaseOutput{}, nil
 	}
-	u.sessions.UpdateSession(func(s *domain.Session) { s.App.State = domain.AppRunning })
+	u.sessions.UpdateSession(func(s *domain.Session) { s.App.State, s.App.PID = domain.AppRunning, proc.PID() })
 
 	var code int
 	timedOut := false
@@ -81,15 +77,12 @@ func (u *RunAppUsecase) Exec(ctx context.Context, in RunAppUsecaseInput) (RunApp
 	if err != nil {
 		return RunAppUsecaseOutput{}, domain.ErrInternal.Wrap(err, "watch the app")
 	}
-	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), agentFinishWait)
-	defer cancel()
-	_ = u.agent.WaitDisconnected(wctx)
-	u.stream.CloseTrace(true)
+	u.sessions.UpdateSession(func(s *domain.Session) { s.App.ProcessExited = true })
 	u.waitIndexEnded(context.WithoutCancel(ctx))
-	exitedAt := u.sessions.Session().Observed.Until
+	observed := u.sessions.Session().Observed
 	u.sessions.UpdateSession(func(s *domain.Session) {
-		s.App.State, s.App.Exited, s.App.ExitCode, s.App.ExitedAt, s.App.ShutdownTimedOut = domain.AppExited, true, code, exitedAt, timedOut
-		s.App.TraceTruncated = u.stream.TraceBroken()
+		s.App.State, s.App.Exited, s.App.ExitCode, s.App.ExitedAt, s.App.ShutdownTimedOut = domain.AppExited, true, code, observed.Until, timedOut
+		s.App.TraceTruncated = observed.Broken
 	})
 	return RunAppUsecaseOutput{}, nil
 }
@@ -100,21 +93,21 @@ func (u *RunAppUsecase) build(ctx context.Context, in RunAppUsecaseInput) (domai
 	if err != nil {
 		return domain.AppBuild{}, err
 	}
-	agent, protocol := u.builder.AgentFiles()
-	overlay, err := domain.AgentOverlay(main, agent, protocol)
-	if err != nil {
-		return domain.AppBuild{}, err
-	}
-	if err := u.builder.BuildApp(ctx, bin, build, overlay); err != nil {
+	if err := u.builder.BuildApp(ctx, bin, build, domain.PprofOverlay(main)); err != nil {
 		return domain.AppBuild{}, err
 	}
 	return build, nil
 }
 
-// shutdown は止める合図を送ったあとも trace を流させ、時間内に終わらなければ最後の観測データを送らせてから強制終了する
+// shutdown は止める合図を送ったあとも trace を取らせ、時間内に終わらなければ、取りかけの区切りを取り終えるのを待ってから強制終了する。
+// 合図の直前に goroutineleak プロファイルを取る。すぐ終わるアプリでも、shutdown の間に 1 回は取れているようにするため
 func (u *RunAppUsecase) shutdown(ctx context.Context, proc domain.AppProcess, exited <-chan int, timeout time.Duration) (int, bool) {
-	if at, ok := u.sessions.Session().Observed.TraceAt(u.clock.Now()); ok {
+	now := u.clock.Now()
+	if at, ok := u.sessions.Session().Observed.TraceAt(now); ok {
 		u.sessions.UpdateSession(func(s *domain.Session) { s.Observed.AddMarks(domain.TraceMark{At: at, Message: domain.MarkShutdown}) })
+		if err := takeGoroutineLeaks(ctx, u.profiler, u.sessions, u.issues, now); err == nil {
+			u.sessions.UpdateSession(func(s *domain.Session) { s.Collected.Leaks = now })
+		}
 	}
 	if err := proc.Terminate(); err != nil {
 		_ = proc.Kill()
@@ -127,10 +120,7 @@ func (u *RunAppUsecase) shutdown(ctx context.Context, proc domain.AppProcess, ex
 		return code, false
 	case <-t.C:
 	}
-	_ = u.agent.Finish(ctx)
-	wctx, cancel := context.WithTimeout(ctx, agentFinishWait)
-	_ = u.agent.WaitDisconnected(wctx)
-	cancel()
+	_ = u.clock.Sleep(ctx, 2*domain.TraceChunkLength)
 	_ = proc.Kill()
 	return <-exited, true
 }

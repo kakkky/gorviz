@@ -68,16 +68,16 @@ type GoroutineRecord struct {
 	Creator   Frame
 	CreatedAt time.Duration
 	Created   bool
-	Agent     bool
+	Gorviz    bool
 	System    bool
 	Ended     bool
 	EndedAt   time.Duration
 	Changes   []int32
 }
 
-// App はアプリの goroutine か。agent と runtime の goroutine は Issue にも推移にも数えない
+// App はアプリの goroutine か。gorviz と runtime の goroutine は Issue にも推移にも数えない
 func (g *GoroutineRecord) App() bool {
-	return !g.Agent && !g.System
+	return !g.Gorviz && !g.System
 }
 
 type ProcChange struct {
@@ -101,7 +101,7 @@ type HeapSample struct {
 	Goal    uint64
 }
 
-// TraceMark は agent が server に言われて trace に書いた出来事
+// TraceMark は server が自分の時計で持ち、trace の上に置いた出来事
 type TraceMark struct {
 	At      time.Duration
 	Message string
@@ -125,7 +125,7 @@ type Bucket struct {
 	HeapGoal     uint64
 }
 
-// Observation は、agent から届いた execution trace のうち 1 秒分を整えたもの。その 1 秒だけで答えられるよう、
+// Observation は、アプリから取った execution trace のうち 1 秒分を整えたもの。その 1 秒だけで答えられるよう、
 // 秒の頭に生きていた goroutine と P の状態 (Start・ProcStart)、その秒に出てくる goroutine の素性とスタックを一緒に持つ
 type Observation struct {
 	Second      int
@@ -138,8 +138,6 @@ type Observation struct {
 	GCMark      []TimeRange
 	Assists     []TimeRange
 	Heap        []HeapSample
-	Marks       []TraceMark
-	LeakChecks  map[uint64]time.Duration
 	Stats       Bucket
 	Goroutines  []GoroutineRecord
 	Stacks      map[StackID][]Frame
@@ -150,16 +148,15 @@ func (o Observation) From() time.Duration { return time.Duration(o.Second) * Buc
 
 func (o Observation) To() time.Duration { return time.Duration(o.Second+1) * BucketSize }
 
-// Observed はセッション全体で観測できたことの要約。どこまで Observation になったか (Until)、trace が終わったか・途中で切れたか、出来事と goroutineleak プロファイルを取った時刻
+// Observed はセッション全体で観測できたことの要約。どこまで Observation になったか (Until)、trace が終わったか・末尾が欠けたか、出来事
 type Observed struct {
-	Started    bool
-	Until      time.Duration
-	Ended      bool
-	Broken     bool
-	Procs      int
-	Marks      []TraceMark
-	LeakChecks map[uint64]time.Duration
-	Clock      ClockSync
+	Started bool
+	Until   time.Duration
+	Ended   bool
+	Broken  bool
+	Procs   int
+	Marks   []TraceMark
+	Clock   ClockSync
 }
 
 // ClockSync は、trace の上の時刻と、そのときの壁時計の組。server が壁時計で持った出来事を、trace の上に置くため
@@ -176,15 +173,16 @@ func (o Observed) TraceAt(wall time.Time) (time.Duration, bool) {
 	return max(0, o.Clock.At+wall.Sub(o.Clock.Wall)), true
 }
 
-// AddMarks は出来事を時刻の順に足す。trace に書かれた出来事と server が持った出来事が、届く順と時刻の順が違うため
+// ShuttingDown は、アプリに止める合図を送ったあとか
+func (o Observed) ShuttingDown() bool {
+	_, ok := markAt(o.Marks, MarkShutdown)
+	return ok
+}
+
+// AddMarks は出来事を時刻の順に足す。trace の時計が届くのを待ってから置くので、置く順と時刻の順が違うことがあるため
 func (o *Observed) AddMarks(marks ...TraceMark) {
 	o.Marks = append(slices.Clone(o.Marks), marks...)
 	slices.SortStableFunc(o.Marks, func(a, b TraceMark) int { return cmp.Compare(a.At, b.At) })
-}
-
-func (o Observed) LeakCheckAt(seq uint64) (time.Duration, bool) {
-	at, ok := o.LeakChecks[seq]
-	return at, ok
 }
 
 // NewObservationSet は、秒の順に続いた Observation を重ねる。期間の頭の状態は、最初の秒の Start から取る
@@ -263,11 +261,11 @@ func rangesIn(rs []TimeRange, from, to time.Duration) []TimeRange {
 
 func (s *ObservationSet) STW(from, to time.Duration) []TimeRange { return rangesIn(s.stw, from, to) }
 
-// AppSTW は、agent の goroutine が起こしたものを除いた STW
+// AppSTW は、gorviz の goroutine が起こしたものを除いた STW
 func (s *ObservationSet) AppSTW(from, to time.Duration) []TimeRange {
 	var out []TimeRange
 	for _, r := range rangesIn(s.stw, from, to) {
-		if g, ok := s.goroutines[r.G]; !ok || !g.Agent {
+		if g, ok := s.goroutines[r.G]; !ok || !g.Gorviz {
 			out = append(out, r)
 		}
 	}

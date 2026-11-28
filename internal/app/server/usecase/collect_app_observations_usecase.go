@@ -7,26 +7,34 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
-// CollectAppObservationsUsecase は agent に、OS のスレッドの数と goroutineleak プロファイルを書き出させる。
-// どちらを今回行うかは、待ちの goroutine の数から domain が決める
+// CollectAppObservationsUsecase は、要るときにアプリの pprof から goroutineleak プロファイルを取る。
+// 今回取るかは、待ちの goroutine の数と shutdown の最中かから domain が決める
 type CollectAppObservationsUsecase struct {
 	sessions     domain.SessionStore
 	observations domain.ObservationAccessor
-	agent        domain.AgentInstructor
+	issues       domain.IssueBookStore
+	profiler     domain.AppProfiler
 	clock        domain.Clock
 }
 
 type CollectAppObservationsUsecaseInput struct{}
 
-type CollectAppObservationsUsecaseOutput struct{}
+// CollectAppObservationsUsecaseOutput の AppGone は、アプリがもう動いていないこと (ビルドや起動に失敗したときを含む)
+type CollectAppObservationsUsecaseOutput struct {
+	TookLeaks bool
+	AppGone   bool
+}
 
 func (us *UseCase) NewCollectAppObservationsUsecase() *CollectAppObservationsUsecase {
-	return &CollectAppObservationsUsecase{sessions: us.sessions, observations: us.observations, agent: us.agent, clock: us.clock}
+	return &CollectAppObservationsUsecase{sessions: us.sessions, observations: us.observations, issues: us.issues, profiler: us.profiler, clock: us.clock}
 }
 
 func (u *CollectAppObservationsUsecase) Exec(ctx context.Context, _ CollectAppObservationsUsecaseInput) (CollectAppObservationsUsecaseOutput, error) {
 	s := u.sessions.Session()
-	if s.App.State != domain.AppRunning || !u.agent.Connected() {
+	if appGone(s.App) || s.App.State == domain.AppExited {
+		return CollectAppObservationsUsecaseOutput{AppGone: true}, nil
+	}
+	if s.App.State != domain.AppRunning || !s.Observed.Started {
 		return CollectAppObservationsUsecaseOutput{}, nil
 	}
 	now := u.clock.Now()
@@ -34,19 +42,14 @@ func (u *CollectAppObservationsUsecase) Exec(ctx context.Context, _ CollectAppOb
 	if o, ok := u.observations.Get(int(s.Observed.Until/domain.BucketSize) - 1); ok {
 		waiting = o.Stats.Waiting
 	}
-	due := domain.DueCollections(s.Collected, now, waiting)
+	if !domain.LeaksDue(s.Collected, now, waiting, s.Observed.ShuttingDown()) {
+		return CollectAppObservationsUsecaseOutput{}, nil
+	}
 	ictx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if due.Threads {
-		if err := u.agent.RequestThreadCount(ictx); err != nil {
-			return CollectAppObservationsUsecaseOutput{}, err
-		}
+	if err := takeGoroutineLeaks(ictx, u.profiler, u.sessions, u.issues, now); err != nil {
+		return CollectAppObservationsUsecaseOutput{}, err
 	}
-	if due.Leaks {
-		if err := u.agent.RequestGoroutineLeaks(ictx); err != nil {
-			return CollectAppObservationsUsecaseOutput{}, err
-		}
-	}
-	u.sessions.UpdateSession(func(s *domain.Session) { s.Collected = domain.MarkCollected(s.Collected, due, now, waiting) })
-	return CollectAppObservationsUsecaseOutput{}, nil
+	u.sessions.UpdateSession(func(s *domain.Session) { s.Collected = domain.Collected{Leaks: now, LeakWaiting: waiting} })
+	return CollectAppObservationsUsecaseOutput{TookLeaks: true}, nil
 }

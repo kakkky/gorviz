@@ -12,13 +12,12 @@ import (
 	cliconfig "github.com/kakkky/gorviz/internal/app/cli/config"
 	"github.com/kakkky/gorviz/internal/app/server"
 	serverconfig "github.com/kakkky/gorviz/internal/app/server/config"
-	serverprotocol "github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if serverprotocol.IsServer() {
+	if serverconfig.IsServer() {
 		cfg, err := serverconfig.NewConfig()
 		if err != nil {
 			slog.ErrorContext(ctx, "load config", slog.Any("err", err))

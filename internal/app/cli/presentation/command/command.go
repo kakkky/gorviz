@@ -13,14 +13,29 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/cli/adapter/client"
 	"github.com/kakkky/gorviz/internal/app/cli/config"
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 const docsHint = "run `gorviz docs` for how to use gorviz"
 
+// server の HTTP API のエンドポイント
+const (
+	statusEndpoint      = "/api/status"
+	startResultEndpoint = "/api/start-result"
+	diagnoseEndpoint    = "/api/diagnose"
+	issuesEndpoint      = "/api/issues"
+	issueEndpoint       = "/api/issues/{id}"
+	goroutineEndpoint   = "/api/goroutines/{id}"
+	stopEndpoint        = "/api/stop"
+)
+
+const (
+	mediaTOON = "application/toon"
+	mediaJSON = "application/json"
+)
+
 const formatTOON = "toon"
 
-var formats = map[string]string{formatTOON: server.MediaTOON, "json": server.MediaJSON}
+var formats = map[string]string{formatTOON: mediaTOON, "json": mediaJSON}
 
 func acceptOf(cmd *cli.Command) string {
 	return formats[cmd.String("format")]

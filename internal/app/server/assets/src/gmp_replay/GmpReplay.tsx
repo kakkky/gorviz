@@ -40,7 +40,7 @@ export function GmpReplay(props: GmpReplayIslandProps) {
   const [t, setT] = useState(0)
   const [playing, setPlaying] = useState(props.autoplay)
   const [livePaused, setLivePaused] = useState(false)
-  const [showAgent, setShowAgent] = useState(false)
+  const [showGorviz, setShowGorviz] = useState(false)
 
   const current = windows[Math.min(index, Math.max(windows.length - 1, 0))]
   const replay = useMemo(() => (current ? new Replay(current) : undefined), [current])
@@ -146,7 +146,7 @@ export function GmpReplay(props: GmpReplayIslandProps) {
       </div>
       <Lanes window={current} replay={replay} t={t} focus={props.focusGoroutine} onSeek={seekTo} />
       <div class="replay-stage">
-        <Stage view={view} replay={replay} t={t} focus={props.focusGoroutine} leaks={leaks} onSelect={select} showAgent={showAgent || replay.isAgent(props.focusGoroutine)} onToggleAgent={() => setShowAgent(!showAgent)} />
+        <Stage view={view} replay={replay} t={t} focus={props.focusGoroutine} leaks={leaks} onSelect={select} showGorviz={showGorviz || replay.isGorviz(props.focusGoroutine)} onToggleGorviz={() => setShowGorviz(!showGorviz)} />
       </div>
       <div class="replay-note">
         {current.truncated && <span class="error">events were truncated: the replay stops before the end of the window</span>}
@@ -314,14 +314,14 @@ interface StageProps {
   focus: number
   leaks: Map<number, ReplayLeak>
   onSelect: (g: number) => void
-  showAgent: boolean
-  onToggleAgent: () => void
+  showGorviz: boolean
+  onToggleGorviz: () => void
 }
 
-// Stage は、gorviz の agent の G を既定では畳む。P の上で走っている G は、P が埋まっていることを隠さないよう畳まない
-function Stage({ view, replay, t, focus, leaks, onSelect, showAgent, onToggleAgent }: StageProps) {
-  const visible = (g: GoroutineState) => showAgent || !replay.isAgent(g.g)
-  const agents = hiddenAgents(view, replay)
+// Stage は、gorviz の G を既定では畳む。P の上で走っている G は、P が埋まっていることを隠さないよう畳まない
+function Stage({ view, replay, t, focus, leaks, onSelect, showGorviz, onToggleGorviz }: StageProps) {
+  const visible = (g: GoroutineState) => showGorviz || !replay.isGorviz(g.g)
+  const gorviz = hiddenGorviz(view, replay)
   const stw = replay.window.stw.find((r) => r.s <= t && t < r.e)
   const stwReason = stw && stw.r >= 0 ? replay.window.reasons[stw.r] : "unknown"
   const chip = (g: GoroutineState, dot: string, wide: boolean, wait = "") => (
@@ -338,10 +338,10 @@ function Stage({ view, replay, t, focus, leaks, onSelect, showAgent, onToggleAge
         ) : (
           view.gcMark && <span class="gc-state mark" title="part of the Ps run GC work, and allocating goroutines help with mark assist">GC mark</span>
         )}
-        <button type="button" class={`agent-toggle${showAgent ? " is-on" : ""}`} onClick={onToggleAgent} aria-pressed={showAgent}
-          title="goroutines of the gorviz agent and of the execution trace it runs; never counted in issues. Ones running on a P are always shown">
-          <AgentIcon />
-          {showAgent ? "hide agent goroutines" : <>show agent goroutines <span class="mono">{agents}</span></>}
+        <button type="button" class={`gorviz-toggle${showGorviz ? " is-on" : ""}`} onClick={onToggleGorviz} aria-pressed={showGorviz}
+          title="goroutines of gorviz (the pprof it opened in the app and the execution trace it runs); never counted in issues. Ones running on a P are always shown">
+          <GorvizIcon />
+          {showGorviz ? "hide gorviz goroutines" : <>show gorviz goroutines <span class="mono">{gorviz}</span></>}
         </button>
         <span class="mono gmp-space-at">{(t / 1e6).toFixed(3)}ms</span>
       </div>
@@ -381,7 +381,7 @@ function Stage({ view, replay, t, focus, leaks, onSelect, showAgent, onToggleAge
             </div>
           </div>
         </div>
-        <Parked waiting={view.waiting} chip={chip} focus={focus} leaks={leaks} replay={replay} showAgent={showAgent} />
+        <Parked waiting={view.waiting} chip={chip} focus={focus} leaks={leaks} replay={replay} showGorviz={showGorviz} />
       </div>
     </section>
   )
@@ -389,10 +389,10 @@ function Stage({ view, replay, t, focus, leaks, onSelect, showAgent, onToggleAge
 
 // Parked は止まっている G を、待っている相手の種類ごとの段に分け、その中を「関数 × 理由」でまとめる。
 // 止まっている G はスケジューラのどのキューにもおらず、待っている相手の側からたどれるだけ
-function Parked({ waiting, chip, focus, leaks, replay, showAgent }: { waiting: WaitingGroup[]; chip: (g: GoroutineState, dot: string, wide: boolean) => JSX.Element; focus: number; leaks: Map<number, ReplayLeak>; replay: Replay; showAgent: boolean }) {
+function Parked({ waiting, chip, focus, leaks, replay, showGorviz }: { waiting: WaitingGroup[]; chip: (g: GoroutineState, dot: string, wide: boolean) => JSX.Element; focus: number; leaks: Map<number, ReplayLeak>; replay: Replay; showGorviz: boolean }) {
   const sections = new Map<string, WaitingGroup[]>(WAIT_TARGETS.map((t) => [t.key, []]))
   for (const w of waiting) {
-    if (!showAgent && w.goroutines.every((g) => replay.isAgent(g.g))) continue
+    if (!showGorviz && w.goroutines.every((g) => replay.isGorviz(g.g))) continue
     sections.get(waitTargetOf(w.reason))!.push(w)
   }
   const counts = new Map(WAIT_TARGETS.map((t) => [t.key, sections.get(t.key)!.reduce((a, w) => a + w.goroutines.length, 0)]))
@@ -427,11 +427,11 @@ function Parked({ waiting, chip, focus, leaks, replay, showAgent }: { waiting: W
               const shown = w.goroutines.slice(0, WAIT_CHIPS_MAX)
               const f = w.goroutines.find((g) => g.g === focus)
               if (f && !shown.includes(f)) shown.push(f)
-              const agent = w.goroutines.every((g) => replay.isAgent(g.g))
+              const gorvizGoroutine = w.goroutines.every((g) => replay.isGorviz(g.g))
               return (
-                <div class={`wgroup${f ? " has-focus" : ""}${agent ? " is-agent" : ""}`} title={`${w.entry} waiting on ${w.reason || "unknown"}${agent ? " (gorviz agent)" : ""}`}>
+                <div class={`wgroup${f ? " has-focus" : ""}${gorvizGoroutine ? " is-gorviz" : ""}`} title={`${w.entry} waiting on ${w.reason || "unknown"}${gorvizGoroutine ? " (gorviz)" : ""}`}>
                   <div class="wgroup-head">
-                    <span class="fn">{agent && <AgentIcon />}{short(w.entry)}<span class="reason">{w.reason || "unknown"}</span></span>
+                    <span class="fn">{gorvizGoroutine && <GorvizIcon />}{short(w.entry)}<span class="reason">{w.reason || "unknown"}</span></span>
                     {leaked > 0 && <span class="badge kind">{leaked} leaked</span>}
                     <span class="count">{w.goroutines.length}</span>
                   </div>
@@ -464,9 +464,9 @@ interface ChipProps {
 // Chip は G 1 つ。丸の色は主因、赤い輪はリーク。押すとその G の診断へ移る
 function Chip({ g, dot, wide, wait, focus, leak, replay, onSelect }: ChipProps) {
   const entry = replay.entryOf(g.g)
-  const agent = replay.isAgent(g.g)
+  const gorvizGoroutine = replay.isGorviz(g.g)
   const tip = [
-    `G${g.g}${leak ? ` (leaked · ${leak.certainty} · ${leak.count} of ${leak.of} at the same place)` : ""}${agent ? " (gorviz agent)" : ""}`,
+    `G${g.g}${leak ? ` (leaked · ${leak.certainty} · ${leak.count} of ${leak.of} at the same place)` : ""}${gorvizGoroutine ? " (gorviz)" : ""}`,
     `entry: ${entry || "?"}`,
     g.fn && `now at: ${g.fn}`,
     g.reason && `wait reason: ${g.reason}`,
@@ -474,9 +474,9 @@ function Chip({ g, dot, wide, wait, focus, leak, replay, onSelect }: ChipProps) 
     "click to diagnose this goroutine",
   ].filter(Boolean).join("\n")
   return (
-    <button type="button" class={`gchip${g.g === focus ? " is-focus" : ""}${agent ? " is-agent" : ""}`} title={tip} onClick={() => onSelect(g.g)}>
+    <button type="button" class={`gchip${g.g === focus ? " is-focus" : ""}${gorvizGoroutine ? " is-gorviz" : ""}`} title={tip} onClick={() => onSelect(g.g)}>
       <span class={`gdot ${dot}${leak ? " is-leaked" : ""}`}></span>
-      {agent && <AgentIcon />}
+      {gorvizGoroutine && <GorvizIcon />}
       G{g.g}
       {wide && <small>{short(entry) || "entry unknown"}</small>}
       {wait && <small class="wait" title={`waiting in the run queue for ${wait}`}>{wait}</small>}
@@ -484,21 +484,21 @@ function Chip({ g, dot, wide, wait, focus, leak, replay, onSelect }: ChipProps) 
   )
 }
 
-// AgentIcon は gorviz の agent の G に付ける印。観測のために動いている G だと、色だけでなく形でも見分けられるようにする
-function AgentIcon() {
+// GorvizIcon は gorviz の G に付ける印。観測のために動いている G だと、色だけでなく形でも見分けられるようにする
+function GorvizIcon() {
   return (
-    <svg class="agent-icon" viewBox="0 0 16 16" width="12" height="12" aria-label="gorviz agent" role="img">
+    <svg class="gorviz-icon" viewBox="0 0 16 16" width="12" height="12" aria-label="gorviz" role="img">
       <circle cx="8" cy="8" r="1.6" fill="currentColor"></circle>
       <path d="M5.2 5.2a4 4 0 0 0 0 5.6M10.8 5.2a4 4 0 0 1 0 5.6M3 3a7 7 0 0 0 0 10M13 3a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path>
     </svg>
   )
 }
 
-// hiddenAgents は畳んでいる agent の G の数。P の上で走っている G は畳まないので数えない
-function hiddenAgents(view: SchedView, replay: Replay): number {
+// hiddenGorviz は畳んでいる gorviz の G の数。P の上で走っている G は畳まないので数えない
+function hiddenGorviz(view: SchedView, replay: Replay): number {
   let n = 0
   const count = (gs: GoroutineState[]) => {
-    for (const g of gs) if (replay.isAgent(g.g)) n++
+    for (const g of gs) if (replay.isGorviz(g.g)) n++
   }
   for (const p of view.procs) count(p.localQueue)
   count(view.globalQueue)

@@ -1,4 +1,4 @@
-// Package server はアプリをビルドして起動し、負荷をかけ、agent から届いた execution trace から Issue を判定する。結果を GUI と HTTP API で返す
+// Package server はアプリをビルドして起動し、負荷をかけ、アプリの pprof から取った execution trace から Issue を判定する。結果を GUI と HTTP API で返す
 package server
 
 import (
@@ -6,18 +6,15 @@ import (
 
 	"github.com/kakkky/scope"
 
-	"github.com/kakkky/gorviz/internal"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/accessor"
 	"github.com/kakkky/gorviz/internal/app/server/adapter/client"
 	"github.com/kakkky/gorviz/internal/app/server/config"
 	"github.com/kakkky/gorviz/internal/app/server/driver/httpserver"
 	"github.com/kakkky/gorviz/internal/app/server/driver/kvs"
-	socketdriver "github.com/kakkky/gorviz/internal/app/server/driver/socket"
 	"github.com/kakkky/gorviz/internal/app/server/driver/tracestream"
 	"github.com/kakkky/gorviz/internal/app/server/driver/workdir"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/api"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
-	socketpresentation "github.com/kakkky/gorviz/internal/app/server/presentation/socket"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/web"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 	"github.com/kakkky/gorviz/internal/app/server/worker"
@@ -35,26 +32,13 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	defer removeWork()
 	store := kvs.NewInMemoryKVS()
 	stream := tracestream.NewTraceStream()
-	conn := socketdriver.NewSocketConn()
-	agentFiles, protocolFiles, err := internal.EmbeddedAgent()
-	if err != nil {
-		return err
-	}
 
 	// adapter
 	sessions := accessor.NewSessionAccessor(store)
 	observations := accessor.NewObservationAccessor(store)
 	issues := accessor.NewIssueBookAccessor(store)
 	traceStream := accessor.NewTraceStreamAccessor(stream)
-	agentClient, err := client.NewAgentClient(conn)
-	if err != nil {
-		return err
-	}
-	app, err := client.NewAppClient(work.SocketPath(), work.Path(), agentFiles, protocolFiles)
-	if err != nil {
-		return err
-	}
-	toolchain, err := client.NewToolchainClient(work.Path())
+	app, err := client.NewAppClient(work.SocketPath(), work.Path())
 	if err != nil {
 		return err
 	}
@@ -64,16 +48,16 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	// usecase
-	uc := usecase.NewUseCase(sessions, observations, issues, traceStream, agentClient, app, app, app, toolchain, clock)
+	uc := usecase.NewUseCase(sessions, observations, issues, traceStream, app, app, app, app, clock)
 
 	// presentation
-	socketHandler := socketpresentation.NewHandler(uc)
-	apiHandler := api.NewHandler(uc, "http://"+cfg.GUIAddr, stop)
+	apiHandler := api.NewHandler(uc, "http://"+cfg.GUIAddr, cfg.ServerLog, stop)
 	webHandler := web.NewHandler(uc)
 	mw := middleware.NewMiddleware(api.NewErrorWriter(), web.NewErrorWriter())
 
 	// worker
 	runAppWorker := worker.NewRunAppWorker(cfg, uc.NewRunAppUsecase())
+	fetchWorker := worker.NewFetchAppRuntimeTraceWorker(uc.NewFetchAppRuntimeTraceUsecase())
 	indexWorker := worker.NewIndexAppRuntimeTraceWorker(uc.NewIndexAppRuntimeTraceUsecase())
 	collectWorker := worker.NewCollectAppObservationsWorker(uc.NewCollectAppObservationsUsecase())
 	detectWorker := worker.NewDetectAppIssuesWorker(uc.NewDetectAppIssuesUsecase())
@@ -89,17 +73,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 	defer closeGUI()
-	listener, closeListener, err := socketdriver.NewSocketListener(work.SocketPath(), conn, socketdriver.NewMessageMux(socketHandler, mw))
-	if err != nil {
-		return err
-	}
-	defer closeListener()
 
 	return scope.Run(ctx, func(sc *scope.Scope) error {
-		sc.Go(listener.Run)
 		sc.Go(apiServer.Run)
 		sc.Go(guiServer.Run)
 		sc.Go(runAppWorker.Run)
+		sc.Go(fetchWorker.Run)
 		sc.Go(indexWorker.Run)
 		sc.Go(collectWorker.Run)
 		sc.Go(detectWorker.Run)

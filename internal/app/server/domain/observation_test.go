@@ -1,51 +1,43 @@
 package domain_test
 
 import (
-	"io"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/trace"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
 // observationsOf は testdata の trace (4 つの goroutine が 1 つの Mutex を 20ms ずつ取り合い、そのあと 3 つの goroutine が channel の送信でリークする) を、
-// 1 秒ごとの Observation と、セッション全体の要約にする
-func observationsOf(t *testing.T) ([]domain.Observation, domain.Observed) {
+// 1 秒ごとの Observation と、セッション全体の要約にする。leakAt は goroutineleak プロファイルを取った時刻で、trace に書いた "leak-check 1" のログから取る
+func observationsOf(t *testing.T) ([]domain.Observation, domain.Observed, time.Duration) {
 	t.Helper()
-	f, err := os.Open("testdata/lock_and_leak.trace")
+	data, err := os.ReadFile("testdata/lock_and_leak.trace")
 	require.NoError(t, err)
-	defer f.Close()
-	dec, err := domain.NewTraceDecoder(f)
+	events, err := domain.DecodeTraceChunk(data)
 	require.NoError(t, err)
 	b := domain.NewObservationBuilder()
-	var obs []domain.Observation
-	for {
-		ev, err := dec.Next()
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		obs = append(obs, b.Apply(ev)...)
-	}
+	obs := b.ApplyChunk(events, 0)
 	last, until := b.End()
 	obs = append(obs, last)
-	observed := domain.Observed{Started: true, Until: until, Ended: true, LeakChecks: map[uint64]time.Duration{}}
-	marks, checks := b.TakeNews()
-	observed.Marks = marks
-	for seq, at := range checks {
-		observed.LeakChecks[seq] = at
+	var leakAt time.Duration
+	for _, ev := range events {
+		if ev.Kind() == trace.EventLog && ev.Log().Message == "leak-check 1" {
+			leakAt = ev.Time().Sub(events[0].Time())
+		}
 	}
-	return obs, observed
+	require.NotZero(t, leakAt)
+	return obs, domain.Observed{Started: true, Until: until, Ended: true}, leakAt
 }
 
-func setOf(t *testing.T) (*domain.ObservationSet, domain.Observed) {
+func setOf(t *testing.T) (*domain.ObservationSet, time.Duration) {
 	t.Helper()
-	obs, observed := observationsOf(t)
-	return domain.NewObservationSet(obs, observed), observed
+	obs, observed, leakAt := observationsOf(t)
+	return domain.NewObservationSet(obs, observed), leakAt
 }
 
 func leakStacks(t *testing.T) []domain.LeakProfileStack {
@@ -59,7 +51,7 @@ func leakStacks(t *testing.T) []domain.LeakProfileStack {
 
 func TestObservationBuilder(t *testing.T) {
 	t.Parallel()
-	ix, observed := setOf(t)
+	ix, leakAt := setOf(t)
 	tests := []struct {
 		name  string
 		check func(t *testing.T)
@@ -72,16 +64,9 @@ func TestObservationBuilder(t *testing.T) {
 			},
 		},
 		{
-			name: "finds the trace mark written for the leak check",
-			check: func(t *testing.T) {
-				_, ok := observed.LeakCheckAt(1)
-				assert.True(t, ok)
-			},
-		},
-		{
 			name: "matches every leaked goroutine of the profile as a fact and groups them by the go statement",
 			check: func(t *testing.T) {
-				at, _ := observed.LeakCheckAt(1)
+				at := leakAt
 				ds := domain.MatchLeaks(ix, at, leakStacks(t))
 				require.Len(t, ds, 1)
 				assert.Equal(t, domain.IssueGoroutineLeak, ds[0].Kind)
@@ -98,7 +83,7 @@ func TestObservationBuilder(t *testing.T) {
 		{
 			name: "says a leaked goroutine waited on a channel at the send",
 			check: func(t *testing.T) {
-				at, _ := observed.LeakCheckAt(1)
+				at := leakAt
 				ds := domain.MatchLeaks(ix, at, leakStacks(t))
 				g := ds[0].Leaks[0].Goroutines[0]
 				d, err := domain.DetailOf(ix, g, 0, at, ds[0].Leaks)
@@ -132,6 +117,112 @@ func TestObservationBuilder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			tt.check(t)
+		})
+	}
+}
+
+// chunksOf は testdata の 2 つの trace の区切り (1 つ目と 2 つ目の間に ends が終わり、wakes が起きて走り出し、stays は待ち続ける) を足し、
+// 2 つ目の区切りの頭の時刻を返す
+func chunksOf(t *testing.T) (*domain.ObservationSet, time.Duration) {
+	t.Helper()
+	b := domain.NewObservationBuilder()
+	var obs []domain.Observation
+	var first trace.Time
+	var second time.Duration
+	for i, name := range []string{"testdata/two_chunks_1.trace", "testdata/two_chunks_2.trace"} {
+		data, err := os.ReadFile(name)
+		require.NoError(t, err)
+		events, err := domain.DecodeTraceChunk(data)
+		require.NoError(t, err)
+		if i == 0 {
+			first = events[0].Time()
+		} else {
+			second = events[0].Time().Sub(first)
+		}
+		obs = append(obs, b.ApplyChunk(events, 4)...)
+	}
+	last, until := b.End()
+	obs = append(obs, last)
+	return domain.NewObservationSet(obs, domain.Observed{Started: true, Until: until, Ended: true}), second
+}
+
+func goroutineOf(t *testing.T, ix *domain.ObservationSet, entry string) *domain.GoroutineRecord {
+	t.Helper()
+	for _, id := range ix.GoroutineIDs() {
+		if g, _ := ix.Goroutine(id); g.Entry == entry {
+			return g
+		}
+	}
+	t.Fatalf("no goroutine of %s", entry)
+	return nil
+}
+
+func TestObservationBuilderChunks(t *testing.T) {
+	t.Parallel()
+	ix, second := chunksOf(t)
+	tests := []struct {
+		name  string
+		check func(t *testing.T)
+	}{
+		{
+			name: "ends a goroutine missing from the next chunk at the head of that chunk",
+			check: func(t *testing.T) {
+				g := goroutineOf(t, ix, "main.ends")
+				assert.True(t, g.Ended)
+				assert.Equal(t, second, g.EndedAt)
+			},
+		},
+		{
+			name: "keeps a goroutine waiting across the chunks without a change at the seam",
+			check: func(t *testing.T) {
+				g := goroutineOf(t, ix, "main.stays")
+				assert.False(t, g.Ended)
+				c, ok := ix.StateAt(g, ix.Last())
+				require.True(t, ok)
+				assert.Equal(t, domain.PlaceWaiting, c.Place)
+				assert.Less(t, c.At, second)
+			},
+		},
+		{
+			name: "moves a goroutine woken between the chunks out of waiting at the head of the next chunk",
+			check: func(t *testing.T) {
+				g := goroutineOf(t, ix, "main.wakes")
+				c, ok := ix.StateAt(g, second)
+				require.True(t, ok)
+				assert.NotEqual(t, domain.PlaceWaiting, c.Place)
+			},
+		},
+		{
+			name: "takes the number of threads from the chunk",
+			check: func(t *testing.T) {
+				bs := ix.Buckets(0, ix.Last())
+				require.NotEmpty(t, bs)
+				assert.Equal(t, 4, bs[len(bs)-1].Threads)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.check(t)
+		})
+	}
+}
+
+func TestParseThreadCreateProfile(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		text string
+		want int
+	}{
+		{name: "reads the total of the threadcreate profile", text: "threadcreate profile: total 12\n1 @\n#\t0x1\n", want: 12},
+		{name: "reads nothing from an unknown text", text: "not a profile\n", want: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, domain.ParseThreadCreateProfile([]byte(tt.text)))
 		})
 	}
 }

@@ -16,11 +16,11 @@ make build
 ./bin/gorviz diagnose example/todo-app/scenario.yaml
 ```
 
-- `gorviz run` builds the app with the agent and returns once it runs. Open the GUI at http://127.0.0.1:24678.
+- `gorviz run` builds the app with pprof opened on a private unix socket and returns once it runs. Open the GUI at http://127.0.0.1:24678.
 - [scenario.yaml](scenario.yaml) seeds 1,000 todos, then sends five flows: add a todo with a reminder and complete it,
   list, show the statistics, export CSV and back up.
 - The diagnosis takes about a minute here, because some of the requests are very slow (that is the point).
-  The summary lists the issues and the phase each started in, then the coverage.
+  The summary lists the statuses of the load, then the issues and the phase each started in.
 
 You can also open http://localhost:8090 and click around while the session runs: gorviz judges issues all the time,
 not only during `gorviz diagnose`.

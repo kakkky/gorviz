@@ -10,23 +10,30 @@ import (
 	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
+
+const (
+	mediaTOON = "application/toon"
+	mediaJSON = "application/json"
+)
+
+// headerExitCode は、cli がそのまま使う終了コード。途中の結果を流す応答では trailer で返す
+const headerExitCode = "Gorviz-Exit-Code"
 
 // pageBudget は一覧を区切る量。件数ではなく返す量で区切り、LLM エージェントのコンテキストを埋めないようにする
 const pageBudget = 6 << 10
 
 func wantsJSON(r *http.Request) bool {
-	return strings.Contains(r.Header.Get("Accept"), server.MediaJSON)
+	return strings.Contains(r.Header.Get("Accept"), mediaJSON)
 }
 
 func encode(r *http.Request, v any) ([]byte, string, error) {
 	if wantsJSON(r) {
 		b, err := json.MarshalIndent(v, "", "  ")
-		return append(b, '\n'), server.MediaJSON, err
+		return append(b, '\n'), mediaJSON, err
 	}
 	b, err := marshalTOON(v)
-	return b, server.MediaTOON + "; charset=utf-8", err
+	return b, mediaTOON + "; charset=utf-8", err
 }
 
 // write は Accept に応じた形 (TOON / JSON) で書く
@@ -36,7 +43,7 @@ func write(rw http.ResponseWriter, r *http.Request, v any, exitCode int) error {
 		return domain.ErrInternal.Wrap(err, "encode response")
 	}
 	rw.Header().Set("Content-Type", media)
-	rw.Header().Set(server.HeaderExitCode, strconv.Itoa(exitCode))
+	rw.Header().Set(headerExitCode, strconv.Itoa(exitCode))
 	_, _ = rw.Write(b)
 	return nil
 }

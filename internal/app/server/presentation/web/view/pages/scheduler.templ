@@ -45,6 +45,6 @@ templ ReplayPanel(replay components.GMPReplayViewModel, streamURL string, trunca
 	}
 	@components.GMPReplay(replay)
 	<p class="faint small replay-footnote">
-		The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded. Goroutines of the gorviz agent are folded at the end of the parked list; when shown, they are dimmed and marked with an antenna.
+		The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded. Goroutines of gorviz (the pprof it opened in the app and the execution trace it runs) are folded at the end of the parked list; when shown, they are dimmed and marked with an antenna.
 	</p>
 }

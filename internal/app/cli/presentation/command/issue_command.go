@@ -7,8 +7,6 @@ import (
 	"net/url"
 
 	"github.com/urfave/cli/v3"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func (c *Command) issueCommand() *cli.Command {
@@ -26,5 +24,5 @@ func (c *Command) issue(_ context.Context, cmd *cli.Command) error {
 	if n := cmd.Int("occurrence"); n > 0 {
 		q.Set("occurrence", fmt.Sprint(n))
 	}
-	return c.print(cmd, http.MethodGet, pathOf(server.IssueEndpoint, id), q, nil)
+	return c.print(cmd, http.MethodGet, pathOf(issueEndpoint, id), q, nil)
 }

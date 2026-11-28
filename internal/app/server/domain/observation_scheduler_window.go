@@ -27,7 +27,7 @@ type SchedulerWindow struct {
 	STW         []TimeRange
 	GCMark      []TimeRange
 	Entries     map[GoroutineID]string
-	Agents      map[GoroutineID]bool
+	Gorviz      map[GoroutineID]bool
 	Functions   map[StackID]string
 	Reasons     map[uint16]string
 	Truncated   bool
@@ -38,7 +38,7 @@ type SchedulerWindow struct {
 func NewSchedulerWindow(ix *ObservationSet, from, to time.Duration) SchedulerWindow {
 	to = min(to, ix.Last())
 	from = min(from, to)
-	w := SchedulerWindow{From: from, To: to, Lanes: map[int16][]ProcSpan{}, Entries: map[GoroutineID]string{}, Agents: map[GoroutineID]bool{}, Functions: map[StackID]string{}, Reasons: map[uint16]string{}}
+	w := SchedulerWindow{From: from, To: to, Lanes: map[int16][]ProcSpan{}, Entries: map[GoroutineID]string{}, Gorviz: map[GoroutineID]bool{}, Functions: map[StackID]string{}, Reasons: map[uint16]string{}}
 	procs := map[int16]bool{}
 	note := func(c StateChange) StateChange {
 		c.At -= from
@@ -54,8 +54,8 @@ func NewSchedulerWindow(ix *ObservationSet, from, to time.Duration) SchedulerWin
 		}
 		if g, ok := ix.Goroutine(c.G); ok {
 			w.Entries[c.G] = g.Entry
-			if g.Agent {
-				w.Agents[c.G] = true
+			if g.Gorviz {
+				w.Gorviz[c.G] = true
 			}
 		}
 		return c

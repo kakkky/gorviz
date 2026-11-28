@@ -52,7 +52,7 @@ flows:                             # the requests sent under load (at least one)
 - ramp-up runs 4 levels with P, 2P, 4P and 8P VUs (P is GOMAXPROCS of the app), 5 seconds each.
 - cancellation runs 2P VUs for 5 seconds and cuts 30% of the requests from the client side,
   after 0 to 2 times the median latency of ramp-up. Cancellation paths are where goroutines often leak.
-- cooldown stops the load, waits 3 seconds and takes the goroutineleak profile and the coverage.
+- cooldown stops the load, waits 3 seconds and takes the goroutineleak profile.
 
 ## Errors
 

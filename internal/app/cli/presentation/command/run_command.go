@@ -9,12 +9,10 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v3"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 func (c *Command) runCommand() *cli.Command {
-	return &cli.Command{Name: "run", Usage: "build the app with the agent, start it and return when it runs", ArgsUsage: "<package> [-- app arguments]", Action: c.run}
+	return &cli.Command{Name: "run", Usage: "build the app, start it and return when it runs", ArgsUsage: "<package> [-- app arguments]", Action: c.run}
 }
 
 func (c *Command) run(ctx context.Context, cmd *cli.Command) error {
@@ -27,7 +25,7 @@ func (c *Command) run(ctx context.Context, cmd *cli.Command) error {
 		appArgs = appArgs[1:]
 	}
 	socket := cmd.String("socket")
-	if resp, err := c.do(ctx, cmd, http.MethodGet, server.StatusEndpoint, nil, nil, server.MediaJSON); err == nil {
+	if resp, err := c.do(ctx, cmd, http.MethodGet, statusEndpoint, nil, nil, mediaJSON); err == nil {
 		resp.Body.Close()
 		return cli.Exit(fmt.Sprintf("a gorviz session already runs on %s; stop it with gorviz stop first", socket), 2)
 	}
@@ -35,12 +33,12 @@ func (c *Command) run(ctx context.Context, cmd *cli.Command) error {
 	if err != nil {
 		return cli.Exit(err.Error(), 2)
 	}
-	if err := c.server.StartServer(socket, dir, pkg, appArgs); err != nil {
+	if err := c.server.StartServer(socket, c.cfg.ServerLog, dir, pkg, appArgs); err != nil {
 		return cli.Exit("start the gorviz server: "+err.Error(), 2)
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		resp, err := c.do(ctx, cmd, http.MethodGet, server.StartResultEndpoint, nil, nil, acceptOf(cmd))
+		resp, err := c.do(ctx, cmd, http.MethodGet, startResultEndpoint, nil, nil, acceptOf(cmd))
 		if err == nil {
 			defer resp.Body.Close()
 			if _, err := io.Copy(c.out, resp.Body); err != nil {
@@ -52,7 +50,7 @@ func (c *Command) run(ctx context.Context, cmd *cli.Command) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return cli.Exit(fmt.Sprintf("the gorviz server did not start (%v); see %s", err, server.LogPath()), 2)
+			return cli.Exit(fmt.Sprintf("the gorviz server did not start (%v); see %s", err, c.cfg.ServerLog), 2)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

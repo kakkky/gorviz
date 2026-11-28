@@ -1,17 +1,13 @@
 package tracestream
 
-import (
-	"io"
-	"sync"
-)
+import "sync"
 
-// TraceStream は agent から届いた execution trace を、届いた順に読み手へ渡す。書き手を待たせないよう、読まれるまで溜める
+// TraceStream はアプリから取った trace の区切りを、取った順に読み手へ渡す。取り手を待たせないよう、読まれるまで溜める。区切りの形は問わない
 type TraceStream struct {
 	mu     sync.Mutex
 	cond   *sync.Cond
-	queue  [][]byte
+	queue  []any
 	closed bool
-	broken bool
 }
 
 func NewTraceStream() *TraceStream {
@@ -20,52 +16,36 @@ func NewTraceStream() *TraceStream {
 	return s
 }
 
-func (s *TraceStream) Write(p []byte) (int, error) {
+func (s *TraceStream) Append(c any) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return 0, io.ErrClosedPipe
+		return false
 	}
-	s.queue = append(s.queue, append([]byte(nil), p...))
+	s.queue = append(s.queue, c)
 	s.cond.Signal()
-	return len(p), nil
+	return true
 }
 
-func (s *TraceStream) Read(p []byte) (int, error) {
+// Next は次の区切りが来るまで待つ。閉じて読み切ったら false
+func (s *TraceStream) Next() (any, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for len(s.queue) == 0 {
 		if s.closed {
-			if s.broken {
-				return 0, io.ErrUnexpectedEOF
-			}
-			return 0, io.EOF
+			return nil, false
 		}
 		s.cond.Wait()
 	}
-	n := copy(p, s.queue[0])
-	if n == len(s.queue[0]) {
-		s.queue[0] = nil
-		s.queue = s.queue[1:]
-	} else {
-		s.queue[0] = s.queue[0][n:]
-	}
-	return n, nil
+	c := s.queue[0]
+	s.queue[0] = nil
+	s.queue = s.queue[1:]
+	return c, true
 }
 
-// Close は trace の終わり。broken は終わりの合図を受けずに切れたこと
-func (s *TraceStream) Close(broken bool) {
+func (s *TraceStream) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed {
-		return
-	}
-	s.closed, s.broken = true, broken
+	s.closed = true
 	s.cond.Broadcast()
-}
-
-func (s *TraceStream) Broken() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.broken
 }

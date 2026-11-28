@@ -200,7 +200,7 @@ func MatchLeaks(ix *ObservationSet, at time.Duration, stacks []LeakProfileStack)
 			continue
 		}
 		blocked := CurrentFrame(s.Frames)
-		if IsAgentFunction(blocked.Function) || IsAgentFunction(EntryFunction(s.Frames)) {
+		if IsGorvizFunction(blocked.Function) || IsGorvizFunction(EntryFunction(s.Frames)) {
 			continue
 		}
 		cands := slices.Clone(waiting[placeKey(blocked)])

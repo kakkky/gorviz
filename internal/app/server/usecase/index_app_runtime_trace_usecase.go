@@ -2,16 +2,12 @@ package usecase
 
 import (
 	"context"
-	"errors"
-	"io"
-	"maps"
-	"time"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 )
 
-// IndexAppRuntimeTraceUsecase は流れてくる execution trace を、trace が終わるまで読み続け、1 秒が閉じるたびに Observation にして入れる。
-// 出来事と goroutineleak プロファイルを取った時刻は、秒が閉じるのを待たずにセッションへ足す。読み手と組み立ての途中の状態は Exec の中で持ち、呼び出しをまたいで持たない
+// IndexAppRuntimeTraceUsecase は、取った順に届く trace の区切りを、trace が閉じるまで読み続け、1 秒が閉じるたびに Observation にして入れる。
+// 読み手と組み立ての途中の状態は Exec の中で持ち、呼び出しをまたいで持たない
 type IndexAppRuntimeTraceUsecase struct {
 	sessions     domain.SessionStore
 	observations domain.ObservationAccessor
@@ -20,8 +16,10 @@ type IndexAppRuntimeTraceUsecase struct {
 
 type IndexAppRuntimeTraceUsecaseInput struct{}
 
+// IndexAppRuntimeTraceUsecaseOutput の Unreadable は、途中で切れていて読めたところまでを使った区切りの数
 type IndexAppRuntimeTraceUsecaseOutput struct {
-	Broken bool
+	Chunks     int
+	Unreadable int
 }
 
 func (us *UseCase) NewIndexAppRuntimeTraceUsecase() *IndexAppRuntimeTraceUsecase {
@@ -29,39 +27,44 @@ func (us *UseCase) NewIndexAppRuntimeTraceUsecase() *IndexAppRuntimeTraceUsecase
 }
 
 func (u *IndexAppRuntimeTraceUsecase) Exec(_ context.Context, _ IndexAppRuntimeTraceUsecaseInput) (IndexAppRuntimeTraceUsecaseOutput, error) {
-	dec, err := domain.NewTraceDecoder(u.stream.TraceReader())
-	if err != nil {
-		broken := u.stream.TraceBroken()
-		u.sessions.UpdateSession(func(s *domain.Session) { s.Observed.Ended, s.Observed.Broken = true, broken })
-		return IndexAppRuntimeTraceUsecaseOutput{Broken: broken}, nil
-	}
+	var out IndexAppRuntimeTraceUsecaseOutput
 	b := domain.NewObservationBuilder()
 	for {
-		ev, readErr := dec.Next()
-		if readErr != nil {
-			broken := !errors.Is(readErr, io.EOF) || u.stream.TraceBroken()
-			last, until := b.End()
-			if err := u.put(last); err != nil {
-				return IndexAppRuntimeTraceUsecaseOutput{}, err
-			}
-			u.publish(b)
-			u.sessions.UpdateSession(func(s *domain.Session) {
-				s.Observed.Until, s.Observed.Ended, s.Observed.Broken = until, true, broken
-			})
-			return IndexAppRuntimeTraceUsecaseOutput{Broken: broken}, nil
+		c, ok := u.stream.NextTrace()
+		if !ok {
+			break
+		}
+		out.Chunks++
+		events, err := domain.DecodeTraceChunk(c.Trace)
+		if err != nil {
+			out.Unreadable++
 		}
 		started := b.Started()
-		closed := b.Apply(ev)
-		if !started {
+		closed := b.ApplyChunk(events, c.Threads)
+		if !started && b.Started() {
 			u.sessions.UpdateSession(func(s *domain.Session) { s.Observed.Started = true })
 		}
 		for _, o := range closed {
 			if err := u.put(o); err != nil {
-				return IndexAppRuntimeTraceUsecaseOutput{}, err
+				return out, err
 			}
 		}
-		u.publish(b)
+		if clock := b.Clock(); clock != u.sessions.Session().Observed.Clock {
+			u.sessions.UpdateSession(func(s *domain.Session) { s.Observed.Clock = clock })
+		}
 	}
+	started := b.Started()
+	last, until := b.End()
+	if started {
+		if err := u.put(last); err != nil {
+			return out, err
+		}
+	}
+	// アプリが終わるとき、取りかけの区切りは届かないので、trace の末尾はいつも欠ける
+	u.sessions.UpdateSession(func(s *domain.Session) {
+		s.Observed.Until, s.Observed.Ended, s.Observed.Broken = max(s.Observed.Until, until), true, started
+	})
+	return out, nil
 }
 
 func (u *IndexAppRuntimeTraceUsecase) put(o domain.Observation) error {
@@ -71,26 +74,8 @@ func (u *IndexAppRuntimeTraceUsecase) put(o domain.Observation) error {
 	u.sessions.UpdateSession(func(s *domain.Session) {
 		s.Observed.Until = max(s.Observed.Until, o.To())
 		if s.Observed.Procs == 0 {
-			s.Observed.Procs = o.Procs
+			s.Observed.Procs, s.App.Procs = o.Procs, o.Procs
 		}
 	})
 	return nil
-}
-
-func (u *IndexAppRuntimeTraceUsecase) publish(b *domain.ObservationBuilder) {
-	marks, checks := b.TakeNews()
-	clock := b.Clock()
-	if marks == nil && checks == nil && clock == u.sessions.Session().Observed.Clock {
-		return
-	}
-	u.sessions.UpdateSession(func(s *domain.Session) {
-		s.Observed.Clock = clock
-		s.Observed.AddMarks(marks...)
-		if s.Observed.LeakChecks == nil {
-			s.Observed.LeakChecks = map[uint64]time.Duration{}
-		} else {
-			s.Observed.LeakChecks = maps.Clone(s.Observed.LeakChecks)
-		}
-		maps.Copy(s.Observed.LeakChecks, checks)
-	})
 }

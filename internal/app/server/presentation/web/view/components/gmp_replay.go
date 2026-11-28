@@ -40,7 +40,7 @@ type ReplayWindow struct {
 	STW         []ReplayRange  `json:"stw"`
 	GCMark      []ReplayRange  `json:"gcMark"`
 	Leaks       []ReplayLeak   `json:"leaks"`
-	Agents      []int64        `json:"agents"`
+	Gorviz      []int64        `json:"gorviz"`
 	Truncated   bool           `json:"truncated"`
 	Ended       bool           `json:"ended"`
 }

@@ -5,7 +5,7 @@ import type { ReplayWindow } from "../gen/types"
 
 const base: ReplayWindow = {
   from: "", to: "", startedAtMs: 0, durationNs: 100, procs: [0, 1], functions: ["main.worker", "sync.(*Mutex).Lock"], reasons: ["sync"],
-  entries: { "1": 0, "2": 0, "3": 0 }, events: [], procEvents: [], lanes: [[], []], stw: [], gcMark: [], leaks: [], agents: [], truncated: false, ended: false,
+  entries: { "1": 0, "2": 0, "3": 0 }, events: [], procEvents: [], lanes: [[], []], stw: [], gcMark: [], leaks: [], gorviz: [], truncated: false, ended: false,
 }
 
 test("places goroutines on Ps, run queues and waiting groups at a time", () => {
@@ -44,8 +44,8 @@ test("keeps a goroutine in a syscall on its P only while the P has no other goro
   assert.deepEqual(later.handedOff.map((g) => g.g), [1])
 })
 
-test("tells the goroutines of the agent apart", () => {
-  const r = new Replay({ ...base, agents: [7] })
-  assert.equal(r.isAgent(7), true)
-  assert.equal(r.isAgent(1), false)
+test("tells the goroutines of gorviz apart", () => {
+  const r = new Replay({ ...base, gorviz: [7] })
+  assert.equal(r.isGorviz(7), true)
+  assert.equal(r.isGorviz(1), false)
 })

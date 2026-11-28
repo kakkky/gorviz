@@ -23,6 +23,6 @@ func (w *IndexAppRuntimeTraceWorker) Run(ctx context.Context) error {
 		slog.ErrorContext(ctx, "index the execution trace", slog.Any("err", err))
 		return nil
 	}
-	slog.InfoContext(ctx, "execution trace ended", slog.Bool("broken", out.Broken))
+	slog.InfoContext(ctx, "execution trace ended", slog.Int("chunks", out.Chunks), slog.Int("unreadable", out.Unreadable))
 	return nil
 }

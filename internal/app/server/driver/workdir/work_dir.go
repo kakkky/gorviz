@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// WorkDir はセッションの間だけ使う一時ディレクトリ (agent の socket・ビルドしたアプリ・coverage)。止めるときに消す
+// WorkDir はセッションの間だけ使う一時ディレクトリ (アプリが pprof を開く socket・ビルドしたアプリ)。止めるときに消す
 type WorkDir struct {
 	path string
 }
@@ -20,4 +20,4 @@ func NewWorkDir() (*WorkDir, func(), error) {
 
 func (w *WorkDir) Path() string { return w.path }
 
-func (w *WorkDir) SocketPath() string { return filepath.Join(w.path, "agent.sock") }
+func (w *WorkDir) SocketPath() string { return filepath.Join(w.path, "pprof.sock") }

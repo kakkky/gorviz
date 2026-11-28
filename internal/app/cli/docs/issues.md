@@ -39,11 +39,11 @@ of time in which the condition held. Occurrences during a diagnosis carry the ph
 - For each level of ramp-up and for cancellation, again over the whole phase.
 - GOROUTINE_LEAK after cooldown, for what was left after the load. The profile only says what is left at that time,
   so it does not tell which phase leaked; the creator and the blocked place tell which path it was.
-- At shutdown (`gorviz stop`) and when the app exits by itself, the goroutines left at that time.
+- At shutdown (`gorviz stop`), the goroutines left, from the last goroutineleak profile taken before the app exited.
 
 ## Certainty
 
 - FACT: said directly by the runtime or recorded in the execution trace.
 - INFERENCE: inferred by gorviz from a threshold, a trend or a stack. Do not treat it as a fact.
 
-The goroutines of the gorviz agent are never counted in issues.
+The goroutines of gorviz (the pprof it opened in the app and the execution trace it runs) are never counted in issues.

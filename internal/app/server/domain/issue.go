@@ -140,9 +140,9 @@ type IssueBook struct {
 	Pending       []PendingLeakCheck
 }
 
-// PendingLeakCheck は届いた goroutineleak プロファイルのうち、取った時刻の trace がまだ index に届いていないもの
+// PendingLeakCheck は取った goroutineleak プロファイルのうち、取った時刻 (trace の上の時刻) の trace がまだ index に届いていないもの
 type PendingLeakCheck struct {
-	Seq    uint64
+	At     time.Duration
 	Stacks []LeakProfileStack
 }
 
@@ -166,7 +166,9 @@ func (b *IssueBook) Record(d Detection, phase string) {
 	is := b.issueOf(d)
 	if n := len(is.Occurrences); n > 0 {
 		last := &is.Occurrences[n-1]
-		if d.From <= last.To+BucketSize && d.From >= last.From {
+		// shutdown で見たものは、止める前から続いていても別の発生にする。shutdown の結果として返すため
+		split := phase == PhaseShutdown && last.Phase != PhaseShutdown
+		if !split && d.From <= last.To+BucketSize && d.From >= last.From {
 			last.To = max(last.To, d.To)
 			last.Certainty = stronger(last.Certainty, d.Certainty)
 			last.Value = d.Value

@@ -7,7 +7,7 @@ How to diagnose an app with gorviz from start to end. Read this first.
     gorviz run <main package> [-- app arguments]
 
 - Pass a main package the same way as `go run`, like `gorviz run ./cmd/api -- --port 8080`.
-- gorviz builds the app with its agent in it (your files are not changed) and starts it as a child process.
+- gorviz builds the app with net/http/pprof opened on a private unix socket (your files are not changed) and starts it as a child process.
   The environment of `gorviz run` is passed to the build and to the app as it is.
 - The command returns once the app runs, with the GUI URL. Build errors are returned here.
 - The standard output and error of the app are not shown. gorviz only looks at the Go runtime.
@@ -23,7 +23,7 @@ How to diagnose an app with gorviz from start to end. Read this first.
   smoke (each flow once), ramp-up (4 levels of concurrency based on the number of Ps, 5 seconds each),
   cancellation (5 seconds, 30% of the requests are cut by the client) and cooldown (3 seconds).
 - A line is printed when each phase (each level of ramp-up) ends, then the summary.
-- When a flow does not pass smoke, the diagnosis stops there. Fix the scenario with the statuses and the coverage in the summary.
+- When a flow does not pass smoke, the diagnosis stops there. Fix the scenario with the statuses in the summary.
 - For a daemon, a batch or a CLI, run `gorviz diagnose` without a scenario. It sends no load and watches the app
   until it exits (or 30 seconds for an app that does not exit).
 - The exit code is 0 when no issue was found, 1 when issues were found and 2 when the app could not be diagnosed.
@@ -46,9 +46,7 @@ How to diagnose an app with gorviz from start to end. Read this first.
 
 - gorviz sends SIGTERM to the app and keeps tracing until it exits, so a shutdown that does not finish shows up.
   An app that does not finish within 10 seconds is killed.
-- The answer has the goroutines left when the app exited. All data of the session is gone after this.
-
-## Coverage
-
-The summary of a diagnosis with a scenario has the lines the app ran under load (the main package is not counted).
-"No issue" means little when the scenario did not reach the code, so check `partlyCovered` and `notReached`.
+- The answer has the goroutines left at the shutdown, from the last goroutineleak profile taken before the app exited.
+  All data of the session is gone after this.
+- The trace is taken in chunks of 250ms, and the chunk being taken when the app exits never arrives,
+  so the last 250ms or less before the exit is not in the trace.

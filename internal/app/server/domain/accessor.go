@@ -1,10 +1,7 @@
 //go:generate mockgen -source=$GOFILE -destination=../testhelper/mock/mock_accessor.go -package=mock
 package domain
 
-import (
-	"io"
-	"time"
-)
+import "time"
 
 // SessionStore はセッションの状態を読み書きする
 type SessionStore interface {
@@ -25,10 +22,9 @@ type IssueBookStore interface {
 	ViewIssueBook(f func(b *IssueBook))
 }
 
-// TraceStream は agent から届いた execution trace のバイト列を、届いた順に読み手へ渡す
+// TraceStream はアプリから取った trace の区切りを、取った順に読み手へ渡す。NextTrace は次の区切りが来るまで待ち、閉じて読み切ったら false を返す
 type TraceStream interface {
-	AppendTrace(p []byte) error
-	CloseTrace(broken bool)
-	TraceReader() io.Reader
-	TraceBroken() bool
+	AppendTrace(c TraceChunk) error
+	CloseTrace()
+	NextTrace() (TraceChunk, bool)
 }

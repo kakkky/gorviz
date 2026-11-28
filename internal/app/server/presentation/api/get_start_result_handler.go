@@ -6,7 +6,6 @@ import (
 
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 type startResponse struct {
@@ -19,13 +18,14 @@ type startResponse struct {
 
 // GetStartResultHandler はアプリが動き出す (ビルドに失敗する) まで待って返す。失敗したら、返したあとに server を止める
 type GetStartResultHandler struct {
-	wait    *usecase.WaitAppStartUsecase
-	stop    context.CancelFunc
-	guiBase string
+	wait      *usecase.WaitAppStartUsecase
+	stop      context.CancelFunc
+	guiBase   string
+	serverLog string
 }
 
-func NewGetStartResultHandler(wait *usecase.WaitAppStartUsecase, stop context.CancelFunc, guiBase string) *GetStartResultHandler {
-	return &GetStartResultHandler{wait: wait, stop: stop, guiBase: guiBase}
+func NewGetStartResultHandler(wait *usecase.WaitAppStartUsecase, stop context.CancelFunc, guiBase, serverLog string) *GetStartResultHandler {
+	return &GetStartResultHandler{wait: wait, stop: stop, guiBase: guiBase, serverLog: serverLog}
 }
 
 func (h *GetStartResultHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -34,7 +34,7 @@ func (h *GetStartResultHandler) ServeHTTP(rw http.ResponseWriter, r *http.Reques
 		middleware.Fail(r, err)
 		return
 	}
-	resp := startResponse{Started: out.Started, App: appOf(out.App), Log: server.LogPath()}
+	resp := startResponse{Started: out.Started, App: appOf(out.App), Log: h.serverLog}
 	code := 0
 	if out.Started {
 		resp.GUI = h.guiBase

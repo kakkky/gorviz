@@ -33,7 +33,7 @@ type leakResponse struct {
 
 type goroutineResponse struct {
 	ID        int64              `json:"id"`
-	Agent     bool               `json:"agent,omitempty"`
+	Gorviz    bool               `json:"gorviz,omitempty"`
 	Entry     string             `json:"entry"`
 	CreatedBy string             `json:"createdBy,omitempty"`
 	Range     string             `json:"range"`
@@ -52,10 +52,10 @@ type goroutineResponse struct {
 }
 
 func goroutineOf(p paths, d domain.GoroutineDetail, withStack bool) goroutineResponse {
-	g := goroutineResponse{ID: int64(d.ID), Agent: d.Agent, Entry: d.Entry, CreatedBy: frame(d.Creator), Range: at(d.From) + " to " + at(d.To),
+	g := goroutineResponse{ID: int64(d.ID), Gorviz: d.Gorviz, Entry: d.Entry, CreatedBy: frame(d.Creator), Range: at(d.From) + " to " + at(d.To),
 		MainCause: string(d.MainCause), Certainty: string(d.Certainty), Truncated: d.TraceTruncated, GUI: p.goroutine(d.ID, d.From, d.To)}
-	if d.Agent {
-		g.Note = "a goroutine of the gorviz agent, not counted in issues"
+	if d.Gorviz {
+		g.Note = "a goroutine of gorviz (the pprof it opened in the app), not counted in issues"
 	}
 	var parts []string
 	for _, b := range d.Breakdown {

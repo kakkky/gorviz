@@ -17,92 +17,77 @@ import (
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
 )
 
+const leakProfile = `goroutineleak profile: total 2
+2 @ 0x1 0x2
+#	0x1	main.leak.func1+0x10	/app/main.go:23
+#	0x2	runtime.goexit+0x4	/go/src/runtime/asm_arm64.s:1
+`
+
 func TestCollectAppObservationsUsecase_Exec(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	clockSync := domain.ClockSync{At: 2 * time.Second, Wall: now.Add(-time.Second)}
 	wantErr := errors.New("boom")
 
 	tests := []struct {
-		name      string
-		state     domain.AppState
-		collected domain.Collected
-		waiting   int
-		mock      func(a *mock.MockAgentInstructor, c *mock.MockClock)
-		want      domain.Collected
-		wantErr   error
+		name         string
+		state        domain.AppState
+		shuttingDown bool
+		collected    domain.Collected
+		waiting      int
+		mock         func(p *mock.MockAppProfiler, c *mock.MockClock)
+		want         usecase.CollectAppObservationsUsecaseOutput
+		wantPending  []domain.PendingLeakCheck
+		wantErr      error
 	}{
 		{
-			name:    "asks for both the first time",
+			name:    "takes the leak profile the first time and puts it on the trace",
 			state:   domain.AppRunning,
 			waiting: 3,
-			mock: func(a *mock.MockAgentInstructor, c *mock.MockClock) {
-				a.EXPECT().Connected().Return(true)
+			mock: func(p *mock.MockAppProfiler, c *mock.MockClock) {
 				c.EXPECT().Now().Return(now)
-				a.EXPECT().RequestThreadCount(gomock.Any()).Return(nil)
-				a.EXPECT().RequestGoroutineLeaks(gomock.Any()).Return(nil)
+				p.EXPECT().FetchGoroutineLeakProfile(gomock.Any()).Return([]byte(leakProfile), nil)
 			},
-			want: domain.Collected{Threads: now, Leaks: now, LeakWaiting: 3},
-		},
-		{
-			name:      "asks for the leak profile when the waiting goroutines grew",
-			state:     domain.AppRunning,
-			collected: domain.Collected{Threads: now.Add(-time.Second), Leaks: now.Add(-20 * time.Second), LeakWaiting: 3},
-			waiting:   5,
-			mock: func(a *mock.MockAgentInstructor, c *mock.MockClock) {
-				a.EXPECT().Connected().Return(true)
-				c.EXPECT().Now().Return(now)
-				a.EXPECT().RequestGoroutineLeaks(gomock.Any()).Return(nil)
-			},
-			want: domain.Collected{Threads: now.Add(-time.Second), Leaks: now, LeakWaiting: 5},
+			want: usecase.CollectAppObservationsUsecaseOutput{TookLeaks: true},
+			wantPending: []domain.PendingLeakCheck{{At: 3 * time.Second, Stacks: []domain.LeakProfileStack{{Count: 2, Frames: []domain.Frame{
+				{Function: "main.leak.func1", File: "/app/main.go", Line: 23}, {Function: "runtime.goexit", File: "/go/src/runtime/asm_arm64.s", Line: 1},
+			}}}}},
 		},
 		{
 			name:      "skips the leak profile while the waiting goroutines did not grow",
 			state:     domain.AppRunning,
-			collected: domain.Collected{Threads: now.Add(-3 * time.Second), Leaks: now.Add(-30 * time.Second), LeakWaiting: 5},
+			collected: domain.Collected{Leaks: now.Add(-30 * time.Second), LeakWaiting: 5},
 			waiting:   5,
-			mock: func(a *mock.MockAgentInstructor, c *mock.MockClock) {
-				a.EXPECT().Connected().Return(true)
-				c.EXPECT().Now().Return(now)
-				a.EXPECT().RequestThreadCount(gomock.Any()).Return(nil)
-			},
-			want: domain.Collected{Threads: now, Leaks: now.Add(-30 * time.Second), LeakWaiting: 5},
-		},
-		{
-			name:      "skips the leak profile before the shortest gap even when the waiting goroutines grew",
-			state:     domain.AppRunning,
-			collected: domain.Collected{Threads: now.Add(-time.Second), Leaks: now.Add(-5 * time.Second), LeakWaiting: 3},
-			waiting:   9,
-			mock: func(a *mock.MockAgentInstructor, c *mock.MockClock) {
-				a.EXPECT().Connected().Return(true)
+			mock: func(_ *mock.MockAppProfiler, c *mock.MockClock) {
 				c.EXPECT().Now().Return(now)
 			},
-			want: domain.Collected{Threads: now.Add(-time.Second), Leaks: now.Add(-5 * time.Second), LeakWaiting: 3},
 		},
 		{
-			name:      "asks for the leak profile after the longest gap even when the waiting goroutines did not grow",
-			state:     domain.AppRunning,
-			collected: domain.Collected{Threads: now.Add(-time.Second), Leaks: now.Add(-time.Minute), LeakWaiting: 5},
-			waiting:   4,
-			mock: func(a *mock.MockAgentInstructor, c *mock.MockClock) {
-				a.EXPECT().Connected().Return(true)
+			name:         "takes the leak profile every second during the shutdown",
+			state:        domain.AppRunning,
+			shuttingDown: true,
+			collected:    domain.Collected{Leaks: now.Add(-time.Second), LeakWaiting: 5},
+			waiting:      5,
+			mock: func(p *mock.MockAppProfiler, c *mock.MockClock) {
 				c.EXPECT().Now().Return(now)
-				a.EXPECT().RequestGoroutineLeaks(gomock.Any()).Return(nil)
+				p.EXPECT().FetchGoroutineLeakProfile(gomock.Any()).Return([]byte("goroutineleak profile: total 0\n"), nil)
 			},
-			want: domain.Collected{Threads: now.Add(-time.Second), Leaks: now, LeakWaiting: 4},
+			want:        usecase.CollectAppObservationsUsecaseOutput{TookLeaks: true},
+			wantPending: []domain.PendingLeakCheck{{At: 3 * time.Second}},
 		},
 		{
-			name:  "asks nothing when the app is not running",
+			name:  "says the app is gone once it exited",
 			state: domain.AppExited,
-			mock:  func(*mock.MockAgentInstructor, *mock.MockClock) {},
+			mock:  func(*mock.MockAppProfiler, *mock.MockClock) {},
+			want:  usecase.CollectAppObservationsUsecaseOutput{AppGone: true},
 		},
 		{
-			name:  "returns the error of the agent without marking it collected",
+			name:  "returns the error of the pprof without marking it collected",
 			state: domain.AppRunning,
-			mock: func(a *mock.MockAgentInstructor, c *mock.MockClock) {
-				a.EXPECT().Connected().Return(true)
+			mock: func(p *mock.MockAppProfiler, c *mock.MockClock) {
 				c.EXPECT().Now().Return(now)
-				a.EXPECT().RequestThreadCount(gomock.Any()).Return(wantErr)
+				p.EXPECT().FetchGoroutineLeakProfile(gomock.Any()).Return(nil, wantErr)
 			},
 			wantErr: wantErr,
 		},
@@ -111,28 +96,39 @@ func TestCollectAppObservationsUsecase_Exec(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
-			agent := mock.NewMockAgentInstructor(ctrl)
+			profiler := mock.NewMockAppProfiler(ctrl)
 			clock := mock.NewMockClock(ctrl)
-			tt.mock(agent, clock)
+			tt.mock(profiler, clock)
 			store := kvs.NewInMemoryKVS()
 			sessions := accessor.NewSessionAccessor(store)
 			observations := accessor.NewObservationAccessor(store)
+			issues := accessor.NewIssueBookAccessor(store)
 			require.NoError(t, observations.Put(domain.Observation{Second: 2, Stats: domain.Bucket{Waiting: tt.waiting}}))
 			sessions.UpdateSession(func(s *domain.Session) {
-				s.App.State, s.Collected, s.Observed.Until = tt.state, tt.collected, 3*domain.BucketSize
+				s.App.State, s.Collected = tt.state, tt.collected
+				s.Observed.Started, s.Observed.Until, s.Observed.Clock = true, 3*domain.BucketSize, clockSync
+				if tt.shuttingDown {
+					s.Observed.AddMarks(domain.TraceMark{At: time.Second, Message: domain.MarkShutdown})
+				}
 			})
 
-			uc := usecase.NewUseCase(sessions, observations, nil, nil, agent, nil, nil, nil, nil, clock).NewCollectAppObservationsUsecase()
+			uc := usecase.NewUseCase(sessions, observations, issues, nil, nil, nil, profiler, nil, clock).NewCollectAppObservationsUsecase()
 			out, err := uc.Exec(ctx, usecase.CollectAppObservationsUsecaseInput{})
 
+			var pending []domain.PendingLeakCheck
+			issues.ViewIssueBook(func(b *domain.IssueBook) { pending = b.Pending })
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
-				assert.Equal(t, usecase.CollectAppObservationsUsecaseOutput{}, out)
 				assert.Equal(t, tt.collected, sessions.Session().Collected)
+				assert.Empty(t, pending)
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, sessions.Session().Collected)
+			assert.Equal(t, tt.want, out)
+			assert.Equal(t, tt.wantPending, pending)
+			if out.TookLeaks {
+				assert.Equal(t, domain.Collected{Leaks: now, LeakWaiting: tt.waiting}, sessions.Session().Collected)
+			}
 		})
 	}
 }

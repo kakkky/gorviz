@@ -31,7 +31,7 @@ type GoroutineDetail struct {
 	Creator         Frame
 	CreatedAt       time.Duration
 	Created         bool
-	Agent           bool
+	Gorviz          bool
 	Ended           bool
 	EndedAt         time.Duration
 	From            time.Duration
@@ -72,7 +72,7 @@ func DetailOf(ix *ObservationSet, id GoroutineID, from, to time.Duration, leaks 
 		return GoroutineDetail{}, GoroutineNotFound(ix, id)
 	}
 	_, broken := ix.Ended()
-	d := GoroutineDetail{ID: g.ID, Entry: g.Entry, Creator: g.Creator, CreatedAt: g.CreatedAt, Created: g.Created, Agent: g.Agent, Ended: g.Ended, EndedAt: g.EndedAt,
+	d := GoroutineDetail{ID: g.ID, Entry: g.Entry, Creator: g.Creator, CreatedAt: g.CreatedAt, Created: g.Created, Gorviz: g.Gorviz, Ended: g.Ended, EndedAt: g.EndedAt,
 		From: from, To: min(to, ix.Last()), TraceTruncated: broken, Certainty: CertaintyFact}
 	byCause := map[MainCause]time.Duration{}
 	inferred := map[MainCause]bool{}

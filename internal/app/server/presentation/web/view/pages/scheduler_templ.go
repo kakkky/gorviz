@@ -160,7 +160,7 @@ func ReplayPanel(replay components.GMPReplayViewModel, streamURL string, truncat
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<p class=\"faint small replay-footnote\">The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded. Goroutines of the gorviz agent are folded at the end of the parked list; when shown, they are dimmed and marked with an antenna.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<p class=\"faint small replay-footnote\">The run queue a RUNNABLE goroutine waited in is not recorded in the execution trace, so local and global run queues are inferred. How long it waited and which P and M ran it are as recorded. Goroutines of gorviz (the pprof it opened in the app and the execution trace it runs) are folded at the end of the parked list; when shown, they are dimmed and marked with an antenna.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

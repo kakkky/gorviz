@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 
 	"github.com/kakkky/gorviz/internal/app/server/domain"
 	"github.com/kakkky/gorviz/internal/app/server/presentation/middleware"
 	"github.com/kakkky/gorviz/internal/app/server/usecase"
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 type loadResponse struct {
@@ -70,54 +68,6 @@ func smokeOf(rs []domain.SmokeResult) []smokeResponse {
 	return out
 }
 
-type functionCoverageResponse struct {
-	Function  string `json:"function"`
-	Covered   string `json:"covered"`
-	Uncovered string `json:"uncoveredLines"`
-}
-
-type coverageResponse struct {
-	Covered   string                     `json:"covered"`
-	Partial   []functionCoverageResponse `json:"partlyCovered,omitempty"`
-	Unreached []string                   `json:"notReached,omitempty"`
-	Omitted   string                     `json:"omitted,omitempty"`
-}
-
-const coverageBudget = 4 << 10
-
-func coverageOf(c *domain.CoverageReport) *coverageResponse {
-	if c == nil {
-		return nil
-	}
-	r := &coverageResponse{Covered: fmt.Sprintf("%.1f%% of %d statements", c.Percent, c.Statements)}
-	size, omitted := 0, 0
-	for _, f := range c.Partial {
-		var lines []string
-		for _, l := range f.Uncovered {
-			lines = append(lines, l.String())
-		}
-		item := functionCoverageResponse{Function: f.Function, Covered: fmt.Sprintf("%.0f%%", f.Percent), Uncovered: path.Base(f.File) + ":" + strings.Join(lines, ",")}
-		size += len(item.Function) + len(item.Uncovered) + 16
-		if size > coverageBudget {
-			omitted++
-			continue
-		}
-		r.Partial = append(r.Partial, item)
-	}
-	for _, f := range c.Unreached {
-		size += len(f) + 4
-		if size > coverageBudget {
-			omitted++
-			continue
-		}
-		r.Unreached = append(r.Unreached, f)
-	}
-	if omitted > 0 {
-		r.Omitted = fmt.Sprintf("%d more functions are not shown", omitted)
-	}
-	return r
-}
-
 type summaryResponse struct {
 	Range        rangeResponse        `json:"range"`
 	Loaded       bool                 `json:"loaded"`
@@ -126,7 +76,6 @@ type summaryResponse struct {
 	SmokeFlows   []smokeResponse      `json:"smokeFlows,omitempty"`
 	RampUp       []loadResponse       `json:"rampUp,omitempty"`
 	Cancellation *loadResponse        `json:"cancellation,omitempty"`
-	Coverage     *coverageResponse    `json:"coverage,omitempty"`
 	AppExitCode  *int                 `json:"appExitCode,omitempty"`
 	Issues       []diagnosedIssueBody `json:"issues"`
 	ExitCode     int                  `json:"exitCode"`
@@ -150,7 +99,6 @@ func summaryOf(s domain.DiagnosisSummary, p paths) summaryResponse {
 		c := loadOf(*s.Cancellation)
 		r.Cancellation = &c
 	}
-	r.Coverage = coverageOf(s.Coverage)
 	if s.AppExited {
 		code := s.AppExitCode
 		r.AppExitCode = &code
@@ -165,7 +113,7 @@ func summaryOf(s domain.DiagnosisSummary, p paths) summaryResponse {
 	case s.Stopped != "":
 		r.Next = append(r.Next, "gorviz docs scenario")
 	case len(s.Issues) == 0:
-		r.Next = append(r.Next, "check the coverage to see whether the scenario reached the code you care about")
+		r.Next = append(r.Next, "check the statuses of the load to see whether the scenario reached the code you care about")
 	}
 	return r
 }
@@ -192,7 +140,7 @@ func (h *PostDiagnoseHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 		if !started {
 			_, media, _ := encode(r, struct{}{})
 			rw.Header().Set("Content-Type", media)
-			rw.Header().Set("Trailer", server.HeaderExitCode)
+			rw.Header().Set("Trailer", headerExitCode)
 			started = true
 		}
 		b, _, err := encode(r, v)
@@ -216,11 +164,11 @@ func (h *PostDiagnoseHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 			return
 		}
 		emit(errorBody{Error: err.Error(), Docs: "gorviz docs"})
-		rw.Header().Set(server.HeaderExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
+		rw.Header().Set(headerExitCode, strconv.Itoa(domain.ExitNotDiagnosed))
 		return
 	}
 	emit(map[string]any{"summary": summaryOf(out.Summary, h.paths)})
-	rw.Header().Set(server.HeaderExitCode, strconv.Itoa(out.Summary.ExitCode))
+	rw.Header().Set(headerExitCode, strconv.Itoa(out.Summary.ExitCode))
 }
 
 type progressResponse struct {

@@ -3,13 +3,10 @@ package config
 import (
 	"encoding/json"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
 
 // Args はアプリの引数。空白を含められるよう、JSON の配列で受け取る
@@ -21,6 +18,7 @@ func (a *Args) Decode(v string) error {
 
 type Config struct {
 	Socket          string        `envconfig:"GORVIZ_SOCKET" required:"true"`
+	ServerLog       string        `envconfig:"GORVIZ_SERVER_LOG" required:"true"`
 	GUIAddr         string        `envconfig:"GORVIZ_GUI_ADDR" default:"127.0.0.1:24678"`
 	AppDir          string        `envconfig:"GORVIZ_APP_DIR" required:"true"`
 	AppPackage      string        `envconfig:"GORVIZ_APP_PACKAGE" required:"true"`
@@ -36,12 +34,16 @@ func NewConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-// AppEnv は gorviz run の環境変数から、server を起動するためのものを除いたもの。ビルドにもアプリにもそのまま渡す
+// IsServer は、cli に server として起動されたか
+func IsServer() bool {
+	return os.Getenv("GORVIZ_SERVER") == "1"
+}
+
+// AppEnv は gorviz run の環境変数から、gorviz のもの (GORVIZ_ で始まるもの) を除いたもの。ビルドにもアプリにもそのまま渡す
 func (c *Config) AppEnv() []string {
 	var out []string
 	for _, kv := range os.Environ() {
-		k, _, _ := strings.Cut(kv, "=")
-		if !slices.Contains(server.ServerEnvs, k) {
+		if !strings.HasPrefix(kv, "GORVIZ_") {
 			out = append(out, kv)
 		}
 	}

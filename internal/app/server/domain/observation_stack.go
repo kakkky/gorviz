@@ -19,11 +19,9 @@ func (f Frame) Location() string {
 	return f.File + ":" + strconv.Itoa(f.Line)
 }
 
-// AgentPackage は agent をアプリに差し込むときのパッケージの名前。作られたときのスタックにこれがある goroutine は agent のもの
-const AgentPackage = "gorvizagent"
-
-func IsAgentFunction(fn string) bool {
-	return strings.Contains(fn, "/"+AgentPackage+".") || strings.Contains(fn, "/"+AgentPackage+"/")
+// IsGorvizFunction は、gorviz がアプリに差し込んだ処理か、それが開いた pprof の関数か
+func IsGorvizFunction(fn string) bool {
+	return strings.HasPrefix(fn, "main."+pprofServeFunction) || strings.HasPrefix(fn, "net/http/pprof.")
 }
 
 // IsRuntimeFunction はスケジューラの内部で、何をしているかの説明に使えない関数か。sync や net は何で止まっているかを表すので含めない
@@ -169,7 +167,7 @@ func CauseOfWait(reason string, stack []Frame) MainCause {
 	return CauseSyncWait
 }
 
-// InferWaitReason は agent より前に待ちに入っていて待機理由が分からない goroutine の待機理由を、スタックの上の方の runtime の関数から推定する
+// InferWaitReason は trace を取り始める前に待ちに入っていて待機理由が分からない goroutine の待機理由を、スタックの上の方の runtime の関数から推定する
 func InferWaitReason(stack []Frame) string {
 	for _, f := range stack {
 		switch {

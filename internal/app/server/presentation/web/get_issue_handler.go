@@ -126,8 +126,8 @@ func occurrenceDetail(vm *pages.OccurrenceViewModel, kind domain.IssueKind, imp 
 	for _, g := range imp.Goroutines {
 		d := g.Detail
 		m := pages.ImpactViewModel{Goroutine: gid(d.ID), Entry: d.Entry, Function: d.StoppedAt.Function, Location: d.StoppedAt.Location(), Reason: d.StoppedReason, URL: goroutineURL(d.ID, d.From, d.To)}
-		if d.Agent {
-			m.Entry += " (gorviz agent)"
+		if d.Gorviz {
+			m.Entry += " (gorviz)"
 		}
 		m.Duration = duration(g.Duration)
 		if g.Duration == 0 {

@@ -7,11 +7,10 @@ type UseCase struct {
 	observations domain.ObservationAccessor
 	issues       domain.IssueBookStore
 	stream       domain.TraceStream
-	agent        domain.AgentInstructor
 	builder      domain.AppBuilder
 	starter      domain.AppStarter
+	profiler     domain.AppProfiler
 	requester    domain.AppRequester
-	toolchain    domain.Toolchain
 	clock        domain.Clock
 }
 
@@ -20,12 +19,11 @@ func NewUseCase(
 	observations domain.ObservationAccessor,
 	issues domain.IssueBookStore,
 	stream domain.TraceStream,
-	agent domain.AgentInstructor,
 	builder domain.AppBuilder,
 	starter domain.AppStarter,
+	profiler domain.AppProfiler,
 	requester domain.AppRequester,
-	toolchain domain.Toolchain,
 	clock domain.Clock,
 ) *UseCase {
-	return &UseCase{sessions: sessions, observations: observations, issues: issues, stream: stream, agent: agent, builder: builder, starter: starter, requester: requester, toolchain: toolchain, clock: clock}
+	return &UseCase{sessions: sessions, observations: observations, issues: issues, stream: stream, builder: builder, starter: starter, profiler: profiler, requester: requester, clock: clock}
 }

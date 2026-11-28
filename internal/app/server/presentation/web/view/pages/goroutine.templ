@@ -8,7 +8,7 @@ import (
 type GoroutineViewModel struct {
 	Base          layout.BaseViewModel
 	Goroutine     string
-	Agent         bool
+	Gorviz         bool
 	Picker        components.TimeRangePickerViewModel
 	Period        string
 	PeriodBy      string
@@ -87,8 +87,8 @@ templ Goroutine(vm GoroutineViewModel) {
 				<span class="following-label" title="this goroutine is followed in the replay below">following</span>
 				<strong class="mono">{ vm.Goroutine }</strong>
 				<span class="goroutine-entry" title={ vm.Entry }>{ components.ShortPath(vm.Entry) }</span>
-				if vm.Agent {
-					@components.AgentBadge()
+				if vm.Gorviz {
+					@components.GorvizBadge()
 				}
 				if vm.Leak.Leaked {
 					<span class="badge kind">GOROUTINE_LEAK</span>

@@ -11,25 +11,23 @@ import (
 type GetSessionStatusUsecase struct {
 	sessions domain.SessionStore
 	issues   domain.IssueBookStore
-	agent    domain.AgentInstructor
 }
 
 type GetSessionStatusUsecaseInput struct{}
 
 type GetSessionStatusUsecaseOutput struct {
-	Session        domain.Session
-	AgentConnected bool
-	Elapsed        time.Duration
-	Timeline       []domain.SessionEvent
-	Issues         int
+	Session  domain.Session
+	Elapsed  time.Duration
+	Timeline []domain.SessionEvent
+	Issues   int
 }
 
 func (us *UseCase) NewGetSessionStatusUsecase() *GetSessionStatusUsecase {
-	return &GetSessionStatusUsecase{sessions: us.sessions, issues: us.issues, agent: us.agent}
+	return &GetSessionStatusUsecase{sessions: us.sessions, issues: us.issues}
 }
 
 func (u *GetSessionStatusUsecase) Exec(_ context.Context, _ GetSessionStatusUsecaseInput) (GetSessionStatusUsecaseOutput, error) {
-	out := GetSessionStatusUsecaseOutput{Session: u.sessions.Session(), AgentConnected: u.agent.Connected()}
+	out := GetSessionStatusUsecaseOutput{Session: u.sessions.Session()}
 	out.Elapsed = out.Session.Observed.Until
 	out.Timeline = domain.TimelineOf(out.Session.Observed.Marks, out.Session)
 	u.issues.ViewIssueBook(func(b *domain.IssueBook) { out.Issues = len(b.Issues()) })

@@ -16,7 +16,7 @@ import (
 type GoroutineViewModel struct {
 	Base          layout.BaseViewModel
 	Goroutine     string
-	Agent         bool
+	Gorviz        bool
 	Picker        components.TimeRangePickerViewModel
 	Period        string
 	PeriodBy      string
@@ -168,8 +168,8 @@ func Goroutine(vm GoroutineViewModel) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if vm.Agent {
-				templ_7745c5c3_Err = components.AgentBadge().Render(ctx, templ_7745c5c3_Buffer)
+			if vm.Gorviz {
+				templ_7745c5c3_Err = components.GorvizBadge().Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

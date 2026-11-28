@@ -69,7 +69,7 @@ func (h *GetGoroutineHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request)
 }
 
 func goroutineViewModel(st usecase.GetSessionStatusUsecaseOutput, d domain.GoroutineDetail, opened bool) pages.GoroutineViewModel {
-	vm := pages.GoroutineViewModel{Base: baseOf(gid(d.ID), "", st), Goroutine: gid(d.ID), Agent: d.Agent, Period: span(d.From, d.To), Found: d.HasObservations,
+	vm := pages.GoroutineViewModel{Base: baseOf(gid(d.ID), "", st), Goroutine: gid(d.ID), Gorviz: d.Gorviz, Period: span(d.From, d.To), Found: d.HasObservations,
 		Entry: d.Entry, CreatedBy: d.Creator.Function, CreatedByAt: d.Creator.Location(), Main: string(d.MainCause), MainCertainty: string(d.Certainty), MainNote: certaintyNote(d.Certainty),
 		Truncated: d.TraceTruncated, SchedulerURL: schedulerURL(d.From, max(d.To, d.From+1)), PeriodRange: rangeView(d.From, d.To)}
 	vm.PeriodBy = "the life of the goroutine, up to the last minute"
@@ -77,7 +77,7 @@ func goroutineViewModel(st usecase.GetSessionStatusUsecaseOutput, d domain.Gorou
 		vm.PeriodBy = "the range it was opened over"
 	}
 	if vm.CreatedBy == "" {
-		vm.CreatedBy = "before the agent started"
+		vm.CreatedBy = "before the trace started"
 	}
 	if len(d.Breakdown) > 0 {
 		var total, top int64

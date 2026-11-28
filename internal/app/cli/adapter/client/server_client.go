@@ -13,9 +13,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
-
-	"github.com/kakkky/gorviz/internal/protocol/server"
 )
+
+// headerExitCode は、server が応答に載せる、cli がそのまま使う終了コード
+const headerExitCode = "Gorviz-Exit-Code"
 
 // ServerClient は server を起動し、その HTTP API を unix socket 越しに呼ぶ。応答は解釈せず、そのまま返す
 type ServerClient struct{}
@@ -38,9 +39,9 @@ type Response struct {
 }
 
 func (r *Response) ExitCode() int {
-	v := r.resp.Trailer.Get(server.HeaderExitCode)
+	v := r.resp.Trailer.Get(headerExitCode)
 	if v == "" {
-		v = r.resp.Header.Get(server.HeaderExitCode)
+		v = r.resp.Header.Get(headerExitCode)
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
@@ -71,7 +72,7 @@ func (c *ServerClient) Do(ctx context.Context, socket, method, path string, quer
 }
 
 // StartServer は今の実行ファイルを server として、端末から切り離して起動する。環境変数は gorviz run のものをそのまま渡す
-func (c *ServerClient) StartServer(socket, dir, pkg string, args []string) error {
+func (c *ServerClient) StartServer(socket, serverLog, dir, pkg string, args []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -80,17 +81,17 @@ func (c *ServerClient) StartServer(socket, dir, pkg string, args []string) error
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(server.LogPath()), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(serverLog), 0o755); err != nil {
 		return err
 	}
-	log, err := os.OpenFile(server.LogPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	log, err := os.OpenFile(serverLog, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
 	defer log.Close()
 	cmd := exec.Command(exe)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), server.EnvServer+"=1", server.EnvSocket+"="+socket, server.EnvAppDir+"="+dir, server.EnvAppPackage+"="+pkg, server.EnvAppArgs+"="+string(argsJSON))
+	cmd.Env = append(os.Environ(), "GORVIZ_SERVER=1", "GORVIZ_SOCKET="+socket, "GORVIZ_SERVER_LOG="+serverLog, "GORVIZ_APP_DIR="+dir, "GORVIZ_APP_PACKAGE="+pkg, "GORVIZ_APP_ARGS="+string(argsJSON))
 	cmd.Stdout, cmd.Stderr = log, log
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {

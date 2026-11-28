@@ -1,4 +1,4 @@
-gorviz builds a Go app with an agent in it, runs it on your machine and diagnoses the health of its Go runtime
+gorviz builds a Go app with pprof opened in it, runs it on your machine and diagnoses the health of its Go runtime
 (goroutine leaks, lock contention, waiting for the CPU, GC, stop-the-world and too many OS threads).
 
 A session goes like this:
